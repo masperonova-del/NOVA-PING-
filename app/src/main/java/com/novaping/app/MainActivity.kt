@@ -23,7 +23,11 @@ import java.util.Locale
 import java.util.concurrent.Executors
 
 private data class ProbeTarget(val name: String, val endpoint: String)
-private data class TargetResult(val target: ProbeTarget, val metrics: PingMetrics?)
+private data class TargetResult(
+    val target: ProbeTarget,
+    val metrics: PingMetrics?,
+    val roundMedians: List<Long>
+)
 
 class MainActivity : Activity() {
     private val executor = Executors.newSingleThreadExecutor()
@@ -102,11 +106,11 @@ class MainActivity : Activity() {
         val testCard = card()
         testCard.addView(label("Diagnostic multi-points", 16f, Color.WHITE, true, Gravity.START))
         testCard.addView(label(
-            "8 mesures HTTPS par destination, précédées d'une mesure de préparation. Les résultats restent des temps de réponse HTTPS, pas le ping du jeu.",
+            "3 cycles indépendants, avec 3 mesures par destination à chaque cycle (9 mesures au total). Une mesure de préparation précède le premier cycle. Les résultats restent des temps de réponse HTTPS, pas le ping du jeu.",
             13f, mutedColor, false, Gravity.START
         ).apply { setPadding(0, dp(6), 0, dp(14)) })
         testButton = Button(this).apply {
-            text = "COMPARER LES DESTINATIONS"
+            text = "LANCER LES 3 CYCLES"
             isAllCaps = false
             setTextColor(Color.WHITE)
             setBackgroundTintList(android.content.res.ColorStateList.valueOf(accentColor))
@@ -178,67 +182,118 @@ class MainActivity : Activity() {
         val networkType = refreshNetworkInfo()
         status.text = "Comparaison en cours…"
         resultsContainer.removeAllViews()
-        resultsContainer.addView(label("Démarrage des tests…", 13f, mutedColor, false, Gravity.START))
+        resultsContainer.addView(label("Préparation du diagnostic…", 13f, mutedColor, false, Gravity.START))
+
         executor.execute {
             var failure: String? = null
-            val outcomes = mutableListOf<TargetResult>()
+            val samplesByTarget = targets.associateWith { mutableListOf<Long>() }
+            val roundMediansByTarget = targets.associateWith { mutableListOf<Long>() }
             try {
-                targets.forEachIndexed { index, target ->
-                    runOnUiThread {
-                        status.text = "Test " + (index + 1) + "/3"
-                        resultsContainer.removeAllViews()
-                        resultsContainer.addView(label("Connexion à " + target.name + "…", 13f, mutedColor, false, Gravity.START))
-                    }
-                    HttpsProbe.measureOnce(target.endpoint)
-                    val samples = mutableListOf<Long>()
-                    repeat(5) { attempt ->
+                repeat(3) { roundIndex ->
+                    val offset = roundIndex % targets.size
+                    val roundOrder = targets.drop(offset) + targets.take(offset)
+                    roundOrder.forEach { target ->
                         runOnUiThread {
+                            status.text = "Cycle ${roundIndex + 1}/3"
                             resultsContainer.removeAllViews()
-                            resultsContainer.addView(label(target.name + " — mesure " + (attempt + 1) + "/5", 13f, mutedColor, false, Gravity.START))
+                            resultsContainer.addView(label(
+                                "Cycle ${roundIndex + 1}/3 — ${target.name}",
+                                13f, mutedColor, false, Gravity.START
+                            ))
                         }
-                        HttpsProbe.measureOnce(target.endpoint)?.let { samples.add(it) }
-                        if (attempt < 4) Thread.sleep(150)
+
+                        if (roundIndex == 0) {
+                            HttpsProbe.measureOnce(target.endpoint)
+                        }
+
+                        val roundSamples = mutableListOf<Long>()
+                        repeat(3) { attempt ->
+                            runOnUiThread {
+                                resultsContainer.removeAllViews()
+                                resultsContainer.addView(label(
+                                    "Cycle ${roundIndex + 1}/3 — ${target.name} — mesure ${attempt + 1}/3",
+                                    13f, mutedColor, false, Gravity.START
+                                ))
+                            }
+                            HttpsProbe.measureOnce(target.endpoint)?.let { roundSamples.add(it) }
+                            if (attempt < 2) Thread.sleep(150)
+                        }
+                        samplesByTarget.getValue(target).addAll(roundSamples)
+                        if (roundSamples.isNotEmpty()) {
+                            roundMediansByTarget.getValue(target).add(
+                                PingMetrics.from(roundSamples, 3).medianMs
+                            )
+                        }
                     }
-                    val metrics = if (samples.isNotEmpty()) PingMetrics.from(samples, 5) else null
-                    outcomes.add(TargetResult(target, metrics))
                 }
             } catch (error: Exception) {
                 failure = error.message ?: "Erreur inconnue pendant le diagnostic"
             }
+
+            val outcomes = targets.map { target ->
+                val samples = samplesByTarget.getValue(target)
+                TargetResult(
+                    target = target,
+                    metrics = if (samples.isNotEmpty()) PingMetrics.from(samples, 9) else null,
+                    roundMedians = roundMediansByTarget.getValue(target)
+                )
+            }
             val ranked = outcomes.filter { it.metrics != null }.sortedBy { it.metrics!!.medianMs }
+
             runOnUiThread {
                 testButton.isEnabled = true
                 resultsContainer.removeAllViews()
                 if (failure != null) {
                     status.text = "Diagnostic interrompu"
-                    resultsContainer.addView(label("Erreur : " + failure, 13f, Color.rgb(255, 150, 130), false, Gravity.START))
+                    resultsContainer.addView(label(
+                        "Erreur : " + failure,
+                        13f, Color.rgb(255, 150, 130), false, Gravity.START
+                    ))
                 } else {
                     status.text = if (ranked.isNotEmpty()) "Comparaison terminée" else "Destinations inaccessibles"
                 }
+
                 resultsContainer.addView(label("Profil : " + selectedGame, 13f, mutedColor, false, Gravity.START))
+                resultsContainer.addView(label("Cycles terminés : ${if (failure == null) 3 else "interrompu"}", 12f, mutedColor, false, Gravity.START))
+
                 if (ranked.isNotEmpty()) {
                     val best = ranked.first()
                     resultsContainer.addView(label(
-                        "Destination la plus réactive : " + best.target.name + "\nMédiane observée : " + best.metrics!!.medianMs + " ms",
+                        "Médiane globale la plus basse : ${best.target.name}\nMédiane : ${best.metrics!!.medianMs} ms",
                         15f, accentColor, true, Gravity.START
                     ).apply { setPadding(0, dp(10), 0, dp(12)) })
                 }
+
                 outcomes.forEach { outcome ->
                     val metrics = outcome.metrics
                     val targetCard = card()
                     targetCard.addView(label(outcome.target.name, 14f, Color.WHITE, true, Gravity.START))
                     val detail = if (metrics == null) {
-                        "Aucune réponse exploitable\nÉchecs : 5/5"
+                        "Aucune réponse exploitable\nÉchecs : 9/9"
                     } else {
-                        "Médiane : " + metrics.medianMs + " ms\nP95 observé : " + metrics.p95Ms + " ms\nVariation moyenne : " + metrics.jitterMs + " ms\nSans réponse : " + metrics.lostRequests + "/" + metrics.totalRequests
+                        val cycleLine = if (outcome.roundMedians.isEmpty()) {
+                            "Aucun cycle exploitable"
+                        } else {
+                            "Médianes par cycle : " + outcome.roundMedians.joinToString(" / ") { "${it} ms" }
+                        }
+                        val spreadLine = if (outcome.roundMedians.size >= 2) {
+                            "Écart entre cycles : ${outcome.roundMedians.maxOrNull()!! - outcome.roundMedians.minOrNull()!!} ms"
+                        } else {
+                            "Cycles exploitables : ${outcome.roundMedians.size}/3"
+                        }
+                        "Médiane globale : ${metrics.medianMs} ms\nP95 observé : ${metrics.p95Ms} ms\nVariation moyenne : ${metrics.jitterMs} ms\nSans réponse : ${metrics.lostRequests}/${metrics.totalRequests}\n$cycleLine\n$spreadLine"
                     }
-                    targetCard.addView(label(detail, 13f, if (metrics == null) Color.rgb(255, 150, 130) else mutedColor, false, Gravity.START)
-                        .apply { setPadding(0, dp(6), 0, 0) })
+                    targetCard.addView(label(
+                        detail, 13f,
+                        if (metrics == null) Color.rgb(255, 150, 130) else mutedColor,
+                        false, Gravity.START
+                    ).apply { setPadding(0, dp(6), 0, 0) })
                     resultsContainer.addView(targetCard)
                 }
+
                 if (failure == null) {
                     resultsContainer.addView(label(
-                        "Comparaison HTTPS uniquement : ces résultats ne représentent pas le ping du jeu.",
+                        "Comparaison de points de contrôle HTTPS uniquement : la médiane et la régularité observées ne désignent pas le meilleur serveur ni la meilleure route de jeu.",
                         11f, mutedColor, false, Gravity.START
                     ).apply { setPadding(0, dp(10), 0, 0) })
                     saveHistory(selectedGame, networkType, ranked.firstOrNull())
