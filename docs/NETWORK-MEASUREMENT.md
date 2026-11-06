@@ -67,7 +67,7 @@ Show both values and the difference. Do not promise that an improvement in a dia
 - A public cloud endpoint is not automatically the game server.
 
 
-## Phase breakdown added in 1.4.0
+## Phase breakdown — audited in 1.4.1
 
 The Route Engine opens a fresh HTTPS connection to each public control endpoint and reports these sequential phases separately:
 
