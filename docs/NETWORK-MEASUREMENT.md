@@ -2,17 +2,19 @@
 
 ## Why measurement quality matters
 
-A single fast response does not prove a stable connection. A test must collect enough samples and preserve the method used so results can be interpreted correctly.
+A single fast response does not prove a stable connection. Every result must preserve the method used, the destination and the sample count so it can be interpreted correctly.
 
-## Required metrics
+## Metrics used by NOVA PING
 
-| Metric | Meaning | Reporting rule |
+| Metric | Meaning | Current calculation / reporting |
 |---|---|---|
-| Median RTT | Middle round-trip time | Report in ms with sample count |
-| P95 RTT | 95th percentile round-trip time | Report to show high-latency spikes |
-| Jitter | Variation between latency samples | State the exact calculation |
-| Packet loss | Missing valid probes | Report sent/received counts and protocol |
-| Stability | Variation across a test window | Show duration and sample count |
+| Median | Middle response time | Median of successful HTTPS response times, in ms |
+| P95 observed | High-end response time | Nearest-rank percentile; with nine samples, this is the maximum observed sample |
+| Variation | Changes between responses | Mean absolute difference between consecutive successful samples, in ms |
+| HTTPS request failures | Requests that did not return a successful response | Failed request count / total attempted requests |
+| Cycle spread | Difference between cycle medians | Maximum cycle median minus minimum cycle median, when at least two cycles are usable |
+
+The current variation calculation uses successful samples in their recorded order. Failed requests are not inserted as zero values. This statistic is a simple variation indicator, not a universal standardized jitter measure.
 
 ## Protocol distinctions
 
@@ -20,20 +22,28 @@ A single fast response does not prove a stable connection. A test must collect e
 - **TCP connect:** measures connection establishment to a specific TCP service, not pure ICMP ping.
 - **HTTPS request:** includes DNS, connection setup, TLS and server response behavior unless carefully separated.
 - **UDP probe:** requires a cooperative endpoint that can respond; sending UDP packets without a valid response protocol cannot establish packet loss reliably.
-- **Game telemetry:** only possible when the game or platform exposes a supported, lawful measurement interface.
+- **Game telemetry:** only possible when the game or platform exposes a supported measurement interface.
 
 These measurements must never be combined into one unlabeled “ping” number.
 
-## Test design
+## Current NOVA PING test design
 
-1. Record the network type and test conditions.
-2. Resolve the destination and record the selected address where appropriate.
-3. Warm up the connection separately from measured samples.
-4. Collect a meaningful series of samples.
-5. Apply timeouts consistently.
-6. Calculate metrics from valid samples only.
-7. Mark the test inconclusive when too few responses are available.
-8. Repeat tests before comparing two destinations or configurations.
+1. Read Android's active network and validated-connectivity state.
+2. Stop before testing when Android does not report validated Internet access.
+3. Use three public HTTPS control endpoints.
+4. Perform one preparation request before the measured cycles for each endpoint.
+5. Run three independent cycles, with three measured HTTPS requests per endpoint in each cycle.
+6. Apply the same request timeout to each probe.
+7. Calculate statistics only from successful responses.
+8. Classify known failures such as DNS resolution, timeout, TLS, connection and HTTP status errors.
+9. Mark the result insufficient when too few successful responses are available.
+10. Save the last ten completed sessions locally.
+
+## Critical distinction: request failure is not IP packet loss
+
+The current Android implementation measures HTTPS requests. A request can fail because of DNS, TCP connection, TLS negotiation, an HTTP status, a timeout or other causes. Therefore the app reports **HTTPS request failures**, not measured IP packet loss.
+
+A failed HTTPS request does not prove that an IP packet was lost on the path. Actual packet-loss measurement requires a suitable probe protocol and a valid responding endpoint.
 
 ## Before/after comparison
 
@@ -53,3 +63,5 @@ Show both values and the difference. Do not promise that an improvement in a dia
 - A lower DNS lookup time is not proof of lower game latency.
 - The nearest geographic region is not necessarily the fastest network route.
 - One unusually good sample is not a stable result.
+- Android's validated-connectivity flag does not identify every possible cause of a failed request.
+- A public cloud endpoint is not automatically the game server.
