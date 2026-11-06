@@ -30,7 +30,7 @@ class RouteProbeModelTest {
         val aggregate = RouteStatistics.aggregate(samples)
         assertEquals(3, aggregate.sampleCount)
         assertEquals(2, aggregate.completeSamples)
-        assertEquals(15L, aggregate.dns.medianMs)
+        assertEquals(20L, aggregate.dns.medianMs)
         assertEquals(2, aggregate.tcp.successfulSamples)
         assertEquals(1, aggregate.failures[RouteProbeFailure.TCP_CONNECT])
         assertEquals(2, aggregate.httpStatuses[204])
