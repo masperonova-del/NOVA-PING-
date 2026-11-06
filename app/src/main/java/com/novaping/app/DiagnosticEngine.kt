@@ -41,7 +41,7 @@ object DiagnosticEngine {
         if (spread != null) reasons.add("écart entre cycles ${spread} ms")
 
         val label = when {
-            lossPercent >= HIGH_LOSS_PERCENT -> "Pertes importantes"
+            lossPercent >= HIGH_LOSS_PERCENT -> "Échecs HTTPS importants"
             metrics.jitterMs >= HIGH_JITTER_MS || (spread != null && spread >= HIGH_CYCLE_SPREAD_MS) -> "Très variable"
             metrics.lostRequests > 0 || metrics.jitterMs >= MODERATE_JITTER_MS ||
                 (spread != null && spread >= MODERATE_CYCLE_SPREAD_MS) -> "Variable"
@@ -49,7 +49,7 @@ object DiagnosticEngine {
         }
 
         val explanation = when (label) {
-            "Pertes importantes" -> "Une part importante des requêtes n'a pas abouti : ${reasons.joinToString(", ")}."
+            "Échecs HTTPS importants" -> "Une part importante des requêtes n'a pas abouti : ${reasons.joinToString(", ")}."
             "Très variable" -> "Les temps de réponse changent fortement : ${reasons.joinToString(", ")}."
             "Variable" -> "Une irrégularité est détectée : ${reasons.joinToString(", ")}."
             else -> "Les mesures obtenues sont relativement cohérentes : ${reasons.joinToString(", ")}."
