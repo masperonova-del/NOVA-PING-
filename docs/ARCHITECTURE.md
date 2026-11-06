@@ -1,0 +1,96 @@
+# NOVA PING — Architecture
+
+## 1. Product architecture
+
+```text
+Android application
+  ├── NOVA CORE
+  │    ├── Test coordinator
+  │    ├── Session manager
+  │    └── Result validation
+  ├── PING ENGINE
+  │    ├── Latency probes
+  │    ├── Jitter analysis
+  │    ├── Loss estimation
+  │    └── Stability history
+  ├── ROUTE ENGINE
+  │    ├── Endpoint comparison
+  │    ├── Route evidence
+  │    └── Region comparison
+  ├── GAME INTELLIGENCE
+  │    ├── Game profiles
+  │    └── Region metadata
+  ├── DIAGNOSTIC ENGINE
+  │    ├── Wi-Fi / mobile state
+  │    ├── Signal and network changes
+  │    └── Device-side checks
+  └── DECISION ENGINE
+       ├── Recommendation ranking
+       ├── Confidence scoring
+       └── Explanation of trade-offs
+
+Optional future infrastructure
+  ├── Measurement endpoints
+  └── NOVA BOOST relay network
+       └── Android VpnService (explicit user consent)
+```
+
+## 2. Module responsibilities
+
+### NOVA CORE
+Coordinates test sessions, records conditions, validates samples and exposes a consistent result model.
+
+### PING ENGINE
+Measures reachable test endpoints using a documented protocol. It must preserve raw samples and calculate:
+- median round-trip time;
+- P95 round-trip time;
+- jitter using a documented calculation;
+- packet-loss estimate, with sent/received counts;
+- test duration and sample count.
+
+### ROUTE ENGINE
+Compares destinations and available network paths where the platform and protocol permit it. A cloud endpoint is a diagnostic target, not automatically the game server.
+
+### GAME INTELLIGENCE
+Stores game-specific metadata only when supported by reliable sources or user-provided configuration. Unknown server locations must remain unknown rather than guessed.
+
+### DIAGNOSTIC ENGINE
+Identifies relevant conditions such as network type changes, weak or unstable connectivity, and local device constraints. It should not claim access to private game internals.
+
+### DECISION ENGINE
+Ranks recommendations by expected usefulness, evidence quality and confidence. It must explain why a recommendation was made and what result would confirm or reject it.
+
+## 3. Future NOVA BOOST
+
+A real traffic-routing feature requires infrastructure capable of forwarding traffic, plus an Android VPN implementation where appropriate. It must:
+- explain what traffic is routed;
+- request Android VPN consent;
+- provide a visible stop/disconnect control;
+- avoid collecting payload contents;
+- use secure transport and minimal operational logs;
+- compare results before and after activation;
+- automatically avoid claiming a benefit when measurements do not support it.
+
+A DNS change alone is not a route optimizer. A Cloudflare Worker or ordinary HTTP endpoint alone is not a general-purpose gaming relay.
+
+## 4. Data model principles
+
+Every test result should include:
+- timestamp;
+- network type;
+- destination identifier;
+- protocol and test method;
+- sent and received sample counts;
+- raw latency samples or a privacy-safe summary;
+- median, P95 and jitter;
+- loss percentage, if validly measurable;
+- confidence and known limitations.
+
+## 5. Privacy and safety
+
+- No packet payload inspection.
+- No hidden traffic interception.
+- No background VPN activation.
+- No credentials or game-account access.
+- Keep diagnostics local by default.
+- Clearly disclose any future telemetry and obtain consent.
