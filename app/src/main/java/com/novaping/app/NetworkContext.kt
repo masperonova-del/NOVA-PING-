@@ -9,7 +9,7 @@ data class NetworkContext(
     val internetAvailable: Boolean,
     val internetValidated: Boolean,
     val metered: Boolean,
-    val roaming: Boolean,
+    val roaming: Boolean?,
     val downstreamKbps: Int?,
     val upstreamKbps: Int?
 ) {
@@ -21,7 +21,7 @@ data class NetworkContext(
         add("Internet validé : ${if (internetValidated) "oui" else "non"}")
         add("Réseau mesuré par Android : ${if (metered) "oui" else "non"}")
         if (transport == NetworkTransport.CELLULAR) {
-            add("Itinérance : ${if (roaming) "oui" else "non"}")
+            add("Itinérance : ${when (roaming) { true -> "oui"; false -> "non"; null -> "non déterminée" }}")
         }
         downstreamKbps?.takeIf { it > 0 }?.let { add("Bande passante descendante annoncée : $it kbit/s") }
         upstreamKbps?.takeIf { it > 0 }?.let { add("Bande passante montante annoncée : $it kbit/s") }
@@ -33,7 +33,7 @@ data class NetworkContext(
             hasInternet: Boolean,
             validated: Boolean,
             metered: Boolean,
-            roaming: Boolean,
+            roaming: Boolean?,
             downstreamKbps: Int?,
             upstreamKbps: Int?
         ) = NetworkContext(
