@@ -32,11 +32,18 @@ A successful HTTP request to a cloud endpoint is not proof of the ping to a Call
 
 A VPN or relay can sometimes improve a route, but can also make it worse. NOVA PING will only claim an improvement after before/after measurements under comparable conditions.
 
-## Project status
+## Current project status
 
-This repository currently contains the product and engineering foundation. The Android application, measurement engine and automated tests are not yet implemented.
+**Android starter scaffold created.** The repository now includes:
+- Native Android application module in Kotlin.
+- Initial launch screen for NOVA PING.
+- Gradle project configuration.
+- GitHub Actions workflow for a debug APK build.
 
-See:
+The diagnostic button is intentionally disabled: no network measurement is implemented yet. The first CI build has not yet been confirmed.
+
+## Documentation
+
 - [Architecture](docs/ARCHITECTURE.md)
 - [Measurement standards](docs/NETWORK-MEASUREMENT.md)
 - [Roadmap](docs/ROADMAP.md)
