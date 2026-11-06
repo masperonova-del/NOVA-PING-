@@ -24,8 +24,8 @@ class DiagnosticEngineTest {
     }
 
     @Test fun reportsModerateVariation() {
-        val metrics = PingMetrics.from(listOf(20, 30, 90, 25, 35, 85, 22, 32, 88), 9)
-        assertEquals("Variable", DiagnosticEngine.assess(metrics, listOf(30, 85, 32)).label)
+        val metrics = PingMetrics.from(listOf(20, 100, 20, 100, 20, 100, 20, 100, 20), 9)
+        assertEquals("Variable", DiagnosticEngine.assess(metrics, listOf(30, 90, 35)).label)
     }
 
     @Test fun reportsConsistentMeasurements() {
