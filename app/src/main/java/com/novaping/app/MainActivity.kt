@@ -17,6 +17,7 @@ import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
 import org.json.JSONArray
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -296,7 +297,7 @@ class MainActivity : Activity() {
                         "Comparaison de points de contrôle HTTPS uniquement : la médiane et la régularité observées ne désignent pas le meilleur serveur ni la meilleure route de jeu.",
                         11f, mutedColor, false, Gravity.START
                     ).apply { setPadding(0, dp(10), 0, 0) })
-                    saveHistory(selectedGame, networkType, ranked.firstOrNull())
+                    saveHistory(selectedGame, networkType, outcomes)
                     renderHistory()
                 }
                 refreshNetworkInfo()
@@ -304,24 +305,103 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun saveHistory(game: String, network: String, fastest: TargetResult?) {
-        val history = try { JSONArray(preferences.getString("sessions", "[]")) } catch (_: Exception) { JSONArray() }
-        val stamp = SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(Date())
-        val best = fastest?.let { "${it.target.name} — ${it.metrics!!.medianMs} ms" } ?: "Aucune destination disponible"
-        val entry = "$stamp | $game | $network | $best"
-        val updated = JSONArray()
-        updated.put(entry)
-        for (i in 0 until minOf(history.length(), 9)) updated.put(history.getString(i))
+    private fun saveHistory(game: String, network: String, outcomes: List<TargetResult>) {
+        val history = try {
+            JSONArray(preferences.getString("sessions", "[]"))
+        } catch (_: Exception) {
+            JSONArray()
+        }
+
+        val stamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+        val session = JSONObject().apply {
+            put("timestamp", stamp)
+            put("game", game)
+            put("network", network)
+            put("targets", JSONArray().apply {
+                outcomes.forEach { outcome ->
+                    val metrics = outcome.metrics
+                    put(JSONObject().apply {
+                        put("name", outcome.target.name)
+                        put("medianMs", metrics?.medianMs ?: JSONObject.NULL)
+                        put("p95Ms", metrics?.p95Ms ?: JSONObject.NULL)
+                        put("variationMs", metrics?.jitterMs ?: JSONObject.NULL)
+                        put("lostRequests", metrics?.lostRequests ?: 9)
+                        put("totalRequests", metrics?.totalRequests ?: 9)
+                        put("cycleMedians", JSONArray(outcome.roundMedians))
+                    })
+                }
+            })
+        }
+
+        val updated = JSONArray().put(session)
+        for (i in 0 until minOf(history.length(), 9)) {
+            val oldEntry = history.opt(i)
+            if (oldEntry != null) updated.put(oldEntry)
+        }
         preferences.edit().putString("sessions", updated.toString()).apply()
     }
 
     private fun renderHistory() {
-        val history = try { JSONArray(preferences.getString("sessions", "[]")) } catch (_: Exception) { JSONArray() }
-        historyText.text = if (history.length() == 0) {
-            "Aucun test enregistré pour le moment."
-        } else {
-            (0 until history.length()).joinToString("\n\n") { index -> "• ${history.getString(index)}" }
+        val history = try {
+            JSONArray(preferences.getString("sessions", "[]"))
+        } catch (_: Exception) {
+            JSONArray()
         }
+
+        if (history.length() == 0) {
+            historyText.text = "Aucun test enregistré pour le moment."
+            return
+        }
+
+        val grouped = linkedMapOf<String, MutableList<String>>()
+        val sessionLines = mutableListOf<String>()
+
+        for (i in 0 until history.length()) {
+            val item = history.opt(i)
+            if (item is JSONObject) {
+                val network = item.optString("network", "Réseau inconnu")
+                val game = item.optString("game", "Jeu inconnu")
+                val timestamp = item.optString("timestamp", "Date inconnue")
+                val targetsArray = item.optJSONArray("targets") ?: JSONArray()
+                val targetLines = mutableListOf<String>()
+                var bestMedian: Long? = null
+
+                for (j in 0 until targetsArray.length()) {
+                    val target = targetsArray.optJSONObject(j) ?: continue
+                    val name = target.optString("name", "Destination")
+                    val median = if (target.isNull("medianMs")) null else target.optLong("medianMs")
+                    val lost = target.optInt("lostRequests", 9)
+                    val total = target.optInt("totalRequests", 9)
+                    if (median != null) {
+                        targetLines.add("$name : $median ms — pertes $lost/$total")
+                        if (bestMedian == null || median < bestMedian) bestMedian = median
+                    } else {
+                        targetLines.add("$name : aucune réponse — pertes $lost/$total")
+                    }
+                }
+
+                val summary = "$timestamp | $network | $game"
+                sessionLines.add(summary + if (targetLines.isEmpty()) "" else "\n" + targetLines.joinToString("\n"))
+                if (bestMedian != null) {
+                    grouped.getOrPut(network) { mutableListOf() }
+                        .add("$timestamp : meilleur point HTTPS $bestMedian ms")
+                }
+            } else if (item is String) {
+                // Preserve and display sessions saved by versions before 0.7.0.
+                sessionLines.add(item)
+            }
+        }
+
+        val comparison = if (grouped.isEmpty()) {
+            "Comparaison par type de connexion : disponible après plusieurs tests enregistrés."
+        } else {
+            grouped.entries.joinToString("\n\n", "SESSIONS CLASSÉES PAR CONNEXION\n") { entry ->
+                entry.key + "\n" + entry.value.joinToString("\n")
+            }
+        }
+
+        historyText.text = comparison + "\n\n10 DERNIÈRES SESSIONS\n" +
+            sessionLines.joinToString("\n\n")
     }
 
     private fun sectionTitle(value: String): TextView =
