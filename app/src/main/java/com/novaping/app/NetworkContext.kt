@@ -19,7 +19,7 @@ data class NetworkContext(
     fun summary(): String = buildList {
         add("Réseau : ${transport.label()}")
         add("Internet validé : ${if (internetValidated) "oui" else "non"}")
-        add("Réseau mesuré comme limité : ${if (metered) "oui" else "non"}")
+        add("Réseau mesuré par Android : ${if (metered) "oui" else "non"}")
         if (transport == NetworkTransport.CELLULAR) {
             add("Itinérance : ${if (roaming) "oui" else "non"}")
         }
