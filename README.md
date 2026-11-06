@@ -14,7 +14,7 @@ NOVA PING aide à comprendre la qualité de réponses réseau vers des points de
 - Demander un consentement explicite avant toute future fonction de routage VPN.
 - Ne jamais prétendre qu'un changement DNS ou qu'un test vers un service cloud réduit le ping en jeu sans mesure directe qui le démontre.
 
-## État de la version 1.0.0
+## État de la base 1.0.0
 
 La version 1.0.0 consolide la base de diagnostic Android.
 
@@ -79,3 +79,19 @@ Android en priorité. Le gaming mobile compétitif est le cas d'usage principal.
 ## Licence
 
 Aucune licence open source n'a été choisie. Tous droits réservés au propriétaire du dépôt tant qu'une licence n'est pas ajoutée.
+
+
+## Version 1.4.0 — Modules intégrés
+
+La version de développement 1.4.0 réunit quatre modules complémentaires :
+
+- **Diagnostic réseau (1.1)** : contexte du réseau actif, type de transport, validation Internet Android, réseau mesuré, itinérance et estimations de bande passante lorsqu'Android les fournit.
+- **Game Intelligence (1.2)** : catalogue de profils de jeux avec statut explicite des preuves. Aucune adresse de serveur de match n'est inventée ou présentée comme vérifiée.
+- **Route Engine (1.3)** : décomposition d'une connexion HTTPS de contrôle en résolution DNS, établissement TCP, négociation TLS et délai jusqu'au premier en-tête HTTP.
+- **Decision Engine (1.4)** : recommandations explicables, actions proposées et niveau de confiance indicatif à partir des observations.
+
+### Limites de la version 1.4.0
+
+Le Route Engine ne réalise pas encore un traceroute complet et ne mesure pas directement le ping des serveurs de match. Les phases sont mesurées vers des services publics de contrôle ; elles dépendent aussi du comportement de ces services. Les seuils de recommandation sont indicatifs et devront être calibrés sur davantage de mesures réelles.
+
+NOVA PING 1.4.0 ne modifie pas le routage de l'appareil et ne promet aucune réduction du ping en jeu. NOVA BOOST reste une phase de recherche séparée, soumise à des essais comparatifs et au consentement explicite de l'utilisateur.
