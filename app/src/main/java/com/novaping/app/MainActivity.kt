@@ -207,8 +207,8 @@ class MainActivity : Activity() {
             metered = manager.isActiveNetworkMetered,
             roaming = transport == NetworkTransport.CELLULAR &&
                 caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_ROAMING) == false,
-            downstreamKbps = caps?.downstreamBandwidthKbps,
-            upstreamKbps = caps?.upstreamBandwidthKbps
+            downstreamKbps = caps?.linkDownstreamBandwidthKbps,
+            upstreamKbps = caps?.linkUpstreamBandwidthKbps
         )
     }
 
