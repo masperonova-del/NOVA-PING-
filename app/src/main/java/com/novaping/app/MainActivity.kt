@@ -9,7 +9,6 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Bundle
 import android.view.Gravity
-import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import android.widget.Button
@@ -18,6 +17,9 @@ import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
 import java.util.concurrent.Executors
+
+private data class ProbeTarget(val name: String, val endpoint: String)
+private data class TargetResult(val target: ProbeTarget, val metrics: PingMetrics?)
 
 class MainActivity : Activity() {
     private val executor = Executors.newSingleThreadExecutor()
@@ -31,6 +33,12 @@ class MainActivity : Activity() {
     private val panelColor = Color.rgb(21, 29, 47)
     private val accentColor = Color.rgb(64, 160, 255)
     private val mutedColor = Color.rgb(160, 174, 195)
+
+    private val targets = listOf(
+        ProbeTarget("Google Connectivity", "https://connectivitycheck.gstatic.com/generate_204"),
+        ProbeTarget("Cloudflare Connectivity", "https://cp.cloudflare.com/generate_204"),
+        ProbeTarget("Microsoft Connectivity", "https://www.msftconnecttest.com/connecttest.txt")
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -79,38 +87,39 @@ class MainActivity : Activity() {
         }
         gameCard.addView(gameSpinner)
         gameCard.addView(label(
-            "Le profil sert à organiser les futurs diagnostics. Cette version ne mesure pas encore le serveur réel du jeu.",
+            "Le profil organise les diagnostics. La mesure directe des serveurs de jeu sera ajoutée après identification de destinations fiables.",
             12f, mutedColor, false, Gravity.START
         ).apply { setPadding(0, dp(8), 0, 0) })
         root.addView(gameCard)
 
-        root.addView(sectionTitle("DIAGNOSTIC DE LATENCE"))
+        root.addView(sectionTitle("COMPARAISON DE DESTINATIONS"))
         val testCard = card()
-        testCard.addView(label("Test de stabilité HTTPS", 16f, Color.WHITE, true, Gravity.START))
+        testCard.addView(label("Diagnostic multi-points", 16f, Color.WHITE, true, Gravity.START))
         testCard.addView(label(
-            "8 mesures vers un point de contrôle public pour estimer la réactivité et la régularité de la connexion.",
+            "4 mesures HTTPS par destination, sur trois services publics. NOVA PING compare leur réactivité et leur régularité.",
             13f, mutedColor, false, Gravity.START
         ).apply { setPadding(0, dp(6), 0, dp(14)) })
         testButton = Button(this).apply {
-            text = "LANCER LE TEST RÉSEAU"
+            text = "COMPARER LES DESTINATIONS"
             isAllCaps = false
             setTextColor(Color.WHITE)
             setBackgroundTintList(android.content.res.ColorStateList.valueOf(accentColor))
             setOnClickListener { runNetworkTest() }
         }
         testCard.addView(testButton)
-        result = label("Aucune mesure effectuée.", 14f, Color.WHITE, false, Gravity.START)
+        result = label("Aucune comparaison effectuée.", 14f, Color.WHITE, false, Gravity.START)
         result.setPadding(0, dp(16), 0, 0)
         testCard.addView(result)
         root.addView(testCard)
 
-        root.addView(sectionTitle("PROCHAINES FONCTIONS"))
+        root.addView(sectionTitle("FEUILLE DE ROUTE"))
         val roadmapCard = card()
         listOf(
             "01  Diagnostic Wi-Fi et données mobiles",
-            "02  Comparaison de plusieurs destinations",
-            "03  Profils et régions de jeux",
-            "04  Recommandations fondées sur les mesures"
+            "02  Détection des régions et serveurs de jeux",
+            "03  Analyse des routes réseau",
+            "04  Recommandations fondées sur les mesures",
+            "05  Optimisation expérimentale avec consentement"
         ).forEach { item ->
             roadmapCard.addView(label(item, 13f, Color.WHITE, false, Gravity.START).apply {
                 setPadding(0, dp(6), 0, dp(6))
@@ -119,7 +128,7 @@ class MainActivity : Activity() {
         root.addView(roadmapCard)
 
         root.addView(label(
-            "IMPORTANT : ces mesures HTTPS ne représentent pas le ping d'un serveur de jeu. NOVA PING n'applique aucune modification réseau dans cette version.",
+            "TRANSPARENCE : les mesures HTTPS incluent le temps de réponse du service et ne sont pas le ping d'un serveur de jeu. Cette version ne modifie pas la connexion.",
             11f, mutedColor, false, Gravity.CENTER
         ).apply { setPadding(dp(4), dp(18), dp(4), 0) })
 
@@ -145,33 +154,45 @@ class MainActivity : Activity() {
 
     private fun runNetworkTest() {
         testButton.isEnabled = false
-        status.text = "Mesures en cours…"
-        result.text = "8 requêtes HTTPS en préparation."
+        status.text = "Comparaison en cours…"
+        result.text = "Préparation des 12 mesures HTTPS."
         val selectedGame = gameSpinner.selectedItem?.toString() ?: "Autre jeu"
         executor.execute {
-            val samples = mutableListOf<Long>()
-            var successes = 0
-            repeat(8) {
-                val latency = HttpsProbe.measureOnce()
-                if (latency != null) {
-                    successes++
-                    samples.add(latency)
+            val outcomes = mutableListOf<TargetResult>()
+            targets.forEachIndexed { index, target ->
+                runOnUiThread {
+                    result.text = "Profil : $selectedGame\n\nTest ${index + 1}/${targets.size} : ${target.name}…"
                 }
-                if (it < 7) Thread.sleep(250)
+                val samples = mutableListOf<Long>()
+                repeat(4) { attempt ->
+                    HttpsProbe.measureOnce(target.endpoint)?.let { samples.add(it) }
+                    if (attempt < 3) Thread.sleep(200)
+                }
+                val metrics = if (samples.isNotEmpty()) PingMetrics.from(samples, 4) else null
+                outcomes.add(TargetResult(target, metrics))
             }
-            val metrics = if (successes > 0) PingMetrics.from(samples, 8) else null
+            val ranked = outcomes.filter { it.metrics != null }.sortedBy { it.metrics!!.medianMs }
             runOnUiThread {
                 testButton.isEnabled = true
-                status.text = if (metrics != null) "Diagnostic terminé" else "Point de contrôle inaccessible"
-                result.text = if (metrics != null) {
-                    "Profil sélectionné : $selectedGame\n\n" +
-                        "Latence médiane : ${metrics.medianMs} ms\n" +
-                        "P95 : ${metrics.p95Ms} ms\n" +
-                        "Variation moyenne : ${metrics.jitterMs} ms\n" +
-                        "Requêtes sans réponse : ${metrics.lostRequests}/8"
-                } else {
-                    "Impossible de joindre le point de contrôle. Vérifie ta connexion puis réessaie."
+                status.text = if (ranked.isNotEmpty()) "Comparaison terminée" else "Destinations inaccessibles"
+                val report = StringBuilder("Profil : $selectedGame\n")
+                if (ranked.isNotEmpty()) {
+                    report.append("\nDestination la plus réactive : ${ranked.first().target.name}\n")
+                    report.append("Médiane observée : ${ranked.first().metrics!!.medianMs} ms\n")
                 }
+                report.append("\nDÉTAIL DES RÉSULTATS\n")
+                outcomes.forEach { outcome ->
+                    val metrics = outcome.metrics
+                    report.append("\n${outcome.target.name}\n")
+                    if (metrics == null) {
+                        report.append("Aucune réponse exploitable (4/4 échecs)\n")
+                    } else {
+                        report.append("Médiane : ${metrics.medianMs} ms | P95 : ${metrics.p95Ms} ms\n")
+                        report.append("Variation : ${metrics.jitterMs} ms | Sans réponse : ${metrics.lostRequests}/4\n")
+                    }
+                }
+                report.append("\nCe classement compare uniquement ces points de contrôle HTTPS, pas les serveurs de jeu.")
+                result.text = report.toString()
                 refreshNetworkInfo()
             }
         }
