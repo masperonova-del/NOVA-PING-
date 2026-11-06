@@ -49,7 +49,7 @@ Measures reachable test endpoints using a documented protocol. It must preserve 
 - test duration and sample count.
 
 ### ROUTE ENGINE
-The current implementation measures DNS resolution, TCP connection establishment, TLS handshake and time to the first HTTP response header for public HTTPS control endpoints. It does not yet discover intermediate router hops. A cloud endpoint is a diagnostic target, not automatically the game server.
+The current implementation measures DNS resolution, TCP connection establishment, TLS handshake and elapsed time until the HTTP response status line is read, across three cycles per public HTTPS control endpoint. Each phase is summarized independently from successful samples. DNS uses Android's resolver and TCP tries the returned addresses in sequence. It does not yet discover intermediate router hops. A cloud endpoint is a diagnostic target, not automatically the game server.
 
 ### GAME INTELLIGENCE
 Maintains structured profiles for supported games and an explicit evidence status for server metadata. The current catalog intentionally marks match-server destinations as unverified. Unknown server locations must remain unknown rather than guessed.
@@ -58,7 +58,7 @@ Maintains structured profiles for supported games and an explicit evidence statu
 Identifies relevant conditions such as network type changes, weak or unstable connectivity, and local device constraints. It should not claim access to private game internals.
 
 ### DECISION ENGINE
-Generates explainable recommendations from the active network context and measured DNS/TCP/TLS/HTTP phases. Current thresholds are indicative and confidence is deliberately limited. Calibration across repeated measurements and real devices remains future work.
+Generates explainable recommendations from the active network context and repeated DNS/TCP/TLS/HTTP phase summaries. Thresholds require repeated samples and remain indicative; confidence is deliberately limited. Calibration across real devices and operator networks remains future work.
 
 ## 3. Future NOVA BOOST
 
