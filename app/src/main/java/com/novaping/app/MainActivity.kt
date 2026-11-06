@@ -72,6 +72,8 @@ class MainActivity : Activity() {
         }
 
         root.addView(label("NOVA PING", 30f, Color.WHITE, true, Gravity.START))
+        val installedVersion = packageManager.getPackageInfo(packageName, 0).versionName ?: "inconnue"
+        root.addView(label("VERSION $installedVersion", 10f, mutedColor, true, Gravity.START))
         root.addView(label("COMPRENDRE. MESURER. OPTIMISER.", 11f, accentColor, true, Gravity.START).apply {
             setPadding(0, dp(4), 0, dp(22))
         })
@@ -318,9 +320,9 @@ class MainActivity : Activity() {
                         12f, mutedColor, false, Gravity.START
                     ).apply { setPadding(0, dp(4), 0, dp(4)) })
                     val failureLine = if (outcome.failures.isEmpty()) {
-                        "Échecs : 0/9"
+                        "Échecs HTTPS : 0/9"
                     } else {
-                        "Causes des échecs : " + outcome.failures.entries
+                        "Causes des échecs HTTPS : " + outcome.failures.entries
                             .sortedByDescending { it.value }
                             .joinToString(" · ") { "${it.key.label} : ${it.value}" }
                     }
@@ -337,7 +339,7 @@ class MainActivity : Activity() {
                         } else {
                             "Cycles exploitables : ${outcome.roundMedians.size}/3"
                         }
-                        "Médiane globale : ${metrics.medianMs} ms\nP95 observé : ${metrics.p95Ms} ms\nVariation moyenne : ${metrics.jitterMs} ms\n$failureLine\n$cycleLine\n$spreadLine"
+                        "Médiane globale : ${metrics.medianMs} ms\nP95 observé : ${metrics.p95Ms} ms\nVariation moyenne entre réponses réussies : ${metrics.jitterMs} ms\n$failureLine\n$cycleLine\n$spreadLine"
                     }
                     targetCard.addView(label(
                         detail, 13f,
@@ -431,7 +433,7 @@ class MainActivity : Activity() {
                     val lost = target.optInt("lostRequests", 9)
                     val total = target.optInt("totalRequests", 9)
                     if (median != null) {
-                        targetLines.add("$name : $median ms — pertes $lost/$total")
+                        targetLines.add("$name : $median ms — échecs HTTPS $lost/$total")
                         if (bestMedian == null || median < bestMedian) bestMedian = median
                     } else {
                         targetLines.add("$name : aucune réponse — pertes $lost/$total")
