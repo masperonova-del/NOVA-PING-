@@ -33,4 +33,23 @@ class DecisionEngineTest {
         val result = DecisionEngine.recommend(readyWifi, listOf(outcome))
         assertTrue(result.any { it.title.contains("anomalie majeure") })
     }
+    @Test fun doesNotReportCleanResultForIncompleteMeasurement() {
+        val outcome = RouteProbeOutcome(
+            host = "example.com", failure = RouteProbeFailure.UNKNOWN, totalMs = 100
+        )
+        val result = DecisionEngine.recommend(readyWifi, listOf(outcome))
+        assertTrue(result.any { it.title == "Analyse incomplète" })
+        assertTrue(result.none { it.title.contains("Aucune anomalie majeure") })
+    }
+
+    @Test fun flagsNonSuccessfulHttpStatus() {
+        val outcome = RouteProbeOutcome(
+            host = "example.com", dnsMs = 10, tcpConnectMs = 20,
+            tlsHandshakeMs = 30, httpFirstByteMs = 40, httpStatus = 403,
+            totalMs = 100
+        )
+        val result = DecisionEngine.recommend(readyWifi, listOf(outcome))
+        assertTrue(result.any { it.title == "Statut HTTP à examiner" })
+    }
+
 }
