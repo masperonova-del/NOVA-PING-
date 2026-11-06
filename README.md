@@ -1,57 +1,81 @@
 # NOVA PING
 
-**Intelligent network diagnostics for competitive gaming.**
+**Diagnostic réseau pour le gaming compétitif — Android**
 
-NOVA PING is a mobile-first project designed to help players understand, measure and improve the stability of their internet connection during online games.
+NOVA PING aide à comprendre la qualité de réponses réseau vers des points de contrôle publics. Le projet privilégie les mesures reproductibles, les explications honnêtes et les recommandations fondées sur des preuves.
 
-The project consolidates the useful VELOCE direction into one product: measurement first, evidence-based recommendations, and real routing improvements only when technically demonstrated.
+## Principes du produit
 
-## Product principles
+- Ne jamais inventer ni simuler un meilleur ping.
+- Distinguer le temps de réponse HTTPS du ping réel d'un serveur de jeu.
+- Afficher la méthode, le nombre de mesures et les limites de chaque résultat.
+- Ne comparer que des destinations mesurées dans des conditions comparables.
+- Expliquer le niveau de confiance et les limites des recommandations.
+- Demander un consentement explicite avant toute future fonction de routage VPN.
+- Ne jamais prétendre qu'un changement DNS ou qu'un test vers un service cloud réduit le ping en jeu sans mesure directe qui le démontre.
 
-- Measure real network behavior; never invent or simulate a better ping.
-- Separate internet latency from actual game-server latency.
-- Report median latency, P95 latency, jitter and packet loss with the measurement method and sample count.
-- Compare destinations and routes only when the test is technically valid.
-- Give recommendations with a confidence level and an explanation.
-- Request clear permission before any VPN-based routing or traffic handling.
-- Do not promise that changing DNS or probing a cloud server will reduce in-game ping.
+## État de la version 1.0.0
 
-## Planned capabilities
+La version 1.0.0 consolide la base de diagnostic Android.
 
-1. **NOVA CORE** — coordinates tests and turns measurements into decisions.
-2. **PING ENGINE** — latency, jitter, stability and loss measurements.
-3. **ROUTE ENGINE** — destination and route comparison, with explicit limits.
-4. **GAME INTELLIGENCE** — game profiles and region guidance.
-5. **DIAGNOSTIC ENGINE** — Wi-Fi/mobile network and device-side checks.
-6. **DECISION ENGINE** — prioritized recommendations based on evidence.
-7. **NOVA BOOST (later phase)** — optional routing through controlled relays, subject to feasibility, consent and measured benefit.
+### Fonctions implémentées
 
-## Important technical limit
+- Application Android native en Kotlin.
+- Sélection d'un profil de jeu : Call of Duty: Mobile, PUBG Mobile, Free Fire ou autre.
+- Vérification préalable de l'état de connectivité Android.
+- Trois destinations HTTPS de contrôle : Google Connectivity, Cloudflare Connectivity et Microsoft Connectivity.
+- Trois cycles indépendants, avec trois mesures par destination à chaque cycle (neuf mesures mesurées par destination).
+- Une requête de préparation avant les mesures du premier cycle pour chaque destination.
+- Médiane, P95 observé, variation moyenne entre réponses réussies et nombre de requêtes HTTPS sans réponse.
+- Médianes par cycle et écart entre cycles lorsque les cycles ont des mesures exploitables.
+- Classification indicative des échecs : DNS, délai dépassé, TLS, connexion, statut HTTP ou cause indéterminée.
+- Évaluation indicative de la régularité des réponses.
+- Historique local des dix dernières sessions, classées par type de connexion.
+- Tests unitaires des métriques, du diagnostic et de l'état de préparation réseau.
+- Compilation Android automatisée avec GitHub Actions.
 
-A successful HTTP request to a cloud endpoint is not proof of the ping to a Call of Duty Mobile, PUBG Mobile or Free Fire game server. ICMP, TCP, UDP and application-level measurements are different and must not be presented as interchangeable.
+### Limites à connaître
 
-A VPN or relay can sometimes improve a route, but can also make it worse. NOVA PING will only claim an improvement after before/after measurements under comparable conditions.
+Les résultats actuels sont des temps de réponse HTTPS vers des services de contrôle. Ils comprennent le comportement du réseau, la résolution DNS, l'établissement de la connexion, TLS et le temps de réponse du service. Ils ne représentent pas le ping d'un serveur Call of Duty Mobile, PUBG Mobile ou Free Fire.
 
-## Current project status
+Les requêtes HTTPS qui échouent sont comptées comme des **échecs de requêtes**, pas comme une mesure de perte de paquets IP. Le diagnostic de connectivité Android indique si le système considère l'accès Internet comme validé ; il ne permet pas toujours d'identifier la cause exacte d'un échec.
 
-**Android starter scaffold created.** The repository now includes:
-- Native Android application module in Kotlin.
-- Initial launch screen for NOVA PING.
-- Gradle project configuration.
-- GitHub Actions workflow for a debug APK build.
+La variation moyenne est calculée comme la moyenne des différences absolues entre les réponses réussies successives. Le P95 est estimé par rang le plus proche ; avec neuf échantillons, il correspond au maximum observé. Les classifications de stabilité sont des heuristiques et non une garantie de performance en jeu.
 
-The diagnostic button is intentionally disabled: no network measurement is implemented yet. The first CI build has not yet been confirmed.
+La version 1.0.0 ne modifie pas le routage, ne crée pas de VPN et ne promet aucune réduction du ping en jeu.
+
+## Architecture cible
+
+1. **NOVA CORE** — coordination des tests, sessions et validation des résultats.
+2. **PING ENGINE** — mesures étiquetées par protocole, statistiques et historique.
+3. **DIAGNOSTIC ENGINE** — état réseau, stabilité et causes possibles des échecs.
+4. **GAME INTELLIGENCE** — métadonnées vérifiées sur les jeux, régions et serveurs.
+5. **ROUTE ENGINE** — comparaison de routes lorsque des mesures techniquement valides sont possibles.
+6. **DECISION ENGINE** — recommandations classées selon les preuves et leur niveau de confiance.
+7. **NOVA BOOST** — recherche future sur le routage optionnel, avec consentement et preuve d'un bénéfice mesuré.
+
+## Prochaines étapes
+
+- Renforcer la qualité des mesures et la validation des résultats.
+- Ajouter une comparaison Wi-Fi / données mobiles uniquement lorsque les deux connexions sont réellement testables.
+- Construire un catalogue de régions et de destinations de jeu vérifiées, sans deviner les adresses privées.
+- Étudier les méthodes de mesure de route adaptées à Android.
+- Développer des recommandations transparentes avant toute optimisation active.
+
+## Build
+
+La compilation de développement est automatisée par GitHub Actions. Les APK debug sont des versions de test ; une distribution publique nécessitera une configuration de signature et un processus de publication adaptés.
 
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md)
-- [Measurement standards](docs/NETWORK-MEASUREMENT.md)
-- [Roadmap](docs/ROADMAP.md)
+- [Standards de mesure réseau](docs/NETWORK-MEASUREMENT.md)
+- [Feuille de route](docs/ROADMAP.md)
 
-## Initial target
+## Plateforme
 
-Android first. Competitive mobile gaming is the primary use case; PC support may follow.
+Android en priorité. Le gaming mobile compétitif est le cas d'usage principal.
 
-## License
+## Licence
 
-Not selected yet. Until a license is added, all rights are reserved by the repository owner.
+Aucune licence open source n'a été choisie. Tous droits réservés au propriétaire du dépôt tant qu'une licence n'est pas ajoutée.
