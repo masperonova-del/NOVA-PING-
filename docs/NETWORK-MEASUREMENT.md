@@ -31,13 +31,13 @@ These measurements must never be combined into one unlabeled “ping” number.
 1. Read Android's active network and validated-connectivity state.
 2. Stop before testing when Android does not report validated Internet access.
 3. Use three public HTTPS control endpoints.
-4. Perform one preparation request before the measured cycles for each endpoint.
-5. Run three independent cycles, with three measured HTTPS requests per endpoint in each cycle.
-6. Apply the same request timeout to each probe.
-7. Calculate statistics only from successful responses.
-8. Classify known failures such as DNS resolution, timeout, TLS, connection and HTTP status errors.
-9. Mark the result insufficient when too few successful responses are available.
-10. Save the last ten completed sessions locally.
+4. For the baseline comparison, perform one preparation request and then three independent cycles with three measured HTTPS requests per endpoint in each cycle.
+5. For Route Engine phase analysis, run three cycles with one fresh HTTPS connection per endpoint per cycle; rotate endpoint order between cycles.
+6. Apply a bounded timeout to each DNS/TCP/TLS/HTTP probe; try each address returned by DNS until a TCP connection succeeds.
+7. Aggregate DNS, TCP, TLS and HTTP status-line timings independently, using only successful samples for each phase.
+8. Display median, observed P95, mean absolute variation between successful samples, and the successful/attempted count for each phase.
+9. Count failure categories separately; recommendations require repeated evidence and never label an isolated failure as a network-wide fault.
+10. Save the last ten completed baseline-comparison sessions locally.
 
 ## Critical distinction: request failure is not IP packet loss
 
@@ -74,8 +74,8 @@ The Route Engine opens a fresh HTTPS connection to each public control endpoint 
 1. **DNS resolution:** time spent resolving the endpoint hostname.
 2. **TCP connection:** time to establish a TCP connection to the resolved address and service port.
 3. **TLS handshake:** time to negotiate the secure connection with hostname verification enabled.
-4. **HTTP first header:** time from sending the HTTP request until the first response status line is received.
+4. **HTTP status line:** elapsed time from sending the HTTP request until the complete first response status line is read. This is not a packet-level first-byte measurement.
 
-These are separate phase timings from one connection attempt, not a full router-by-router path trace. They can vary with DNS caching, server load, address selection, TLS behavior and the remote service. The HTTP status code is displayed even when it is not a successful 2xx response.
+Each destination is tested over three cycles with the destination order rotated between cycles. Phase statistics are aggregated independently: a failed TLS handshake does not erase a valid DNS or TCP sample. DNS uses Android's resolver; if it returns multiple addresses, TCP attempts them in order until one connects. The reported TCP duration is for the successful address attempt, not the sum of failed address attempts. These are not a full router-by-router path trace. They can vary with DNS caching, server load, address selection, TLS behavior and the remote service. The HTTP status code is displayed even when it is not a successful 2xx response. The P95 over only three samples is a descriptive observed percentile, not a reliable tail-latency guarantee.
 
 The Decision Engine uses conservative, indicative thresholds to suggest what to investigate next. A single slow phase is not enough to identify the responsible network operator, prove congestion, or recommend a DNS/VPN change. Repeated measurements and controlled comparisons are required.
