@@ -108,7 +108,7 @@ class MainActivity : Activity() {
         val testCard = card()
         testCard.addView(label("Diagnostic multi-points", 16f, Color.WHITE, true, Gravity.START))
         testCard.addView(label(
-            "3 cycles indépendants, avec 3 mesures par destination à chaque cycle (9 mesures au total). Une mesure de préparation précède le premier cycle. Les résultats restent des temps de réponse HTTPS, pas le ping du jeu.",
+            "Vérification préalable de l’accès Internet, puis 3 cycles indépendants avec 3 mesures par destination (9 mesures). Les échecs sont classés lorsque possible. Les résultats restent des temps de réponse HTTPS, pas le ping du jeu.",
             13f, mutedColor, false, Gravity.START
         ).apply { setPadding(0, dp(6), 0, dp(14)) })
         testButton = Button(this).apply {
