@@ -12,7 +12,7 @@ data class NetworkRecommendation(
 object DecisionEngine {
     fun recommend(
         context: NetworkContext,
-        outcomes: List<RouteProbeOutcome>
+        aggregates: List<RouteAggregate>
     ): List<NetworkRecommendation> {
         val recommendations = mutableListOf<NetworkRecommendation>()
 
@@ -24,7 +24,6 @@ object DecisionEngine {
                 RecommendationConfidence.MODERATE
             )
         }
-
         if (context.metered) {
             recommendations += NetworkRecommendation(
                 "Réseau potentiellement limité",
@@ -34,102 +33,106 @@ object DecisionEngine {
             )
         }
 
-        val dns = outcomes.mapNotNull { it.dnsMs }
-        val tcp = outcomes.mapNotNull { it.tcpConnectMs }
-        val tls = outcomes.mapNotNull { it.tlsHandshakeMs }
-        val response = outcomes.mapNotNull { it.httpFirstByteMs }
-        val failures = outcomes.mapNotNull { it.failure }
+        val repeatedFailures = aggregates.flatMap { aggregate ->
+            aggregate.failures.filterValues { it >= 2 }.keys
+        }.toSet()
 
-        if (RouteProbeFailure.DNS in failures) {
-            recommendations += NetworkRecommendation(
+        if (RouteProbeFailure.DNS in repeatedFailures) {
+            recommendations += recommendation(
                 "Résolution DNS à vérifier",
-                "Au moins une destination n'a pas pu être résolue pendant ce test.",
-                "Répéter le test et comparer plusieurs destinations avant de modifier les paramètres DNS.",
-                RecommendationConfidence.MODERATE
+                "Au moins deux essais n'ont pas résolu une destination.",
+                "Répéter le test et comparer plusieurs destinations avant de modifier les paramètres DNS."
             )
         }
-        if (RouteProbeFailure.TCP_CONNECT in failures || RouteProbeFailure.TIMEOUT in failures) {
-            recommendations += NetworkRecommendation(
+        if (RouteProbeFailure.TCP_CONNECT in repeatedFailures || RouteProbeFailure.TIMEOUT in repeatedFailures) {
+            recommendations += recommendation(
                 "Connexion distante incomplète",
-                "Une connexion TCP ou une phase réseau a expiré. Le test seul ne permet pas d'identifier l'opérateur ou le routeur responsable.",
-                "Répéter les mesures sur plusieurs destinations et comparer Wi-Fi et données mobiles séparément.",
-                RecommendationConfidence.LOW
+                "Au moins deux essais ont échoué pendant une connexion ou ont expiré. Le test ne permet pas d'identifier le responsable.",
+                "Comparer plusieurs destinations et répéter le test dans les mêmes conditions."
             )
         }
-        if (RouteProbeFailure.HTTP_RESPONSE in failures || RouteProbeFailure.UNKNOWN in failures) {
-            recommendations += NetworkRecommendation(
-                "Analyse incomplète",
-                "Au moins une destination n'a pas fourni une réponse exploitable. Les données disponibles ne suffisent pas pour conclure sur sa qualité.",
-                "Relancer le test et comparer plusieurs destinations avant de tirer une conclusion.",
-                RecommendationConfidence.LOW
+        if (RouteProbeFailure.TLS_HANDSHAKE in repeatedFailures) {
+            recommendations += recommendation(
+                "Négociation TLS à vérifier",
+                "Au moins deux négociations TLS ont échoué pour une destination. Le problème peut être propre au service.",
+                "Comparer d'autres destinations avant de conclure à un problème général du réseau."
             )
         }
-        val nonSuccessHttp = outcomes.filter { it.httpStatus != null && it.httpStatus !in 200..299 }
-        if (nonSuccessHttp.isNotEmpty()) {
-            recommendations += NetworkRecommendation(
-                "Statut HTTP à examiner",
-                "Au moins un service a répondu avec un statut HTTP non 2xx. Le serveur a répondu, mais ce statut ne confirme pas que le point de contrôle a fonctionné comme prévu.",
-                "Vérifier le statut sur une autre session et ne pas assimiler cette réponse à une perte de paquets.",
-                RecommendationConfidence.MODERATE
-            )
-        }
-        if (RouteProbeFailure.TLS_HANDSHAKE in failures) {
-            recommendations += NetworkRecommendation(
-                "Négociation TLS échouée",
-                "La connexion sécurisée n'a pas abouti pour au moins une destination. Cela peut être propre au service ou à la négociation TLS.",
-                "Ne pas interpréter cet échec comme une preuve de mauvaise qualité générale du réseau.",
-                RecommendationConfidence.MODERATE
-            )
-        }
-        if (dns.any { it >= 200 }) {
-            recommendations += NetworkRecommendation(
-                "Temps DNS élevé sur une destination",
-                "Une résolution de nom a pris au moins 200 ms dans cet échantillon.",
-                "Répéter plusieurs fois et comparer d'autres destinations avant toute modification DNS.",
-                RecommendationConfidence.LOW
-            )
-        }
-        if (tcp.any { it >= 300 }) {
-            recommendations += NetworkRecommendation(
-                "Établissement TCP lent",
-                "Une connexion TCP a pris au moins 300 ms vers une destination de contrôle.",
-                "Comparer plusieurs destinations et répéter le test dans des conditions identiques.",
-                RecommendationConfidence.LOW
-            )
-        }
-        if (tls.any { it >= 400 }) {
-            recommendations += NetworkRecommendation(
-                "Négociation TLS longue",
-                "La négociation sécurisée a pris au moins 400 ms. Ce temps dépend aussi du serveur distant.",
-                "Comparer plusieurs mesures avant d'attribuer le délai au réseau local.",
-                RecommendationConfidence.LOW
-            )
-        }
-        if (response.any { it >= 500 }) {
-            recommendations += NetworkRecommendation(
-                "Réponse distante lente",
-                "Le premier en-tête HTTP a mis au moins 500 ms à arriver après la négociation TLS.",
-                "Comparer d'autres services : le délai peut venir du serveur distant ou du chemin réseau.",
-                RecommendationConfidence.LOW
+        if (RouteProbeFailure.HTTP_RESPONSE in repeatedFailures || RouteProbeFailure.UNKNOWN in repeatedFailures) {
+            recommendations += recommendation(
+                "Réponse incomplète",
+                "Au moins deux essais n'ont pas fourni une réponse HTTP exploitable.",
+                "Relancer l'analyse et comparer plusieurs services."
             )
         }
 
-        if (recommendations.isEmpty() && outcomes.isNotEmpty() && outcomes.all { it.completed && it.httpStatus != null && it.httpStatus in 200..299 }) {
+        val non2xx = aggregates.any { aggregate ->
+            aggregate.httpStatuses.filterKeys { it !in 200..299 }.values.sum() >= 2
+        }
+        if (non2xx) {
+            recommendations += recommendation(
+                "Statut HTTP à examiner",
+                "Au moins deux réponses ont un statut hors de la plage 2xx attendue.",
+                "Vérifier le comportement du service avant d'interpréter ces réponses."
+            )
+        }
+
+        aggregates.forEach { aggregate ->
+            if (aggregate.dns.successfulSamples >= 2 && (aggregate.dns.medianMs ?: 0) >= 200) {
+                recommendations += recommendation(
+                    "Résolution DNS lente sur un point de contrôle",
+                    "La médiane DNS de ${aggregate.host} atteint au moins 200 ms sur plusieurs essais.",
+                    "Comparer d'autres destinations et répéter avant toute modification DNS."
+                )
+            }
+            if (aggregate.tcp.successfulSamples >= 2 && (aggregate.tcp.medianMs ?: 0) >= 300) {
+                recommendations += recommendation(
+                    "Établissement TCP lent sur un point de contrôle",
+                    "La médiane TCP de ${aggregate.host} atteint au moins 300 ms sur plusieurs essais.",
+                    "Comparer plusieurs destinations et répéter dans les mêmes conditions."
+                )
+            }
+            if (aggregate.tls.successfulSamples >= 2 && (aggregate.tls.medianMs ?: 0) >= 400) {
+                recommendations += recommendation(
+                    "Négociation TLS longue sur un point de contrôle",
+                    "La médiane TLS de ${aggregate.host} atteint au moins 400 ms. Le serveur distant influence aussi ce délai.",
+                    "Comparer plusieurs mesures avant d'attribuer le délai au réseau local."
+                )
+            }
+            if (aggregate.httpStatusLine.successfulSamples >= 2 &&
+                (aggregate.httpStatusLine.medianMs ?: 0) >= 500) {
+                recommendations += recommendation(
+                    "Réponse HTTP lente sur un point de contrôle",
+                    "La médiane jusqu'à la ligne de statut HTTP de ${aggregate.host} atteint au moins 500 ms après TLS.",
+                    "Comparer d'autres services : le délai peut venir du serveur distant ou du chemin réseau."
+                )
+            }
+        }
+
+        val allHaveRepeatedSuccessfulResponses = aggregates.isNotEmpty() && aggregates.all {
+            it.completeSamples >= 2 &&
+                it.httpStatuses.filterKeys { code -> code in 200..299 }.values.sum() >= 2 &&
+                it.httpStatuses.filterKeys { code -> code !in 200..299 }.values.sum() == 0
+        }
+        if (recommendations.isEmpty() && allHaveRepeatedSuccessfulResponses) {
             recommendations += NetworkRecommendation(
                 "Aucune anomalie majeure détectée sur ces points de contrôle",
-                "Les phases mesurées n'ont pas dépassé les seuils indicatifs du diagnostic.",
-                "Comparer avec d'autres sessions et, si possible, avec le réseau alternatif.",
+                "Au moins deux connexions HTTPS complètes ont abouti par destination, sans dépassement des seuils indicatifs.",
+                "Comparer avec d'autres sessions et, si possible, avec un autre type de réseau.",
                 RecommendationConfidence.LOW
             )
         }
         if (recommendations.isEmpty()) {
             recommendations += NetworkRecommendation(
                 "Données insuffisantes",
-                "Aucune mesure complète ne permet de formuler une recommandation fiable.",
-                "Vérifier la connexion puis relancer l'analyse.",
+                "Les essais ne sont pas assez nombreux ou complets pour formuler une recommandation fiable.",
+                "Répéter l'analyse avant de tirer une conclusion.",
                 RecommendationConfidence.LOW
             )
         }
         return recommendations.distinctBy { it.title }
     }
+
+    private fun recommendation(title: String, explanation: String, action: String) =
+        NetworkRecommendation(title, explanation, action, RecommendationConfidence.LOW)
 }
