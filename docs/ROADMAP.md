@@ -7,45 +7,50 @@
 - [x] Pré-vérification de la connectivité Android.
 - [x] Trois destinations HTTPS de contrôle.
 - [x] Trois cycles indépendants et neuf mesures par destination.
-- [x] Requête de préparation distincte avant le premier cycle de chaque destination.
 - [x] Médiane, P95 observé, variation moyenne et comptage des requêtes HTTPS sans réponse.
 - [x] Médianes par cycle et écart inter-cycle.
 - [x] Classification des causes d'échec lorsque l'exception réseau permet de les identifier.
 - [x] Évaluation indicative de la régularité.
 - [x] Historique local des dix dernières sessions.
-- [x] Tests unitaires pour les métriques et les règles de diagnostic.
-- [x] Compilation debug automatisée par GitHub Actions.
-- [x] Documentation des limites des mesures HTTPS.
+- [x] Tests unitaires et compilation Android automatisée.
 
 ## Version 1.1.0 — Diagnostic réseau approfondi
 
-- [ ] Séparer clairement les états Wi-Fi, réseau cellulaire et accès Internet validé.
-- [ ] Ajouter des diagnostics Wi-Fi utiles lorsque Android expose les données nécessaires.
-- [ ] Ajouter une comparaison Wi-Fi / mobile seulement lorsque les deux réseaux sont testables.
-- [ ] Enregistrer les conditions de test nécessaires pour comparer deux sessions.
-- [ ] Améliorer l'explication des échecs HTTP avec les codes de réponse disponibles.
-- [ ] Améliorer les tests de non-régression et les validations sur appareil réel.
+- [x] Distinguer Wi-Fi, données mobiles, Ethernet, VPN et autres transports détectés.
+- [x] Afficher l'état Internet validé par Android.
+- [x] Afficher le statut réseau mesuré, l'itinérance mobile et les estimations de bande passante fournies par Android lorsqu'elles sont disponibles.
+- [ ] Ajouter une comparaison Wi-Fi / mobile simultanée, uniquement si Android permet de tester les deux réseaux sans changer la connexion active.
+- [ ] Ajouter des informations radio Wi-Fi/cellulaire sans demander des permissions sensibles non nécessaires.
+- [ ] Valider les variations de contexte sur plusieurs appareils.
 
 ## Version 1.2.0 — Game Intelligence
 
-- [ ] Définir un modèle de données pour les jeux, régions et destinations.
-- [ ] Ajouter des métadonnées vérifiées et datées sur les régions de jeu.
-- [ ] Distinguer les points de contrôle publics des serveurs réellement utilisés par un jeu.
-- [ ] Ne pas afficher d'adresse de serveur supposée ou non vérifiée.
+- [x] Créer un catalogue structuré des profils de jeux.
+- [x] Associer un statut de preuve aux informations de serveur.
+- [x] Empêcher l'affichage de destinations de match non vérifiées comme si elles étaient officielles.
+- [ ] Intégrer des régions et destinations seulement à partir de sources fiables, datées et vérifiables.
+- [ ] Étudier les interfaces de mesure officiellement accessibles pour chaque jeu.
 
 ## Version 1.3.0 — Route Engine
 
-- [ ] Étudier les méthodes de mesure de route disponibles sur Android.
-- [ ] Comparer les destinations et routes uniquement avec une méthode documentée.
-- [ ] Afficher les limites liées au filtrage ICMP, TCP ou UDP.
-- [ ] Tester les comparaisons répétées dans des conditions contrôlées.
+- [x] Mesurer séparément la résolution DNS.
+- [x] Mesurer l'établissement TCP vers une destination HTTPS de contrôle.
+- [x] Mesurer la négociation TLS avec vérification du nom d'hôte.
+- [x] Mesurer le délai jusqu'au premier en-tête HTTP.
+- [x] Afficher les phases incomplètes et les codes HTTP disponibles.
+- [ ] Étudier une méthode fiable de découverte des sauts intermédiaires lorsque le réseau et Android l'autorisent.
+- [ ] Répéter les mesures et comparer les routes dans des conditions contrôlées.
+
+**Limite actuelle :** le Route Engine décompose les phases d'une connexion vers un point de contrôle. Il ne réalise pas encore un traceroute complet et ne révèle pas automatiquement la route empruntée par un serveur de jeu.
 
 ## Version 1.4.0 — Decision Engine
 
-- [ ] Construire un moteur de recommandations explicables.
-- [ ] Classer les actions selon la qualité des preuves et leur utilité attendue.
-- [ ] Mesurer si une recommandation améliore réellement les résultats.
-- [ ] Refuser de recommander une action lorsque les données sont insuffisantes.
+- [x] Construire des recommandations explicables à partir du contexte réseau et des phases mesurées.
+- [x] Afficher une action suggérée et un niveau de confiance.
+- [x] Distinguer les problèmes DNS, TCP, TLS et réponse HTTP.
+- [x] Éviter d'attribuer automatiquement un délai à l'opérateur ou au réseau local.
+- [ ] Calibrer les seuils sur un ensemble de mesures répétées et d'appareils réels.
+- [ ] Comparer les recommandations avant/après et mesurer leurs effets.
 
 ## Phase de recherche — NOVA BOOST
 
