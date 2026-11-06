@@ -30,11 +30,23 @@ class DecisionEngineTest {
     }
 
     @Test fun cleanResultRequiresRepeatedCompleteResponses() {
-        val result = DecisionEngine.recommend(readyWifi, listOf(aggregate(listOf(
-            RouteProbeOutcome("example.com", 12, 20, 30, 40, 204, null, 110),
-            RouteProbeOutcome("example.com", 13, 21, 31, 41, 204, null, 115),
-            RouteProbeOutcome("example.com", 14, 22, 32, 42, 204, null, 120)
-        ))))
+        val result = DecisionEngine.recommend(readyWifi, listOf(
+            aggregate(listOf(
+                RouteProbeOutcome("google.example", 12, 20, 30, 40, 204, null, 110),
+                RouteProbeOutcome("google.example", 13, 21, 31, 41, 204, null, 115),
+                RouteProbeOutcome("google.example", 14, 22, 32, 42, 204, null, 120)
+            )),
+            aggregate(listOf(
+                RouteProbeOutcome("cloudflare.example", 12, 20, 30, 40, 204, null, 110),
+                RouteProbeOutcome("cloudflare.example", 13, 21, 31, 41, 204, null, 115),
+                RouteProbeOutcome("cloudflare.example", 14, 22, 32, 42, 204, null, 120)
+            )),
+            aggregate(listOf(
+                RouteProbeOutcome("microsoft.example", 12, 20, 30, 40, 204, null, 110),
+                RouteProbeOutcome("microsoft.example", 13, 21, 31, 41, 204, null, 115),
+                RouteProbeOutcome("microsoft.example", 14, 22, 32, 42, 204, null, 120)
+            ))
+        ))
         assertTrue(result.any { it.title.contains("Aucune anomalie majeure") })
     }
 
@@ -57,4 +69,13 @@ class DecisionEngineTest {
         assertFalse(result.any { it.title == "Négociation TLS à vérifier" })
         assertFalse(result.any { it.title.contains("Aucune anomalie majeure") })
     }
+    @Test fun partialEndpointSetCannotBeDeclaredClean() {
+        val result = DecisionEngine.recommend(readyWifi, listOf(aggregate(listOf(
+            RouteProbeOutcome("google.example", 12, 20, 30, 40, 204, null, 110),
+            RouteProbeOutcome("google.example", 13, 21, 31, 41, 204, null, 115),
+            RouteProbeOutcome("google.example", 14, 22, 32, 42, 204, null, 120)
+        ))))
+        assertFalse(result.any { it.title.contains("Aucune anomalie majeure") })
+    }
+
 }
