@@ -39,6 +39,8 @@ class MainActivity : Activity() {
     private lateinit var gameSpinner: Spinner
     private lateinit var resultsContainer: LinearLayout
     private lateinit var historyText: TextView
+    private lateinit var routeButton: Button
+    private lateinit var routeResults: LinearLayout
 
     private val backgroundColor = Color.rgb(10, 15, 27)
     private val panelColor = Color.rgb(21, 29, 47)
@@ -96,12 +98,12 @@ class MainActivity : Activity() {
             adapter = ArrayAdapter(
                 this@MainActivity,
                 android.R.layout.simple_spinner_dropdown_item,
-                listOf("Call of Duty: Mobile", "PUBG Mobile", "Free Fire", "Autre jeu")
+                GameCatalog.profiles.map { it.displayName }
             )
         }
         gameCard.addView(gameSpinner)
         gameCard.addView(label(
-            "Le profil organise les diagnostics. Les serveurs de jeu seront ajoutés après identification de destinations fiables.",
+            "Le profil organise les diagnostics. Les destinations de match ne sont pas considérées comme vérifiées tant que leur origine et leur accessibilité ne sont pas confirmées.",
             12f, mutedColor, false, Gravity.START
         ).apply { setPadding(0, dp(8), 0, 0) })
         root.addView(gameCard)
@@ -129,6 +131,29 @@ class MainActivity : Activity() {
         testCard.addView(resultsContainer)
         root.addView(testCard)
 
+        root.addView(sectionTitle("ROUTE ENGINE — ANALYSE DES PHASES"))
+        val routeCard = card()
+        routeCard.addView(label("Décomposition d'une connexion HTTPS", 16f, Color.WHITE, true, Gravity.START))
+        routeCard.addView(label(
+            "Mesure séparément la résolution DNS, la connexion TCP, la négociation TLS et l'arrivée du premier en-tête HTTP vers les mêmes points de contrôle. Ce test ne trace pas les routeurs intermédiaires et ne mesure pas le serveur de match.",
+            13f, mutedColor, false, Gravity.START
+        ).apply { setPadding(0, dp(6), 0, dp(14)) })
+        routeButton = Button(this).apply {
+            text = "ANALYSER LES PHASES"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            setBackgroundTintList(android.content.res.ColorStateList.valueOf(accentColor))
+            setOnClickListener { runRouteAnalysis() }
+        }
+        routeCard.addView(routeButton)
+        routeResults = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(12), 0, 0)
+        }
+        routeResults.addView(label("Aucune analyse de phase effectuée.", 13f, mutedColor, false, Gravity.START))
+        routeCard.addView(routeResults)
+        root.addView(routeCard)
+
         root.addView(sectionTitle("HISTORIQUE LOCAL"))
         val historyCard = card()
         historyCard.addView(label("10 dernières comparaisons", 15f, Color.WHITE, true, Gravity.START))
@@ -142,11 +167,11 @@ class MainActivity : Activity() {
         root.addView(sectionTitle("FEUILLE DE ROUTE"))
         val roadmapCard = card()
         listOf(
-            "01  Diagnostic Wi-Fi et données mobiles",
-            "02  Détection des régions et serveurs de jeux",
-            "03  Analyse des routes réseau",
-            "04  Recommandations fondées sur les mesures",
-            "05  Optimisation expérimentale avec consentement"
+            "01  Diagnostic réseau : contexte Wi-Fi / mobile et état Internet",
+            "02  Game Intelligence : profils de jeux et statut des preuves serveur",
+            "03  Route Engine : phases DNS, TCP, TLS et réponse HTTP",
+            "04  Decision Engine : recommandations explicables et niveau de confiance",
+            "05  NOVA BOOST : recherche future, uniquement après validation de gains réels"
         ).forEach { item ->
             roadmapCard.addView(label(item, 13f, Color.WHITE, false, Gravity.START).apply {
                 setPadding(0, dp(6), 0, dp(6))
@@ -161,6 +186,84 @@ class MainActivity : Activity() {
 
         scroll.addView(root)
         setContentView(scroll)
+    }
+
+    private fun currentNetworkContext(): NetworkContext {
+        val manager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = manager.activeNetwork
+        val caps = network?.let { manager.getNetworkCapabilities(it) }
+        val transport = when {
+            caps == null -> NetworkTransport.NONE
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> NetworkTransport.VPN
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> NetworkTransport.WIFI
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> NetworkTransport.CELLULAR
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> NetworkTransport.ETHERNET
+            else -> NetworkTransport.OTHER
+        }
+        return NetworkContext.from(
+            transport = transport,
+            hasInternet = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true,
+            validated = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true,
+            metered = manager.isActiveNetworkMetered,
+            roaming = transport == NetworkTransport.CELLULAR &&
+                caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_ROAMING) == false,
+            downstreamKbps = caps?.downstreamBandwidthKbps,
+            upstreamKbps = caps?.upstreamBandwidthKbps
+        )
+    }
+
+    private fun runRouteAnalysis() {
+        routeButton.isEnabled = false
+        val context = currentNetworkContext()
+        if (!context.internetValidated) {
+            routeButton.isEnabled = true
+            routeResults.removeAllViews()
+            routeResults.addView(label(
+                "Android ne confirme pas l'accès à Internet. Connecte-toi puis relance l'analyse.",
+                13f, Color.rgb(255, 170, 120), false, Gravity.START
+            ))
+            return
+        }
+
+        routeResults.removeAllViews()
+        routeResults.addView(label("Analyse DNS, TCP, TLS et HTTP en cours…", 13f, mutedColor, false, Gravity.START))
+        executor.execute {
+            val outcomes = targets.map { target -> target to RouteProbe.measure(target.endpoint) }
+            val recommendations = DecisionEngine.recommend(context, outcomes.map { it.second })
+            runOnUiThread {
+                routeButton.isEnabled = true
+                routeResults.removeAllViews()
+                outcomes.forEach { (target, result) ->
+                    val detail = card()
+                    detail.addView(label(target.name, 14f, Color.WHITE, true, Gravity.START))
+                    val phaseText = "DNS : ${result.dnsMs?.let { "$it ms" } ?: "indisponible"}\n" +
+                        "TCP : ${result.tcpConnectMs?.let { "$it ms" } ?: "indisponible"}\n" +
+                        "TLS : ${result.tlsHandshakeMs?.let { "$it ms" } ?: "indisponible"}\n" +
+                        "Premier en-tête HTTP : ${result.httpFirstByteMs?.let { "$it ms" } ?: "indisponible"}\n" +
+                        "Code HTTP : ${result.httpStatus ?: "aucun"}\n" +
+                        "Durée totale : ${result.totalMs} ms" +
+                        (result.failure?.let { "\nPhase incomplète : $it" } ?: "")
+                    detail.addView(label(phaseText, 12f, mutedColor, false, Gravity.START)
+                        .apply { setPadding(0, dp(6), 0, 0) })
+                    routeResults.addView(detail)
+                }
+                routeResults.addView(label("RECOMMANDATIONS DU DECISION ENGINE", 13f, accentColor, true, Gravity.START)
+                    .apply { setPadding(0, dp(12), 0, dp(6)) })
+                recommendations.forEach { recommendation ->
+                    val item = card()
+                    item.addView(label(recommendation.title, 14f, Color.WHITE, true, Gravity.START))
+                    item.addView(label(recommendation.explanation, 12f, mutedColor, false, Gravity.START)
+                        .apply { setPadding(0, dp(5), 0, 0) })
+                    item.addView(label("Action : ${recommendation.action}\nConfiance : ${recommendation.confidence}", 12f, accentColor, false, Gravity.START)
+                        .apply { setPadding(0, dp(5), 0, 0) })
+                    routeResults.addView(item)
+                }
+                routeResults.addView(label(
+                    "Ces seuils sont indicatifs. Une phase lente vers un service public ne prouve pas à elle seule un problème chez l'opérateur ni une mauvaise route vers un jeu.",
+                    11f, mutedColor, false, Gravity.START
+                ).apply { setPadding(0, dp(8), 0, 0) })
+            }
+        }
     }
 
     private fun currentNetworkPreflight(): NetworkReadiness {
@@ -186,7 +289,7 @@ class MainActivity : Activity() {
             else -> "Autre réseau"
         }
         val validated = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
-        networkInfo.text = "Connexion : $transport\nAccès Internet validé : ${if (validated) "oui" else "non confirmé"}\nDiagnostic : ${currentNetworkPreflight().userMessage}"
+        networkInfo.text = currentNetworkContext().summary() + "\nDiagnostic : ${currentNetworkPreflight().userMessage}"
         if (::status.isInitialized) status.text = if (validated) "Connexion détectée" else "Connexion à vérifier"
         return transport
     }
