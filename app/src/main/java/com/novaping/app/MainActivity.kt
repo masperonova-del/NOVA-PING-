@@ -269,6 +269,18 @@ class MainActivity : Activity() {
                     val metrics = outcome.metrics
                     val targetCard = card()
                     targetCard.addView(label(outcome.target.name, 14f, Color.WHITE, true, Gravity.START))
+                    val assessment = DiagnosticEngine.assess(metrics, outcome.roundMedians)
+                    targetCard.addView(label(
+                        "Régularité observée : ${assessment.label}",
+                        13f,
+                        if (assessment.label == "Régulier") Color.rgb(100, 210, 150) else accentColor,
+                        true,
+                        Gravity.START
+                    ).apply { setPadding(0, dp(7), 0, 0) })
+                    targetCard.addView(label(
+                        assessment.explanation,
+                        12f, mutedColor, false, Gravity.START
+                    ).apply { setPadding(0, dp(4), 0, dp(4)) })
                     val detail = if (metrics == null) {
                         "Aucune réponse exploitable\nÉchecs : 9/9"
                     } else {
