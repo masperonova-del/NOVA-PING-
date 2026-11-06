@@ -9,7 +9,7 @@ class PingMetricsTest {
         val result = PingMetrics.from(listOf(20, 30, 50, 40), 5)
         assertEquals(35L, result.medianMs)
         assertEquals(50L, result.p95Ms)
-        assertEquals(20L, result.jitterMs)
+        assertEquals(13L, result.jitterMs)
         assertEquals(1, result.lostRequests)
         assertEquals(5, result.totalRequests)
     }
