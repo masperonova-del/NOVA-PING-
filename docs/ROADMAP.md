@@ -18,7 +18,7 @@
 
 - [x] Distinguer Wi-Fi, données mobiles, Ethernet, VPN et autres transports détectés.
 - [x] Afficher l'état Internet validé par Android.
-- [x] Afficher le statut réseau mesuré, l'itinérance mobile et les estimations de bande passante fournies par Android lorsqu'elles sont disponibles.
+- [x] Afficher le statut réseau mesuré, les estimations de bande passante fournies par Android lorsqu'elles sont disponibles et ne signaler l'itinérance que si l'information est réellement connue.
 - [ ] Ajouter une comparaison Wi-Fi / mobile simultanée, uniquement si Android permet de tester les deux réseaux sans changer la connexion active.
 - [ ] Ajouter des informations radio Wi-Fi/cellulaire sans demander des permissions sensibles non nécessaires.
 - [ ] Valider les variations de contexte sur plusieurs appareils.
@@ -39,7 +39,10 @@
 - [x] Mesurer le délai jusqu'au premier en-tête HTTP.
 - [x] Afficher les phases incomplètes et les codes HTTP disponibles.
 - [ ] Étudier une méthode fiable de découverte des sauts intermédiaires lorsque le réseau et Android l'autorisent.
-- [ ] Répéter les mesures et comparer les routes dans des conditions contrôlées.
+- [x] Répéter les mesures sur trois cycles, en faisant tourner l'ordre des destinations.
+- [x] Calculer séparément médiane, P95 observé, variation et nombre de réussites par phase.
+- [x] Essayer les adresses DNS retournées jusqu'à établir une connexion TCP.
+- [ ] Étudier une méthode fiable de découverte des sauts intermédiaires lorsque le réseau et Android l'autorisent.
 
 **Limite actuelle :** le Route Engine décompose les phases d'une connexion vers un point de contrôle. Il ne réalise pas encore un traceroute complet et ne révèle pas automatiquement la route empruntée par un serveur de jeu.
 
@@ -49,7 +52,9 @@
 - [x] Afficher une action suggérée et un niveau de confiance.
 - [x] Distinguer les problèmes DNS, TCP, TLS et réponse HTTP.
 - [x] Éviter d'attribuer automatiquement un délai à l'opérateur ou au réseau local.
-- [ ] Calibrer les seuils sur un ensemble de mesures répétées et d'appareils réels.
+- [x] Exiger plusieurs échantillons avant de signaler une anomalie de phase.
+- [x] Ne pas qualifier de sain un point de contrôle présentant des échecs, même isolés.
+- [ ] Calibrer les seuils sur un ensemble plus large de mesures répétées et d'appareils réels.
 - [ ] Comparer les recommandations avant/après et mesurer leurs effets.
 
 ## Phase de recherche — NOVA BOOST
