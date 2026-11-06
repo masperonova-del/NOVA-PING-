@@ -15,7 +15,7 @@ class DiagnosticEngineTest {
 
     @Test fun reportsImportantLosses() {
         val metrics = PingMetrics.from(listOf(30, 35, 40, 45, 50, 55), 9)
-        assertEquals("Pertes importantes", DiagnosticEngine.assess(metrics, listOf(35, 45, 50)).label)
+        assertEquals("Échecs HTTPS importants", DiagnosticEngine.assess(metrics, listOf(35, 45, 50)).label)
     }
 
     @Test fun reportsHighVariation() {
