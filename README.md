@@ -81,17 +81,17 @@ Android en priorité. Le gaming mobile compétitif est le cas d'usage principal.
 Aucune licence open source n'a été choisie. Tous droits réservés au propriétaire du dépôt tant qu'une licence n'est pas ajoutée.
 
 
-## Version 1.4.0 — Modules intégrés
+## Version 1.4.1 — Fiabilisation des mesures
 
-La version de développement 1.4.0 réunit quatre modules complémentaires :
+La version de développement 1.4.1 conserve les quatre modules et corrige plusieurs points de fiabilité :
 
 - **Diagnostic réseau (1.1)** : contexte du réseau actif, type de transport, validation Internet Android, réseau mesuré, itinérance et estimations de bande passante lorsqu'Android les fournit.
 - **Game Intelligence (1.2)** : catalogue de profils de jeux avec statut explicite des preuves. Aucune adresse de serveur de match n'est inventée ou présentée comme vérifiée.
-- **Route Engine (1.3)** : décomposition d'une connexion HTTPS de contrôle en résolution DNS, établissement TCP, négociation TLS et délai jusqu'au premier en-tête HTTP.
-- **Decision Engine (1.4)** : recommandations explicables, actions proposées et niveau de confiance indicatif à partir des observations.
+- **Route Engine (1.3)** : décomposition de trois connexions HTTPS par destination en résolution DNS, établissement TCP, négociation TLS et délai jusqu'à la lecture de la ligne de statut HTTP.
+- **Decision Engine (1.4)** : recommandations explicables fondées sur plusieurs essais, actions proposées et niveau de confiance indicatif.
 
-### Limites de la version 1.4.0
+### Corrections et limites de la version 1.4.1
 
-Le Route Engine ne réalise pas encore un traceroute complet et ne mesure pas directement le ping des serveurs de match. Les phases sont mesurées vers des services publics de contrôle ; elles dépendent aussi du comportement de ces services. Les seuils de recommandation sont indicatifs et devront être calibrés sur davantage de mesures réelles.
+Le Route Engine ne réalise pas encore un traceroute complet et ne mesure pas directement le ping des serveurs de match. Les phases sont mesurées vers des services publics de contrôle ; elles dépendent aussi du comportement de ces services. Chaque destination est testée sur trois cycles ; les statistiques sont calculées séparément par phase. Le P95 sur trois mesures reste descriptif et ne garantit pas la latence extrême. Les seuils de recommandation sont indicatifs et devront être calibrés sur davantage de mesures réelles. Les adresses retournées par DNS sont essayées en séquence jusqu'à ce qu'une connexion TCP réussisse.
 
-NOVA PING 1.4.0 ne modifie pas le routage de l'appareil et ne promet aucune réduction du ping en jeu. NOVA BOOST reste une phase de recherche séparée, soumise à des essais comparatifs et au consentement explicite de l'utilisateur.
+NOVA PING 1.4.1 ne modifie pas le routage de l'appareil et ne promet aucune réduction du ping en jeu. NOVA BOOST reste une phase de recherche séparée, soumise à des essais comparatifs et au consentement explicite de l'utilisateur.
