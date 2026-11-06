@@ -436,7 +436,7 @@ class MainActivity : Activity() {
                         targetLines.add("$name : $median ms — échecs HTTPS $lost/$total")
                         if (bestMedian == null || median < bestMedian) bestMedian = median
                     } else {
-                        targetLines.add("$name : aucune réponse — pertes $lost/$total")
+                        targetLines.add("$name : aucune réponse — échecs HTTPS $lost/$total")
                     }
                 }
 
