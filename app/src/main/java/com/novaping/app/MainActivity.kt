@@ -27,7 +27,8 @@ private data class ProbeTarget(val name: String, val endpoint: String)
 private data class TargetResult(
     val target: ProbeTarget,
     val metrics: PingMetrics?,
-    val roundMedians: List<Long>
+    val roundMedians: List<Long>,
+    val failures: Map<ProbeFailure, Int>
 )
 
 class MainActivity : Activity() {
@@ -160,6 +161,17 @@ class MainActivity : Activity() {
         setContentView(scroll)
     }
 
+    private fun currentNetworkPreflight(): NetworkReadiness {
+        val manager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = manager.activeNetwork
+        val caps = network?.let { manager.getNetworkCapabilities(it) }
+        return NetworkReadiness.from(
+            hasNetwork = network != null && caps != null,
+            hasInternet = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true,
+            validated = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+        )
+    }
+
     private fun refreshNetworkInfo(): String {
         val manager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val network = manager.activeNetwork
@@ -172,7 +184,7 @@ class MainActivity : Activity() {
             else -> "Autre réseau"
         }
         val validated = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
-        networkInfo.text = "Connexion : $transport\nAccès Internet validé : ${if (validated) "oui" else "non confirmé"}"
+        networkInfo.text = "Connexion : $transport\nAccès Internet validé : ${if (validated) "oui" else "non confirmé"}\nDiagnostic : ${currentNetworkPreflight().userMessage}"
         if (::status.isInitialized) status.text = if (validated) "Connexion détectée" else "Connexion à vérifier"
         return transport
     }
@@ -181,6 +193,21 @@ class MainActivity : Activity() {
         testButton.isEnabled = false
         val selectedGame = gameSpinner.selectedItem?.toString() ?: "Autre jeu"
         val networkType = refreshNetworkInfo()
+        val preflight = currentNetworkPreflight()
+        if (preflight != NetworkReadiness.READY) {
+            testButton.isEnabled = true
+            status.text = "Connexion non prête"
+            resultsContainer.removeAllViews()
+            resultsContainer.addView(label(
+                preflight.userMessage,
+                13f, Color.rgb(255, 170, 120), false, Gravity.START
+            ))
+            resultsContainer.addView(label(
+                "Aucune mesure n’a été lancée et aucune session n’a été enregistrée. Vérifie la connexion, puis relance le diagnostic.",
+                12f, mutedColor, false, Gravity.START
+            ).apply { setPadding(0, dp(8), 0, 0) })
+            return
+        }
         status.text = "Comparaison en cours…"
         resultsContainer.removeAllViews()
         resultsContainer.addView(label("Préparation du diagnostic…", 13f, mutedColor, false, Gravity.START))
@@ -189,6 +216,7 @@ class MainActivity : Activity() {
             var failure: String? = null
             val samplesByTarget = targets.associateWith { mutableListOf<Long>() }
             val roundMediansByTarget = targets.associateWith { mutableListOf<Long>() }
+            val failuresByTarget = targets.associateWith { mutableMapOf<ProbeFailure, Int>() }
             try {
                 repeat(3) { roundIndex ->
                     val offset = roundIndex % targets.size
@@ -216,7 +244,14 @@ class MainActivity : Activity() {
                                     13f, mutedColor, false, Gravity.START
                                 ))
                             }
-                            HttpsProbe.measureOnce(target.endpoint)?.let { roundSamples.add(it) }
+                            val probe = HttpsProbe.measureOnce(target.endpoint)
+                            if (probe.elapsedMs != null) {
+                                roundSamples.add(probe.elapsedMs)
+                            } else {
+                                val failures = failuresByTarget.getValue(target)
+                                failures[probe.failure ?: ProbeFailure.UNKNOWN] =
+                                    (failures[probe.failure ?: ProbeFailure.UNKNOWN] ?: 0) + 1
+                            }
                             if (attempt < 2) Thread.sleep(150)
                         }
                         samplesByTarget.getValue(target).addAll(roundSamples)
@@ -236,7 +271,8 @@ class MainActivity : Activity() {
                 TargetResult(
                     target = target,
                     metrics = if (samples.isNotEmpty()) PingMetrics.from(samples, 9) else null,
-                    roundMedians = roundMediansByTarget.getValue(target)
+                    roundMedians = roundMediansByTarget.getValue(target),
+                    failures = failuresByTarget.getValue(target).toMap()
                 )
             }
             val ranked = outcomes.filter { it.metrics != null }.sortedBy { it.metrics!!.medianMs }
@@ -281,8 +317,15 @@ class MainActivity : Activity() {
                         assessment.explanation,
                         12f, mutedColor, false, Gravity.START
                     ).apply { setPadding(0, dp(4), 0, dp(4)) })
+                    val failureLine = if (outcome.failures.isEmpty()) {
+                        "Échecs : 0/9"
+                    } else {
+                        "Causes des échecs : " + outcome.failures.entries
+                            .sortedByDescending { it.value }
+                            .joinToString(" · ") { "${it.key.label} : ${it.value}" }
+                    }
                     val detail = if (metrics == null) {
-                        "Aucune réponse exploitable\nÉchecs : 9/9"
+                        "Aucune réponse exploitable\n$failureLine"
                     } else {
                         val cycleLine = if (outcome.roundMedians.isEmpty()) {
                             "Aucun cycle exploitable"
@@ -294,7 +337,7 @@ class MainActivity : Activity() {
                         } else {
                             "Cycles exploitables : ${outcome.roundMedians.size}/3"
                         }
-                        "Médiane globale : ${metrics.medianMs} ms\nP95 observé : ${metrics.p95Ms} ms\nVariation moyenne : ${metrics.jitterMs} ms\nSans réponse : ${metrics.lostRequests}/${metrics.totalRequests}\n$cycleLine\n$spreadLine"
+                        "Médiane globale : ${metrics.medianMs} ms\nP95 observé : ${metrics.p95Ms} ms\nVariation moyenne : ${metrics.jitterMs} ms\n$failureLine\n$cycleLine\n$spreadLine"
                     }
                     targetCard.addView(label(
                         detail, 13f,
@@ -340,6 +383,9 @@ class MainActivity : Activity() {
                         put("lostRequests", metrics?.lostRequests ?: 9)
                         put("totalRequests", metrics?.totalRequests ?: 9)
                         put("cycleMedians", JSONArray(outcome.roundMedians))
+                        put("failureCategories", JSONObject().apply {
+                            outcome.failures.forEach { (failure, count) -> put(failure.name, count) }
+                        })
                     })
                 }
             })
