@@ -14,8 +14,8 @@ object HttpsProbe {
         return try {
             connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
-                connectTimeout = 4000
-                readTimeout = 4000
+                connectTimeout = 1800
+                readTimeout = 1800
                 instanceFollowRedirects = false
                 useCaches = false
             }
