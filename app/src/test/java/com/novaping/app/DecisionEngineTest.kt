@@ -1,55 +1,60 @@
 package com.novaping.app
 
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DecisionEngineTest {
     private val readyWifi = NetworkContext.from(
-        NetworkTransport.WIFI, true, true, false, false, 50000, 10000
+        NetworkTransport.WIFI, true, true, false, null, 50000, 10000
     )
 
-    @Test fun recommendsCheckingDnsWhenResolutionFails() {
-        val outcome = RouteProbeOutcome(
-            host = "example.com", failure = RouteProbeFailure.DNS, totalMs = 10
-        )
-        val result = DecisionEngine.recommend(readyWifi, listOf(outcome))
+    private fun aggregate(samples: List<RouteProbeOutcome>) = RouteStatistics.aggregate(samples)
+
+    @Test fun recommendsCheckingDnsAfterRepeatedFailures() {
+        val result = DecisionEngine.recommend(readyWifi, listOf(aggregate(listOf(
+            RouteProbeOutcome("example.com", failure = RouteProbeFailure.DNS, totalMs = 10),
+            RouteProbeOutcome("example.com", failure = RouteProbeFailure.DNS, totalMs = 12),
+            RouteProbeOutcome("example.com", dnsMs = 8, tcpConnectMs = 20, tlsHandshakeMs = 30,
+                httpStatusLineMs = 40, httpStatus = 204, totalMs = 100)
+        ))))
         assertTrue(result.any { it.title == "Résolution DNS à vérifier" })
     }
 
     @Test fun warnsWhenInternetIsNotValidated() {
         val context = NetworkContext.from(
-            NetworkTransport.CELLULAR, true, false, true, false, null, null
+            NetworkTransport.CELLULAR, true, false, true, null, null, null
         )
         val result = DecisionEngine.recommend(context, emptyList())
         assertTrue(result.any { it.title == "Connexion non validée" })
     }
 
-    @Test fun avoidsClaimingRouteOptimization() {
-        val outcome = RouteProbeOutcome(
-            host = "example.com", dnsMs = 12, tcpConnectMs = 30,
-            tlsHandshakeMs = 40, httpFirstByteMs = 50, httpStatus = 204,
-            totalMs = 132
-        )
-        val result = DecisionEngine.recommend(readyWifi, listOf(outcome))
-        assertTrue(result.any { it.title.contains("anomalie majeure") })
+    @Test fun cleanResultRequiresRepeatedCompleteResponses() {
+        val result = DecisionEngine.recommend(readyWifi, listOf(aggregate(listOf(
+            RouteProbeOutcome("example.com", 12, 20, 30, 40, 204, null, 110),
+            RouteProbeOutcome("example.com", 13, 21, 31, 41, 204, null, 115),
+            RouteProbeOutcome("example.com", 14, 22, 32, 42, 204, null, 120)
+        ))))
+        assertTrue(result.any { it.title.contains("Aucune anomalie majeure") })
     }
+
     @Test fun doesNotReportCleanResultForIncompleteMeasurement() {
-        val outcome = RouteProbeOutcome(
-            host = "example.com", failure = RouteProbeFailure.UNKNOWN, totalMs = 100
-        )
-        val result = DecisionEngine.recommend(readyWifi, listOf(outcome))
-        assertTrue(result.any { it.title == "Analyse incomplète" })
-        assertTrue(result.none { it.title.contains("Aucune anomalie majeure") })
+        val result = DecisionEngine.recommend(readyWifi, listOf(aggregate(listOf(
+            RouteProbeOutcome("example.com", failure = RouteProbeFailure.UNKNOWN, totalMs = 100),
+            RouteProbeOutcome("example.com", failure = RouteProbeFailure.UNKNOWN, totalMs = 100),
+            RouteProbeOutcome("example.com", failure = RouteProbeFailure.UNKNOWN, totalMs = 100)
+        ))))
+        assertTrue(result.any { it.title == "Réponse incomplète" })
+        assertFalse(result.any { it.title.contains("Aucune anomalie majeure") })
     }
 
-    @Test fun flagsNonSuccessfulHttpStatus() {
-        val outcome = RouteProbeOutcome(
-            host = "example.com", dnsMs = 10, tcpConnectMs = 20,
-            tlsHandshakeMs = 30, httpFirstByteMs = 40, httpStatus = 403,
-            totalMs = 100
-        )
-        val result = DecisionEngine.recommend(readyWifi, listOf(outcome))
-        assertTrue(result.any { it.title == "Statut HTTP à examiner" })
+    @Test fun oneIsolatedFailureDoesNotTriggerNetworkDiagnosis() {
+        val result = DecisionEngine.recommend(readyWifi, listOf(aggregate(listOf(
+            RouteProbeOutcome("example.com", 12, 20, 30, 40, 204, null, 110),
+            RouteProbeOutcome("example.com", failure = RouteProbeFailure.TLS_HANDSHAKE, totalMs = 70),
+            RouteProbeOutcome("example.com", 14, 22, 32, 42, 204, null, 120)
+        ))))
+        assertFalse(result.any { it.title == "Négociation TLS à vérifier" })
+        assertFalse(result.any { it.title.contains("Aucune anomalie majeure") })
     }
-
 }
