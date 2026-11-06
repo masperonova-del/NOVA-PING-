@@ -49,16 +49,16 @@ Measures reachable test endpoints using a documented protocol. It must preserve 
 - test duration and sample count.
 
 ### ROUTE ENGINE
-Compares destinations and available network paths where the platform and protocol permit it. A cloud endpoint is a diagnostic target, not automatically the game server.
+The current implementation measures DNS resolution, TCP connection establishment, TLS handshake and time to the first HTTP response header for public HTTPS control endpoints. It does not yet discover intermediate router hops. A cloud endpoint is a diagnostic target, not automatically the game server.
 
 ### GAME INTELLIGENCE
-Stores game-specific metadata only when supported by reliable sources or user-provided configuration. Unknown server locations must remain unknown rather than guessed.
+Maintains structured profiles for supported games and an explicit evidence status for server metadata. The current catalog intentionally marks match-server destinations as unverified. Unknown server locations must remain unknown rather than guessed.
 
 ### DIAGNOSTIC ENGINE
 Identifies relevant conditions such as network type changes, weak or unstable connectivity, and local device constraints. It should not claim access to private game internals.
 
 ### DECISION ENGINE
-Ranks recommendations by expected usefulness, evidence quality and confidence. It must explain why a recommendation was made and what result would confirm or reject it.
+Generates explainable recommendations from the active network context and measured DNS/TCP/TLS/HTTP phases. Current thresholds are indicative and confidence is deliberately limited. Calibration across repeated measurements and real devices remains future work.
 
 ## 3. Future NOVA BOOST
 
