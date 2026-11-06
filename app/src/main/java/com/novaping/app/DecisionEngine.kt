@@ -110,7 +110,7 @@ object DecisionEngine {
         }
 
         val allHaveRepeatedSuccessfulResponses = aggregates.isNotEmpty() && aggregates.all {
-            it.completeSamples >= 2 &&
+            it.completeSamples >= 2 && it.failures.isEmpty() &&
                 it.httpStatuses.filterKeys { code -> code in 200..299 }.values.sum() >= 2 &&
                 it.httpStatuses.filterKeys { code -> code !in 200..299 }.values.sum() == 0
         }
