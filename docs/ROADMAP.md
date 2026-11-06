@@ -36,7 +36,7 @@
 - [x] Mesurer séparément la résolution DNS.
 - [x] Mesurer l'établissement TCP vers une destination HTTPS de contrôle.
 - [x] Mesurer la négociation TLS avec vérification du nom d'hôte.
-- [x] Mesurer le délai jusqu'au premier en-tête HTTP.
+- [x] Mesurer le délai jusqu'à la lecture de la ligne de statut HTTP (pas un temps de premier octet réseau).
 - [x] Afficher les phases incomplètes et les codes HTTP disponibles.
 - [ ] Étudier une méthode fiable de découverte des sauts intermédiaires lorsque le réseau et Android l'autorisent.
 - [x] Répéter les mesures sur trois cycles, en faisant tourner l'ordre des destinations.
