@@ -114,7 +114,7 @@ object DecisionEngine {
             )
         }
 
-        if (recommendations.isEmpty() && outcomes.isNotEmpty() && outcomes.all { it.completed && it.httpStatus in 200..299 }) {
+        if (recommendations.isEmpty() && outcomes.isNotEmpty() && outcomes.all { it.completed && it.httpStatus != null && it.httpStatus in 200..299 }) {
             recommendations += NetworkRecommendation(
                 "Aucune anomalie majeure détectée sur ces points de contrôle",
                 "Les phases mesurées n'ont pas dépassé les seuils indicatifs du diagnostic.",
