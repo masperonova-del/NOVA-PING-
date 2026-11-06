@@ -135,7 +135,7 @@ class MainActivity : Activity() {
         val routeCard = card()
         routeCard.addView(label("Décomposition d'une connexion HTTPS", 16f, Color.WHITE, true, Gravity.START))
         routeCard.addView(label(
-            "Mesure séparément la résolution DNS, la connexion TCP, la négociation TLS et l'arrivée du premier en-tête HTTP vers les mêmes points de contrôle. Ce test ne trace pas les routeurs intermédiaires et ne mesure pas le serveur de match.",
+            "Effectue 3 essais par destination et résume séparément DNS, TCP, TLS et le délai jusqu'à la ligne de statut HTTP. Ce test ne trace pas les routeurs intermédiaires et ne mesure pas le serveur de match.",
             13f, mutedColor, false, Gravity.START
         ).apply { setPadding(0, dp(6), 0, dp(14)) })
         routeButton = Button(this).apply {
@@ -205,8 +205,8 @@ class MainActivity : Activity() {
             hasInternet = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true,
             validated = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true,
             metered = manager.isActiveNetworkMetered,
-            roaming = transport == NetworkTransport.CELLULAR &&
-                caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_ROAMING) == false,
+            roaming = if (transport == NetworkTransport.CELLULAR &&
+                caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_ROAMING) == true) false else null,
             downstreamKbps = caps?.linkDownstreamBandwidthKbps,
             upstreamKbps = caps?.linkUpstreamBandwidthKbps
         )
@@ -226,40 +226,88 @@ class MainActivity : Activity() {
         }
 
         routeResults.removeAllViews()
-        routeResults.addView(label("Analyse DNS, TCP, TLS et HTTP en cours…", 13f, mutedColor, false, Gravity.START))
+        routeResults.addView(label("3 cycles de mesure DNS, TCP, TLS et HTTP en cours…", 13f, mutedColor, false, Gravity.START))
         executor.execute {
-            val outcomes = targets.map { target -> target to RouteProbe.measure(target.endpoint) }
-            val recommendations = DecisionEngine.recommend(context, outcomes.map { it.second })
+            val samplesByTarget = targets.associateWith { mutableListOf<RouteProbeOutcome>() }
+            var interrupted: String? = null
+            try {
+                repeat(3) { cycleIndex ->
+                    val offset = cycleIndex % targets.size
+                    val cycleOrder = targets.drop(offset) + targets.take(offset)
+                    cycleOrder.forEachIndexed { targetIndex, target ->
+                        runOnUiThread {
+                            routeResults.removeAllViews()
+                            routeResults.addView(label(
+                                "Cycle ${cycleIndex + 1}/3 — ${target.name}",
+                                13f, mutedColor, false, Gravity.START
+                            ))
+                        }
+                        samplesByTarget.getValue(target).add(RouteProbe.measure(target.endpoint))
+                        if (targetIndex < cycleOrder.lastIndex) Thread.sleep(200)
+                    }
+                }
+            } catch (error: Exception) {
+                interrupted = error.message ?: "Erreur inconnue pendant l'analyse"
+            }
+
+            val aggregates = targets.mapNotNull { target ->
+                samplesByTarget.getValue(target).takeIf { it.isNotEmpty() }
+                    ?.let { RouteStatistics.aggregate(it) }
+            }
+            val recommendations = DecisionEngine.recommend(context, aggregates)
+
             runOnUiThread {
                 routeButton.isEnabled = true
                 routeResults.removeAllViews()
-                outcomes.forEach { (target, result) ->
+                if (interrupted != null) {
+                    routeResults.addView(label(
+                        "Analyse interrompue : $interrupted. Les résultats partiels ne permettent pas une conclusion complète.",
+                        12f, Color.rgb(255, 150, 130), false, Gravity.START
+                    ))
+                }
+                aggregates.forEach { aggregate ->
                     val detail = card()
-                    detail.addView(label(target.name, 14f, Color.WHITE, true, Gravity.START))
-                    val phaseText = "DNS : ${result.dnsMs?.let { "$it ms" } ?: "indisponible"}\n" +
-                        "TCP : ${result.tcpConnectMs?.let { "$it ms" } ?: "indisponible"}\n" +
-                        "TLS : ${result.tlsHandshakeMs?.let { "$it ms" } ?: "indisponible"}\n" +
-                        "Premier en-tête HTTP : ${result.httpFirstByteMs?.let { "$it ms" } ?: "indisponible"}\n" +
-                        "Code HTTP : ${result.httpStatus ?: "aucun"}\n" +
-                        "Durée totale : ${result.totalMs} ms" +
-                        (result.failure?.let { "\nPhase incomplète : $it" } ?: "")
-                    detail.addView(label(phaseText, 12f, mutedColor, false, Gravity.START)
+                    detail.addView(label(
+                        aggregate.host, 14f, Color.WHITE, true, Gravity.START
+                    ))
+                    fun phaseLine(name: String, phase: PhaseStatistics): String {
+                        val median = phase.medianMs?.let { "${it} ms" } ?: "indisponible"
+                        val p95 = phase.p95ObservedMs?.let { "${it} ms" } ?: "indisponible"
+                        val variation = phase.meanAbsoluteVariationMs?.let { "${it} ms" } ?: "n/c"
+                        return "$name — médiane : $median | P95 observé : $p95 | variation : $variation | mesures : ${phase.successfulSamples}/${phase.attemptedSamples}"
+                    }
+                    val details = listOf(
+                        phaseLine("DNS", aggregate.dns),
+                        phaseLine("TCP", aggregate.tcp),
+                        phaseLine("TLS", aggregate.tls),
+                        phaseLine("Ligne de statut HTTP", aggregate.httpStatusLine),
+                        "Connexions HTTPS complètes : ${aggregate.completeSamples}/${aggregate.sampleCount}",
+                        "Codes HTTP : " + if (aggregate.httpStatuses.isEmpty()) "aucun" else
+                            aggregate.httpStatuses.entries.sortedBy { it.key }.joinToString(" · ") { "${it.key} : ${it.value}" },
+                        "Échecs par phase : " + if (aggregate.failures.isEmpty()) "aucun" else
+                            aggregate.failures.entries.sortedByDescending { it.value }.joinToString(" · ") { "${it.key} : ${it.value}" }
+                    ).joinToString("\n")
+                    detail.addView(label(details, 12f, mutedColor, false, Gravity.START)
                         .apply { setPadding(0, dp(6), 0, 0) })
                     routeResults.addView(detail)
                 }
-                routeResults.addView(label("RECOMMANDATIONS DU DECISION ENGINE", 13f, accentColor, true, Gravity.START)
-                    .apply { setPadding(0, dp(12), 0, dp(6)) })
+
+                routeResults.addView(label(
+                    "RECOMMANDATIONS DU DECISION ENGINE", 13f, accentColor, true, Gravity.START
+                ).apply { setPadding(0, dp(12), 0, dp(6)) })
                 recommendations.forEach { recommendation ->
                     val item = card()
                     item.addView(label(recommendation.title, 14f, Color.WHITE, true, Gravity.START))
                     item.addView(label(recommendation.explanation, 12f, mutedColor, false, Gravity.START)
                         .apply { setPadding(0, dp(5), 0, 0) })
-                    item.addView(label("Action : ${recommendation.action}\nConfiance : ${recommendation.confidence}", 12f, accentColor, false, Gravity.START)
-                        .apply { setPadding(0, dp(5), 0, 0) })
+                    item.addView(label(
+                        "Action : ${recommendation.action}\nConfiance : ${recommendation.confidence}",
+                        12f, accentColor, false, Gravity.START
+                    ).apply { setPadding(0, dp(5), 0, 0) })
                     routeResults.addView(item)
                 }
                 routeResults.addView(label(
-                    "Ces seuils sont indicatifs. Une phase lente vers un service public ne prouve pas à elle seule un problème chez l'opérateur ni une mauvaise route vers un jeu.",
+                    "Statistiques calculées séparément sur les réponses disponibles. Le P95 est un percentile observé sur un petit échantillon, pas une garantie. Les points de contrôle HTTPS ne représentent pas les serveurs de jeu.",
                     11f, mutedColor, false, Gravity.START
                 ).apply { setPadding(0, dp(8), 0, 0) })
             }
