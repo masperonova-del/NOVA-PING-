@@ -65,3 +65,17 @@ Show both values and the difference. Do not promise that an improvement in a dia
 - One unusually good sample is not a stable result.
 - Android's validated-connectivity flag does not identify every possible cause of a failed request.
 - A public cloud endpoint is not automatically the game server.
+
+
+## Phase breakdown added in 1.4.0
+
+The Route Engine opens a fresh HTTPS connection to each public control endpoint and reports these sequential phases separately:
+
+1. **DNS resolution:** time spent resolving the endpoint hostname.
+2. **TCP connection:** time to establish a TCP connection to the resolved address and service port.
+3. **TLS handshake:** time to negotiate the secure connection with hostname verification enabled.
+4. **HTTP first header:** time from sending the HTTP request until the first response status line is received.
+
+These are separate phase timings from one connection attempt, not a full router-by-router path trace. They can vary with DNS caching, server load, address selection, TLS behavior and the remote service. The HTTP status code is displayed even when it is not a successful 2xx response.
+
+The Decision Engine uses conservative, indicative thresholds to suggest what to investigate next. A single slow phase is not enough to identify the responsible network operator, prove congestion, or recommend a DNS/VPN change. Repeated measurements and controlled comparisons are required.
