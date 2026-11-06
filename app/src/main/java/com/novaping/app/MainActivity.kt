@@ -428,7 +428,9 @@ class MainActivity : Activity() {
                     failures = failuresByTarget.getValue(target).toMap()
                 )
             }
-            val ranked = outcomes.filter { it.metrics != null }.sortedBy { it.metrics!!.medianMs }
+            val ranked = outcomes.filter { outcome ->
+                outcome.metrics?.let { it.totalRequests - it.lostRequests >= 6 } == true
+            }.sortedBy { it.metrics!!.medianMs }
 
             runOnUiThread {
                 testButton.isEnabled = true
@@ -440,7 +442,11 @@ class MainActivity : Activity() {
                         13f, Color.rgb(255, 150, 130), false, Gravity.START
                     ))
                 } else {
-                    status.text = if (ranked.isNotEmpty()) "Comparaison terminée" else "Destinations inaccessibles"
+                    status.text = when {
+                        ranked.isNotEmpty() -> "Comparaison terminée"
+                        outcomes.any { it.metrics != null } -> "Données insuffisantes"
+                        else -> "Destinations inaccessibles"
+                    }
                 }
 
                 resultsContainer.addView(label("Profil : " + selectedGame, 13f, mutedColor, false, Gravity.START))
@@ -585,7 +591,7 @@ class MainActivity : Activity() {
                     val total = target.optInt("totalRequests", 9)
                     if (median != null) {
                         targetLines.add("$name : $median ms — échecs HTTPS $lost/$total")
-                        if (bestMedian == null || median < bestMedian) bestMedian = median
+                        if (total - lost >= 6 && (bestMedian == null || median < bestMedian)) bestMedian = median
                     } else {
                         targetLines.add("$name : aucune réponse — échecs HTTPS $lost/$total")
                     }
