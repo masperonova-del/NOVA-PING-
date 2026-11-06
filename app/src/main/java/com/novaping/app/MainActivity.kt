@@ -174,38 +174,52 @@ class MainActivity : Activity() {
 
     private fun runNetworkTest() {
         testButton.isEnabled = false
-        status.text = "Comparaison en cours…"
-        resultsContainer.removeAllViews()
-        resultsContainer.addView(label("Préparation des 24 mesures HTTPS…", 13f, mutedColor, false, Gravity.START))
         val selectedGame = gameSpinner.selectedItem?.toString() ?: "Autre jeu"
         val networkType = refreshNetworkInfo()
+        status.text = "Comparaison en cours…"
+        resultsContainer.removeAllViews()
+        resultsContainer.addView(label("Démarrage des tests…", 13f, mutedColor, false, Gravity.START))
         executor.execute {
+            var failure: String? = null
             val outcomes = mutableListOf<TargetResult>()
-            targets.forEachIndexed { index, target ->
-                runOnUiThread {
-                    resultsContainer.removeAllViews()
-                    resultsContainer.addView(label("Test ${index + 1}/${targets.size} : ${target.name}…", 13f, mutedColor, false, Gravity.START))
+            try {
+                targets.forEachIndexed { index, target ->
+                    runOnUiThread {
+                        status.text = "Test " + (index + 1) + "/3"
+                        resultsContainer.removeAllViews()
+                        resultsContainer.addView(label("Connexion à " + target.name + "…", 13f, mutedColor, false, Gravity.START))
+                    }
+                    HttpsProbe.measureOnce(target.endpoint)
+                    val samples = mutableListOf<Long>()
+                    repeat(5) { attempt ->
+                        runOnUiThread {
+                            resultsContainer.removeAllViews()
+                            resultsContainer.addView(label(target.name + " — mesure " + (attempt + 1) + "/5", 13f, mutedColor, false, Gravity.START))
+                        }
+                        HttpsProbe.measureOnce(target.endpoint)?.let { samples.add(it) }
+                        if (attempt < 4) Thread.sleep(150)
+                    }
+                    val metrics = if (samples.isNotEmpty()) PingMetrics.from(samples, 5) else null
+                    outcomes.add(TargetResult(target, metrics))
                 }
-                // Preparation request is deliberately excluded from the measured sample set.
-                HttpsProbe.measureOnce(target.endpoint)
-                val samples = mutableListOf<Long>()
-                repeat(8) { attempt ->
-                    HttpsProbe.measureOnce(target.endpoint)?.let { samples.add(it) }
-                    if (attempt < 7) Thread.sleep(250)
-                }
-                val metrics = if (samples.isNotEmpty()) PingMetrics.from(samples, 8) else null
-                outcomes.add(TargetResult(target, metrics))
+            } catch (error: Exception) {
+                failure = error.message ?: "Erreur inconnue pendant le diagnostic"
             }
             val ranked = outcomes.filter { it.metrics != null }.sortedBy { it.metrics!!.medianMs }
             runOnUiThread {
                 testButton.isEnabled = true
-                status.text = if (ranked.isNotEmpty()) "Comparaison terminée" else "Destinations inaccessibles"
                 resultsContainer.removeAllViews()
-                resultsContainer.addView(label("Profil : $selectedGame", 13f, mutedColor, false, Gravity.START))
+                if (failure != null) {
+                    status.text = "Diagnostic interrompu"
+                    resultsContainer.addView(label("Erreur : " + failure, 13f, Color.rgb(255, 150, 130), false, Gravity.START))
+                } else {
+                    status.text = if (ranked.isNotEmpty()) "Comparaison terminée" else "Destinations inaccessibles"
+                }
+                resultsContainer.addView(label("Profil : " + selectedGame, 13f, mutedColor, false, Gravity.START))
                 if (ranked.isNotEmpty()) {
                     val best = ranked.first()
                     resultsContainer.addView(label(
-                        "Destination la plus réactive : ${best.target.name}\nMédiane observée : ${best.metrics!!.medianMs} ms",
+                        "Destination la plus réactive : " + best.target.name + "\nMédiane observée : " + best.metrics!!.medianMs + " ms",
                         15f, accentColor, true, Gravity.START
                     ).apply { setPadding(0, dp(10), 0, dp(12)) })
                 }
@@ -214,20 +228,22 @@ class MainActivity : Activity() {
                     val targetCard = card()
                     targetCard.addView(label(outcome.target.name, 14f, Color.WHITE, true, Gravity.START))
                     val detail = if (metrics == null) {
-                        "Aucune réponse exploitable\nÉchecs : 8/8"
+                        "Aucune réponse exploitable\nÉchecs : 5/5"
                     } else {
-                        "Médiane : ${metrics.medianMs} ms\nP95 observé : ${metrics.p95Ms} ms\nVariation moyenne : ${metrics.jitterMs} ms\nSans réponse : ${metrics.lostRequests}/${metrics.totalRequests}"
+                        "Médiane : " + metrics.medianMs + " ms\nP95 observé : " + metrics.p95Ms + " ms\nVariation moyenne : " + metrics.jitterMs + " ms\nSans réponse : " + metrics.lostRequests + "/" + metrics.totalRequests
                     }
                     targetCard.addView(label(detail, 13f, if (metrics == null) Color.rgb(255, 150, 130) else mutedColor, false, Gravity.START)
                         .apply { setPadding(0, dp(6), 0, 0) })
                     resultsContainer.addView(targetCard)
                 }
-                resultsContainer.addView(label(
-                    "Comparaison de points de contrôle HTTPS uniquement : ce classement ne désigne pas le meilleur serveur ni la meilleure route de jeu.",
-                    11f, mutedColor, false, Gravity.START
-                ).apply { setPadding(0, dp(10), 0, 0) })
-                saveHistory(selectedGame, networkType, ranked.firstOrNull())
-                renderHistory()
+                if (failure == null) {
+                    resultsContainer.addView(label(
+                        "Comparaison HTTPS uniquement : ces résultats ne représentent pas le ping du jeu.",
+                        11f, mutedColor, false, Gravity.START
+                    ).apply { setPadding(0, dp(10), 0, 0) })
+                    saveHistory(selectedGame, networkType, ranked.firstOrNull())
+                    renderHistory()
+                }
                 refreshNetworkInfo()
             }
         }
