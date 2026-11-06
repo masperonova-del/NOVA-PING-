@@ -56,6 +56,23 @@ object DecisionEngine {
                 RecommendationConfidence.LOW
             )
         }
+        if (RouteProbeFailure.HTTP_RESPONSE in failures || RouteProbeFailure.UNKNOWN in failures) {
+            recommendations += NetworkRecommendation(
+                "Analyse incomplète",
+                "Au moins une destination n'a pas fourni une réponse exploitable. Les données disponibles ne suffisent pas pour conclure sur sa qualité.",
+                "Relancer le test et comparer plusieurs destinations avant de tirer une conclusion.",
+                RecommendationConfidence.LOW
+            )
+        }
+        val nonSuccessHttp = outcomes.filter { it.httpStatus != null && it.httpStatus !in 200..299 }
+        if (nonSuccessHttp.isNotEmpty()) {
+            recommendations += NetworkRecommendation(
+                "Statut HTTP à examiner",
+                "Au moins un service a répondu avec un statut HTTP non 2xx. Le serveur a répondu, mais ce statut ne confirme pas que le point de contrôle a fonctionné comme prévu.",
+                "Vérifier le statut sur une autre session et ne pas assimiler cette réponse à une perte de paquets.",
+                RecommendationConfidence.MODERATE
+            )
+        }
         if (RouteProbeFailure.TLS_HANDSHAKE in failures) {
             recommendations += NetworkRecommendation(
                 "Négociation TLS échouée",
@@ -97,11 +114,19 @@ object DecisionEngine {
             )
         }
 
-        if (recommendations.isEmpty()) {
+        if (recommendations.isEmpty() && outcomes.isNotEmpty() && outcomes.all { it.completed && it.httpStatus in 200..299 }) {
             recommendations += NetworkRecommendation(
                 "Aucune anomalie majeure détectée sur ces points de contrôle",
                 "Les phases mesurées n'ont pas dépassé les seuils indicatifs du diagnostic.",
                 "Comparer avec d'autres sessions et, si possible, avec le réseau alternatif.",
+                RecommendationConfidence.LOW
+            )
+        }
+        if (recommendations.isEmpty()) {
+            recommendations += NetworkRecommendation(
+                "Données insuffisantes",
+                "Aucune mesure complète ne permet de formuler une recommandation fiable.",
+                "Vérifier la connexion puis relancer l'analyse.",
                 RecommendationConfidence.LOW
             )
         }
