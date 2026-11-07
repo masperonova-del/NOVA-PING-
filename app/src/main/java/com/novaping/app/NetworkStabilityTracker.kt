@@ -71,10 +71,12 @@ class NetworkStabilityTracker {
         val previous = wifiInternetValidated
         wifiInternetValidated = validated
         if (previous == null) return null
+        val recoveryStart = internetLostAt
         val recoveryDuration = if (validated && previous == false) {
-            internetLostAt?.let { (timestampMillis - it).coerceAtLeast(0) }
+            recoveryStart?.let { (timestampMillis - it).coerceAtLeast(0) }
         } else null
         if (!validated) internetLostAt = timestampMillis else internetLostAt = null
+        if (validated && previous == false && recoveryStart == null) return null
         return NetworkStabilityEvent(
             type = if (validated) NetworkStabilityEventType.INTERNET_RESTORED
                 else NetworkStabilityEventType.INTERNET_LOST,
