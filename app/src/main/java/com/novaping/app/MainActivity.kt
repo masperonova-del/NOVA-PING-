@@ -321,6 +321,7 @@ class MainActivity : Activity() {
         defaultNetworkCallback = null
         wifiNetworkCallback = null
         stabilityMonitorRegistered = false
+        stabilityTracker.reset()
         if (::stabilityStatus.isInitialized) {
             stabilityStatus.text = "Surveillance suspendue en arrière-plan"
         }
