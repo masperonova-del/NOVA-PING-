@@ -108,3 +108,16 @@ La version 1.5.0 ajoute une surveillance des changements réseau lorsque l'appli
 - Conserve uniquement les 20 événements les plus récents dans l'affichage de la session ; aucun historique de surveillance n'est envoyé à un serveur.
 
 **Limites :** la surveillance s'interrompt lorsque NOVA PING passe en arrière-plan. Les callbacks Android signalent l'état des réseaux connus du système ; ils ne révèlent pas nécessairement la cause radio exacte d'une coupure. Une perte de validation Internet n'est pas une perte de Wi-Fi. Aucun ping COD Mobile ni paquet du jeu n'est capturé.
+
+
+## Version 1.5.1 — Fiabilisation de la reprise du moniteur
+
+Correctif du suivi Wi-Fi après le passage de NOVA PING en arrière-plan :
+
+- Synchronise l'état Wi-Fi et le réseau actif avec l'état courant fourni par Android à chaque reprise.
+- Évite de journaliser une connexion Wi-Fi déjà présente comme une nouvelle connexion.
+- Signale séparément les états constatés à la reprise lorsque l'heure réelle du changement est inconnue.
+- Ne calcule une durée de récupération que lorsque la perte et le retour ont été observés pendant une même période de surveillance continue.
+- Ajoute des tests unitaires pour les reprises, les états inchangés et les durées inconnues.
+
+La surveillance reste limitée au premier plan. Les changements survenus pendant une pause ne peuvent pas être reconstruits avec précision.
