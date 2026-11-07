@@ -22,19 +22,33 @@ class NetworkStabilityTracker {
     private var wifiAvailable: Boolean? = null
     private var wifiInternetValidated: Boolean? = null
     private var defaultTransport: String? = null
+    private var wifiDisconnectedAt: Long? = null
+    private var internetLostAt: Long? = null
 
     @Synchronized
     fun onWifiAvailabilityChanged(available: Boolean, timestampMillis: Long): NetworkStabilityEvent? {
         require(timestampMillis >= 0)
         if (wifiAvailable == available) return null
+        val wasAvailable = wifiAvailable
         wifiAvailable = available
-        if (!available) wifiInternetValidated = null
+        if (!available) {
+            wifiDisconnectedAt = timestampMillis
+            wifiInternetValidated = null
+            internetLostAt = null
+        }
+        val recoveryDuration = if (available && wasAvailable == false) {
+            wifiDisconnectedAt?.let { (timestampMillis - it).coerceAtLeast(0) }
+        } else null
+        if (available) wifiDisconnectedAt = null
         return NetworkStabilityEvent(
             type = if (available) NetworkStabilityEventType.WIFI_CONNECTED
                 else NetworkStabilityEventType.WIFI_DISCONNECTED,
             timestampMillis = timestampMillis,
-            details = if (available) "Réseau Wi-Fi détecté par Android"
-                else "Réseau Wi-Fi perdu selon Android"
+            details = when {
+                !available -> "Réseau Wi-Fi perdu selon Android"
+                recoveryDuration != null -> "Wi-Fi rétabli après ${recoveryDuration / 1000.0} s"
+                else -> "Réseau Wi-Fi détecté par Android"
+            }
         )
     }
 
@@ -48,12 +62,19 @@ class NetworkStabilityTracker {
         val previous = wifiInternetValidated
         wifiInternetValidated = validated
         if (previous == null) return null
+        val recoveryDuration = if (validated && previous == false) {
+            internetLostAt?.let { (timestampMillis - it).coerceAtLeast(0) }
+        } else null
+        if (!validated) internetLostAt = timestampMillis else internetLostAt = null
         return NetworkStabilityEvent(
             type = if (validated) NetworkStabilityEventType.INTERNET_RESTORED
                 else NetworkStabilityEventType.INTERNET_LOST,
             timestampMillis = timestampMillis,
-            details = if (validated) "Internet à nouveau validé sur le Wi-Fi"
-                else "Wi-Fi présent, mais Internet n'est plus validé par Android"
+            details = when {
+                !validated -> "Wi-Fi présent, mais Internet n'est plus validé par Android"
+                recoveryDuration != null -> "Internet rétabli après ${recoveryDuration / 1000.0} s"
+                else -> "Internet validé sur le Wi-Fi"
+            }
         )
     }
 
