@@ -5,6 +5,35 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class NetworkStabilityTrackerTest {
+    @Test fun recordsPeriodicWifiAndInternetSnapshot() {
+        val tracker = NetworkStabilityTracker()
+        val event = tracker.periodicSnapshot(true, true, 60_000L)
+        assertEquals(NetworkStabilityEventType.PERIODIC_STATUS, event.type)
+        assertEquals(
+            "État périodique : Wi-Fi disponible · Internet validé par Android",
+            event.details
+        )
+        assertEquals(60_000L, event.timestampMillis)
+    }
+
+    @Test fun recordsPeriodicSnapshotWhenWifiHasNoValidatedInternet() {
+        val tracker = NetworkStabilityTracker()
+        val event = tracker.periodicSnapshot(true, false, 120_000L)
+        assertEquals(
+            "État périodique : Wi-Fi disponible · Internet non validé par Android",
+            event.details
+        )
+    }
+
+    @Test fun recordsPeriodicSnapshotWhenWifiIsUnavailable() {
+        val tracker = NetworkStabilityTracker()
+        val event = tracker.periodicSnapshot(false, null, 180_000L)
+        assertEquals(
+            "État périodique : aucun réseau Wi-Fi détecté",
+            event.details
+        )
+    }
+
     @Test fun detectsWifiDisconnectSeparately() {
         val tracker = NetworkStabilityTracker()
         assertEquals(
