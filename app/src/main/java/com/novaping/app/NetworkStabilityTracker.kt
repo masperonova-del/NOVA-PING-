@@ -23,6 +23,7 @@ class NetworkStabilityTracker {
     private var wifiInternetValidated: Boolean? = null
     private var defaultTransport: String? = null
 
+    @Synchronized
     fun onWifiAvailabilityChanged(available: Boolean, timestampMillis: Long): NetworkStabilityEvent? {
         require(timestampMillis >= 0)
         if (wifiAvailable == available) return null
@@ -37,6 +38,7 @@ class NetworkStabilityTracker {
         )
     }
 
+    @Synchronized
     fun onWifiInternetValidationChanged(
         validated: Boolean,
         timestampMillis: Long
@@ -55,6 +57,7 @@ class NetworkStabilityTracker {
         )
     }
 
+    @Synchronized
     fun onDefaultTransportChanged(
         transport: String,
         timestampMillis: Long
