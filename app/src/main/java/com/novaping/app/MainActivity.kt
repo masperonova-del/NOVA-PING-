@@ -266,7 +266,7 @@ class MainActivity : Activity() {
             NetworkStabilityEventType.WIFI_CONNECTED,
             NetworkStabilityEventType.DEFAULT_NETWORK_CHANGED -> accentColor
             NetworkStabilityEventType.INTERNET_STATUS ->
-                if (details.contains("validé", ignoreCase = true)) Color.rgb(100, 210, 150)
+                if (details.contains("validé", ignoreCase = true) && !details.contains("non validé", ignoreCase = true)) Color.rgb(100, 210, 150)
                 else Color.rgb(255, 185, 90)
             NetworkStabilityEventType.WIFI_STATUS ->
                 if (details.contains("aucun réseau", ignoreCase = true) ||
