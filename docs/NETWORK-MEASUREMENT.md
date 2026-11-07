@@ -91,3 +91,10 @@ NOVA PING uses Android `ConnectivityManager` callbacks while the app is in the f
 - Transition timestamps are used to report the observed time until Wi-Fi or Internet validation returns.
 
 These are operating-system network-state observations, not packet-level measurements. A lost Wi-Fi network callback does not identify whether the cause was weak signal, interference, router/repeater behavior or another radio/network event. A validation change does not prove that all Internet traffic is unreachable. Monitoring is active only while the app is in the foreground; the app does not run a hidden background service, inspect game traffic or claim to measure COD Mobile ping.
+
+
+## Foreground monitor resume handling (1.5.1)
+
+When NOVA PING returns to the foreground, it reads the current Wi-Fi and default-network snapshot before registering callbacks. An unchanged snapshot does not create a duplicate "Wi-Fi detected" event. If the state differs from the last observed state, the app labels it as a state found on resume and does not pretend to know when the change happened.
+
+Recovery durations are only calculated when both the loss and recovery callbacks were observed during one uninterrupted foreground monitoring period. A change that happened while the app was in the background has an unknown transition time and is reported without a fabricated duration.
