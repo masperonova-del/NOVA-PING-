@@ -7,7 +7,8 @@ enum class NetworkStabilityEventType {
     INTERNET_LOST,
     INTERNET_RESTORED,
     INTERNET_STATUS,
-    DEFAULT_NETWORK_CHANGED
+    DEFAULT_NETWORK_CHANGED,
+    PERIODIC_STATUS
 }
 
 data class NetworkStabilityEvent(
@@ -83,6 +84,31 @@ class NetworkStabilityTracker {
             )
         }
         return events
+    }
+
+    /** Records a periodic foreground snapshot without pretending it was a transition. */
+    @Synchronized
+    fun periodicSnapshot(
+        wifiAvailable: Boolean,
+        internetValidated: Boolean?,
+        timestampMillis: Long
+    ): NetworkStabilityEvent {
+        require(timestampMillis >= 0)
+        val details = when {
+            !wifiAvailable ->
+                "État périodique : aucun réseau Wi-Fi détecté"
+            internetValidated == true ->
+                "État périodique : Wi-Fi disponible · Internet validé par Android"
+            internetValidated == false ->
+                "État périodique : Wi-Fi disponible · Internet non validé par Android"
+            else ->
+                "État périodique : Wi-Fi disponible · validation Internet indisponible"
+        }
+        return NetworkStabilityEvent(
+            NetworkStabilityEventType.PERIODIC_STATUS,
+            timestampMillis,
+            details
+        )
     }
 
     @Synchronized
