@@ -3,6 +3,7 @@ package com.novaping.app
 enum class NetworkStabilityEventType {
     WIFI_CONNECTED,
     WIFI_DISCONNECTED,
+    WIFI_STATUS,
     INTERNET_LOST,
     INTERNET_RESTORED,
     INTERNET_STATUS,
@@ -16,10 +17,16 @@ data class NetworkStabilityEvent(
 )
 
 /**
- * Small state tracker fed by Android ConnectivityManager callbacks.
- * It records observed transitions; it does not infer game-server latency.
+ * Tracks Android network callbacks. State snapshots taken when foreground
+ * monitoring resumes are not treated as timed transitions.
  */
 class NetworkStabilityTracker {
+    private var wifiAvailable: Boolean? = null
+    private var wifiInternetValidated: Boolean? = null
+    private var defaultTransport: String? = null
+    private var wifiDisconnectedAt: Long? = null
+    private var internetLostAt: Long? = null
+
     @Synchronized
     fun reset() {
         wifiAvailable = null
@@ -29,14 +36,66 @@ class NetworkStabilityTracker {
         internetLostAt = null
     }
 
-    private var wifiAvailable: Boolean? = null
-    private var wifiInternetValidated: Boolean? = null
-    private var defaultTransport: String? = null
-    private var wifiDisconnectedAt: Long? = null
-    private var internetLostAt: Long? = null
+    /**
+     * Reconciles the current Android snapshot after monitoring was paused.
+     * Any changes during the pause have unknown timestamps, so no recovery
+     * duration is inferred from them.
+     */
+    @Synchronized
+    fun synchronizeWifiState(
+        available: Boolean,
+        internetValidated: Boolean?,
+        timestampMillis: Long
+    ): List<NetworkStabilityEvent> {
+        require(timestampMillis >= 0)
+        val previousAvailable = wifiAvailable
+        val previousValidated = wifiInternetValidated
+        wifiAvailable = available
+        wifiInternetValidated = if (available) internetValidated else null
+        wifiDisconnectedAt = null
+        internetLostAt = null
+
+        val events = mutableListOf<NetworkStabilityEvent>()
+        if (previousAvailable == null || previousAvailable != available) {
+            val detail = when {
+                previousAvailable == null && available ->
+                    "État initial : réseau Wi-Fi disponible"
+                previousAvailable == null ->
+                    "État initial : aucun réseau Wi-Fi disponible"
+                available ->
+                    "Wi-Fi disponible à la reprise ; heure de retour inconnue"
+                else ->
+                    "Wi-Fi indisponible à la reprise ; heure de perte inconnue"
+            }
+            events += NetworkStabilityEvent(
+                NetworkStabilityEventType.WIFI_STATUS, timestampMillis, detail
+            )
+        }
+        if (available && internetValidated != null &&
+            (previousAvailable == null || previousAvailable != available ||
+                previousValidated != internetValidated)
+        ) {
+            events += NetworkStabilityEvent(
+                NetworkStabilityEventType.INTERNET_STATUS,
+                timestampMillis,
+                if (internetValidated) "État Internet du Wi-Fi : validé par Android"
+                else "État Internet du Wi-Fi : non validé par Android"
+            )
+        }
+        return events
+    }
 
     @Synchronized
-    fun onWifiAvailabilityChanged(available: Boolean, timestampMillis: Long): NetworkStabilityEvent? {
+    fun synchronizeDefaultTransport(transport: String) {
+        require(transport.isNotBlank())
+        defaultTransport = transport
+    }
+
+    @Synchronized
+    fun onWifiAvailabilityChanged(
+        available: Boolean,
+        timestampMillis: Long
+    ): NetworkStabilityEvent? {
         require(timestampMillis >= 0)
         if (wifiAvailable == available) return null
         val wasAvailable = wifiAvailable
@@ -46,8 +105,9 @@ class NetworkStabilityTracker {
             wifiInternetValidated = null
             internetLostAt = null
         }
+        val recoveryStart = wifiDisconnectedAt
         val recoveryDuration = if (available && wasAvailable == false) {
-            wifiDisconnectedAt?.let { (timestampMillis - it).coerceAtLeast(0) }
+            recoveryStart?.let { (timestampMillis - it).coerceAtLeast(0) }
         } else null
         if (available) wifiDisconnectedAt = null
         return NetworkStabilityEvent(
@@ -57,6 +117,7 @@ class NetworkStabilityTracker {
             details = when {
                 !available -> "Réseau Wi-Fi perdu selon Android"
                 recoveryDuration != null -> "Wi-Fi rétabli après ${recoveryDuration / 1000.0} s"
+                wasAvailable == false -> "Wi-Fi de nouveau disponible ; durée de coupure inconnue"
                 else -> "Réseau Wi-Fi détecté par Android"
             }
         )
@@ -73,10 +134,10 @@ class NetworkStabilityTracker {
         wifiInternetValidated = validated
         if (previous == null) {
             return NetworkStabilityEvent(
-                type = NetworkStabilityEventType.INTERNET_STATUS,
-                timestampMillis = timestampMillis,
-                details = if (validated) "Internet validé sur le Wi-Fi"
-                    else "Wi-Fi présent, mais Internet non validé par Android"
+                NetworkStabilityEventType.INTERNET_STATUS,
+                timestampMillis,
+                if (validated) "Internet validé sur le Wi-Fi"
+                else "Wi-Fi présent, mais Internet non validé par Android"
             )
         }
         val recoveryStart = internetLostAt
@@ -86,9 +147,9 @@ class NetworkStabilityTracker {
         if (!validated) internetLostAt = timestampMillis else internetLostAt = null
         if (validated && previous == false && recoveryStart == null) {
             return NetworkStabilityEvent(
-                type = NetworkStabilityEventType.INTERNET_STATUS,
-                timestampMillis = timestampMillis,
-                details = "Internet validé sur le Wi-Fi"
+                NetworkStabilityEventType.INTERNET_STATUS,
+                timestampMillis,
+                "Internet validé sur le Wi-Fi ; durée de perte inconnue"
             )
         }
         return NetworkStabilityEvent(
@@ -114,9 +175,9 @@ class NetworkStabilityTracker {
         defaultTransport = transport
         if (previous == null || previous == transport) return null
         return NetworkStabilityEvent(
-            type = NetworkStabilityEventType.DEFAULT_NETWORK_CHANGED,
-            timestampMillis = timestampMillis,
-            details = "Réseau actif passé de $previous à $transport"
+            NetworkStabilityEventType.DEFAULT_NETWORK_CHANGED,
+            timestampMillis,
+            "Réseau actif passé de $previous à $transport"
         )
     }
 }
