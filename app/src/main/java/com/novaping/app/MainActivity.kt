@@ -6,7 +6,9 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.ConnectivityManager
+import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.Bundle
 import android.view.Gravity
 import android.view.ViewGroup
@@ -41,6 +43,13 @@ class MainActivity : Activity() {
     private lateinit var historyText: TextView
     private lateinit var routeButton: Button
     private lateinit var routeResults: LinearLayout
+    private lateinit var stabilityStatus: TextView
+    private lateinit var stabilityResults: LinearLayout
+
+    private val stabilityTracker = NetworkStabilityTracker()
+    private var defaultNetworkCallback: ConnectivityManager.NetworkCallback? = null
+    private var wifiNetworkCallback: ConnectivityManager.NetworkCallback? = null
+    private var stabilityMonitorRegistered = false
 
     private val backgroundColor = Color.rgb(10, 15, 27)
     private val panelColor = Color.rgb(21, 29, 47)
@@ -90,6 +99,23 @@ class MainActivity : Activity() {
         networkCard.addView(networkInfo)
         root.addView(networkCard)
         refreshNetworkInfo()
+
+        root.addView(sectionTitle("WI-FI STABILITY MONITOR"))
+        val stabilityCard = card()
+        stabilityCard.addView(label("Surveillance des coupures", 16f, Color.WHITE, true, Gravity.START))
+        stabilityCard.addView(label(
+            "Observe les changements du réseau Wi-Fi et la validation Internet par Android lorsque NOVA PING est au premier plan. La surveillance s'arrête en arrière-plan.",
+            12f, mutedColor, false, Gravity.START
+        ).apply { setPadding(0, dp(6), 0, dp(8)) })
+        stabilityStatus = label("Surveillance en attente…", 13f, accentColor, true, Gravity.START)
+        stabilityCard.addView(stabilityStatus)
+        stabilityResults = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(8), 0, 0)
+        }
+        stabilityResults.addView(label("Aucun événement observé.", 12f, mutedColor, false, Gravity.START))
+        stabilityCard.addView(stabilityResults)
+        root.addView(stabilityCard)
 
         root.addView(sectionTitle("PROFIL DE JEU"))
         val gameCard = card()
@@ -186,6 +212,128 @@ class MainActivity : Activity() {
 
         scroll.addView(root)
         setContentView(scroll)
+    }
+
+    private fun transportName(capabilities: NetworkCapabilities?): String = when {
+        capabilities == null -> "Aucun"
+        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> "VPN"
+        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
+        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "Données mobiles"
+        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet"
+        else -> "Autre"
+    }
+
+    private fun recordStabilityEvent(event: NetworkStabilityEvent?) {
+        if (event == null) return
+        runOnUiThread {
+            if (!::stabilityResults.isInitialized) return@runOnUiThread
+            val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+                .format(Date(event.timestampMillis))
+            stabilityResults.addView(label(
+                "$time — ${event.details}",
+                12f,
+                when (event.type) {
+                    NetworkStabilityEventType.WIFI_DISCONNECTED,
+                    NetworkStabilityEventType.INTERNET_LOST -> Color.rgb(255, 150, 130)
+                    NetworkStabilityEventType.INTERNET_RESTORED,
+                    NetworkStabilityEventType.WIFI_CONNECTED -> Color.rgb(100, 210, 150)
+                    NetworkStabilityEventType.DEFAULT_NETWORK_CHANGED -> mutedColor
+                },
+                false,
+                Gravity.START
+            ).apply { setPadding(0, dp(4), 0, dp(4)) })
+            while (stabilityResults.childCount > 20) stabilityResults.removeViewAt(0)
+        }
+    }
+
+    private fun registerStabilityMonitor() {
+        if (stabilityMonitorRegistered) return
+        val manager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+
+        defaultNetworkCallback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                val capabilities = manager.getNetworkCapabilities(network)
+                recordStabilityEvent(
+                    stabilityTracker.onDefaultTransportChanged(
+                        transportName(capabilities), System.currentTimeMillis()
+                    )
+                )
+            }
+
+            override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+                recordStabilityEvent(
+                    stabilityTracker.onDefaultTransportChanged(
+                        transportName(networkCapabilities), System.currentTimeMillis()
+                    )
+                )
+            }
+        }
+
+        wifiNetworkCallback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                recordStabilityEvent(
+                    stabilityTracker.onWifiAvailabilityChanged(true, System.currentTimeMillis())
+                )
+            }
+
+            override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+                if (networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+                    recordStabilityEvent(
+                        stabilityTracker.onWifiInternetValidationChanged(
+                            networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
+                            System.currentTimeMillis()
+                        )
+                    )
+                }
+            }
+
+            override fun onLost(network: Network) {
+                recordStabilityEvent(
+                    stabilityTracker.onWifiAvailabilityChanged(false, System.currentTimeMillis())
+                )
+            }
+        }
+
+        try {
+            manager.registerDefaultNetworkCallback(defaultNetworkCallback!!)
+            manager.registerNetworkCallback(
+                NetworkRequest.Builder()
+                    .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+                    .build(),
+                wifiNetworkCallback!!
+            )
+            stabilityMonitorRegistered = true
+            stabilityStatus.text = "Surveillance active au premier plan"
+        } catch (error: RuntimeException) {
+            stabilityStatus.text = "Surveillance indisponible : ${error.message ?: "erreur Android"}"
+            defaultNetworkCallback?.let { runCatching { manager.unregisterNetworkCallback(it) } }
+            wifiNetworkCallback?.let { runCatching { manager.unregisterNetworkCallback(it) } }
+            defaultNetworkCallback = null
+            wifiNetworkCallback = null
+        }
+    }
+
+    private fun unregisterStabilityMonitor() {
+        if (!stabilityMonitorRegistered) return
+        val manager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        defaultNetworkCallback?.let { runCatching { manager.unregisterNetworkCallback(it) } }
+        wifiNetworkCallback?.let { runCatching { manager.unregisterNetworkCallback(it) } }
+        defaultNetworkCallback = null
+        wifiNetworkCallback = null
+        stabilityMonitorRegistered = false
+        if (::stabilityStatus.isInitialized) {
+            stabilityStatus.text = "Surveillance suspendue en arrière-plan"
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (::stabilityStatus.isInitialized) registerStabilityMonitor()
+    }
+
+    override fun onStop() {
+        unregisterStabilityMonitor()
+        super.onStop()
     }
 
     private fun currentNetworkContext(): NetworkContext {
@@ -651,6 +799,7 @@ class MainActivity : Activity() {
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     override fun onDestroy() {
+        unregisterStabilityMonitor()
         executor.shutdownNow()
         super.onDestroy()
     }
