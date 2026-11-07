@@ -252,15 +252,6 @@ class MainActivity : Activity() {
         val manager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
         defaultNetworkCallback = object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: Network) {
-                val capabilities = manager.getNetworkCapabilities(network)
-                recordStabilityEvent(
-                    stabilityTracker.onDefaultTransportChanged(
-                        transportName(capabilities), System.currentTimeMillis()
-                    )
-                )
-            }
-
             override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
                 recordStabilityEvent(
                     stabilityTracker.onDefaultTransportChanged(
