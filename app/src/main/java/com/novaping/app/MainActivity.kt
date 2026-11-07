@@ -181,6 +181,40 @@ class MainActivity : Activity() {
         routeCard.addView(routeResults)
         root.addView(routeCard)
 
+        root.addView(sectionTitle("MOTEUR DE TUNNEL"))
+        val tunnelCard = card()
+        tunnelCard.addView(label(
+            "Moteur WireGuard intégré",
+            15f, Color.WHITE, true, Gravity.START
+        ))
+        val tunnelEngineStatus = label(
+            "Vérification du moteur…",
+            12f, accentColor, false, Gravity.START
+        ).apply { setPadding(0, dp(6), 0, 0) }
+        tunnelCard.addView(tunnelEngineStatus)
+        tunnelCard.addView(label(
+            "Cette vérification charge le moteur local. Aucun VPN n'est démarré et aucun trafic n'est redirigé : le relais NOVA n'est pas encore configuré.",
+            12f, mutedColor, false, Gravity.START
+        ).apply { setPadding(0, dp(6), 0, 0) })
+        root.addView(tunnelCard)
+        executor.execute {
+            val engineResult = runCatching {
+                WireGuardEngine.detectVersion(this@MainActivity)
+            }
+            runOnUiThread {
+                if (!isFinishing && !isDestroyed) {
+                    tunnelEngineStatus.text = engineResult.fold(
+                        onSuccess = { "Moteur chargé — WireGuard $it" },
+                        onFailure = { "Moteur non chargé : ${it.message ?: "erreur inconnue"}" }
+                    )
+                    tunnelEngineStatus.setTextColor(
+                        if (engineResult.isSuccess) Color.rgb(100, 210, 150)
+                        else Color.rgb(255, 150, 130)
+                    )
+                }
+            }
+        }
+
         root.addView(sectionTitle("HISTORIQUE LOCAL"))
         val historyCard = card()
         historyCard.addView(label("10 dernières comparaisons", 15f, Color.WHITE, true, Gravity.START))
