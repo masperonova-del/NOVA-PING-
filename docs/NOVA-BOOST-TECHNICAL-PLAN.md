@@ -77,14 +77,15 @@ The release gate requires repeatable A/B results on multiple sessions and networ
 
 ## Delivery milestones
 
-### M0 — Feasibility and design (this branch)
+### M0 — Feasibility and design (completed on this branch)
 - Preserve the 1.5.2 main branch unchanged.
 - Document Android VPN constraints, tunnel requirements, privacy and proof criteria.
-- Review the maintained tunnel implementation options and their licenses before selecting one.
+- Select the maintained WireGuard Android tunnel library as the preferred proof-of-concept engine, subject to build and license verification.
+- Record the decision in `docs/adr/0001-android-tunnel.md`.
 - Define the smallest safe test setup and its cost before provisioning infrastructure.
 
-### M1 — Android VPN proof of concept
-- Add a clearly labeled, opt-in VPN service on a separate development branch.
+### M1 — Android VPN proof of concept (next implementation milestone)
+- Add a clearly labeled, opt-in VPN service on this feature branch.
 - Establish and stop the local VPN interface correctly.
 - Route only a controlled test app or synthetic test traffic.
 - Verify that stopping/revoking the service restores normal networking.
