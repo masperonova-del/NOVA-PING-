@@ -53,6 +53,17 @@ class NetworkStabilityTrackerTest {
         assertEquals("Internet rétabli après 4.0 s", restored?.details)
     }
 
+    @Test fun resetStartsANewMonitoringBaseline() {
+        val tracker = NetworkStabilityTracker()
+        tracker.onWifiAvailabilityChanged(true, 100L)
+        tracker.onWifiAvailabilityChanged(false, 200L)
+        tracker.reset()
+        assertEquals(
+            "Réseau Wi-Fi détecté par Android",
+            tracker.onWifiAvailabilityChanged(true, 300L)?.details
+        )
+    }
+
     @Test fun recordsDefaultNetworkTransitionsOnlyAfterInitialState() {
         val tracker = NetworkStabilityTracker()
         assertNull(tracker.onDefaultTransportChanged("Wi-Fi", 100L))
