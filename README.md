@@ -95,3 +95,16 @@ La version de développement 1.4.1 conserve les quatre modules et corrige plusie
 Le Route Engine ne réalise pas encore un traceroute complet et ne mesure pas directement le ping des serveurs de match. Les phases sont mesurées vers des services publics de contrôle ; elles dépendent aussi du comportement de ces services. Chaque destination est testée sur trois cycles ; les statistiques sont calculées séparément par phase. Le P95 sur trois mesures reste descriptif et ne garantit pas la latence extrême. Les seuils de recommandation sont indicatifs et devront être calibrés sur davantage de mesures réelles. Les adresses retournées par DNS sont essayées en séquence jusqu'à ce qu'une connexion TCP réussisse.
 
 NOVA PING 1.4.1 ne modifie pas le routage de l'appareil et ne promet aucune réduction du ping en jeu. NOVA BOOST reste une phase de recherche séparée, soumise à des essais comparatifs et au consentement explicite de l'utilisateur.
+
+
+## Version 1.5.0 — Wi-Fi Stability Monitor
+
+La version 1.5.0 ajoute une surveillance des changements réseau lorsque l'application est au premier plan :
+
+- Détecte les événements de disponibilité/perte du réseau Wi-Fi signalés par Android.
+- Distingue la présence du Wi-Fi de la validation de l'accès Internet par Android.
+- Enregistre les changements du réseau par défaut (Wi-Fi, données mobiles, VPN ou autre).
+- Affiche les événements horodatés et la durée de récupération après une coupure Wi-Fi ou une perte de validation Internet.
+- Conserve uniquement les 20 événements les plus récents dans l'affichage de la session ; aucun historique de surveillance n'est envoyé à un serveur.
+
+**Limites :** la surveillance s'interrompt lorsque NOVA PING passe en arrière-plan. Les callbacks Android signalent l'état des réseaux connus du système ; ils ne révèlent pas nécessairement la cause radio exacte d'une coupure. Une perte de validation Internet n'est pas une perte de Wi-Fi. Aucun ping COD Mobile ni paquet du jeu n'est capturé.
