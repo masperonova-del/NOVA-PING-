@@ -114,8 +114,8 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(8), 0, 0)
         }
-        stabilityResults.addView(label("Aucun événement observé.", 12f, mutedColor, false, Gravity.START))
         stabilityCard.addView(stabilityResults)
+        renderStabilityHistory()
         root.addView(stabilityCard)
 
         root.addView(sectionTitle("PROFIL DE JEU"))
@@ -258,33 +258,75 @@ class MainActivity : Activity() {
         else -> "Autre"
     }
 
+    private fun stabilityEventColor(type: NetworkStabilityEventType, details: String): Int =
+        when (type) {
+            NetworkStabilityEventType.WIFI_DISCONNECTED,
+            NetworkStabilityEventType.INTERNET_LOST -> Color.rgb(255, 115, 105)
+            NetworkStabilityEventType.INTERNET_RESTORED -> Color.rgb(100, 210, 150)
+            NetworkStabilityEventType.WIFI_CONNECTED,
+            NetworkStabilityEventType.DEFAULT_NETWORK_CHANGED -> accentColor
+            NetworkStabilityEventType.INTERNET_STATUS ->
+                if (details.contains("validé", ignoreCase = true)) Color.rgb(100, 210, 150)
+                else Color.rgb(255, 185, 90)
+            NetworkStabilityEventType.WIFI_STATUS ->
+                if (details.contains("aucun réseau", ignoreCase = true) ||
+                    details.contains("indisponible", ignoreCase = true)) Color.rgb(255, 115, 105)
+                else accentColor
+        }
+
+    private fun renderStabilityHistory() {
+        if (!::stabilityResults.isInitialized) return
+        val events = try {
+            JSONArray(preferences.getString("stability_events", "[]"))
+        } catch (_: Exception) {
+            JSONArray()
+        }
+        stabilityResults.removeAllViews()
+        stabilityHasEvents = events.length() > 0
+        if (!stabilityHasEvents) {
+            stabilityResults.addView(label(
+                "Aucun événement observé pour le moment.",
+                12f, mutedColor, false, Gravity.START
+            ))
+            return
+        }
+        val start = maxOf(0, events.length() - 20)
+        for (i in start until events.length()) {
+            val item = events.optJSONObject(i) ?: continue
+            val type = runCatching {
+                NetworkStabilityEventType.valueOf(item.optString("type"))
+            }.getOrNull() ?: continue
+            val timestamp = item.optLong("timestamp", 0L)
+            val details = item.optString("details", "Événement réseau")
+            val time = SimpleDateFormat("dd/MM HH:mm:ss", Locale.getDefault())
+                .format(Date(timestamp))
+            stabilityResults.addView(label(
+                "$time — $details",
+                12f, stabilityEventColor(type, details), false, Gravity.START
+            ).apply { setPadding(0, dp(4), 0, dp(4)) })
+        }
+    }
+
     private fun recordStabilityEvent(event: NetworkStabilityEvent?) {
         if (event == null) return
         runOnUiThread {
             if (!::stabilityResults.isInitialized) return@runOnUiThread
-            val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
-                .format(Date(event.timestampMillis))
-            // Replace the empty-state placeholder as soon as the first real event arrives.
-            if (!stabilityHasEvents) {
-                stabilityResults.removeAllViews()
-                stabilityHasEvents = true
+            val history = try {
+                JSONArray(preferences.getString("stability_events", "[]"))
+            } catch (_: Exception) {
+                JSONArray()
             }
-            stabilityResults.addView(label(
-                "$time — ${event.details}",
-                12f,
-                when (event.type) {
-                    NetworkStabilityEventType.WIFI_DISCONNECTED,
-                    NetworkStabilityEventType.INTERNET_LOST -> Color.rgb(255, 150, 130)
-                    NetworkStabilityEventType.INTERNET_RESTORED,
-                    NetworkStabilityEventType.WIFI_CONNECTED -> Color.rgb(100, 210, 150)
-                    NetworkStabilityEventType.DEFAULT_NETWORK_CHANGED,
-                    NetworkStabilityEventType.INTERNET_STATUS,
-                    NetworkStabilityEventType.WIFI_STATUS -> accentColor
-                },
-                false,
-                Gravity.START
-            ).apply { setPadding(0, dp(4), 0, dp(4)) })
-            while (stabilityResults.childCount > 20) stabilityResults.removeViewAt(0)
+            history.put(JSONObject().apply {
+                put("type", event.type.name)
+                put("timestamp", event.timestampMillis)
+                put("details", event.details)
+            })
+            val trimmed = JSONArray()
+            for (i in maxOf(0, history.length() - 20) until history.length()) {
+                trimmed.put(history.get(i))
+            }
+            preferences.edit().putString("stability_events", trimmed.toString()).apply()
+            renderStabilityHistory()
         }
     }
 
@@ -534,9 +576,24 @@ class MainActivity : Activity() {
             caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet"
             else -> "Autre réseau"
         }
+        val hasNetwork = network != null && caps != null
+        val hasInternet = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
         val validated = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
         networkInfo.text = currentNetworkContext().summary() + "\nDiagnostic : ${currentNetworkPreflight().userMessage}"
-        if (::status.isInitialized) status.text = if (validated) "Connexion détectée" else "Connexion à vérifier"
+        if (::status.isInitialized) {
+            status.text = when {
+                !hasNetwork -> "Aucun réseau détecté"
+                validated -> "Internet confirmé par Android"
+                hasInternet -> "Réseau connecté — Internet à vérifier"
+                else -> "Connexion à vérifier"
+            }
+            status.setTextColor(when {
+                !hasNetwork -> Color.rgb(255, 115, 105)
+                validated -> Color.rgb(100, 210, 150)
+                transport == "Wi-Fi" -> accentColor
+                else -> Color.rgb(255, 185, 90)
+            })
+        }
         return transport
     }
 
@@ -560,6 +617,7 @@ class MainActivity : Activity() {
             return
         }
         status.text = "Comparaison en cours…"
+        status.setTextColor(accentColor)
         resultsContainer.removeAllViews()
         resultsContainer.addView(label("Préparation du diagnostic…", 13f, mutedColor, false, Gravity.START))
 
@@ -635,6 +693,7 @@ class MainActivity : Activity() {
                 resultsContainer.removeAllViews()
                 if (failure != null) {
                     status.text = "Diagnostic interrompu"
+                    status.setTextColor(Color.rgb(255, 115, 105))
                     resultsContainer.addView(label(
                         "Erreur : " + failure,
                         13f, Color.rgb(255, 150, 130), false, Gravity.START
@@ -645,6 +704,11 @@ class MainActivity : Activity() {
                         outcomes.any { it.metrics != null } -> "Données insuffisantes"
                         else -> "Destinations inaccessibles"
                     }
+                    status.setTextColor(when {
+                        ranked.isNotEmpty() -> Color.rgb(100, 210, 150)
+                        outcomes.any { it.metrics != null } -> Color.rgb(255, 185, 90)
+                        else -> Color.rgb(255, 115, 105)
+                    })
                 }
 
                 resultsContainer.addView(label("Profil : " + selectedGame, 13f, mutedColor, false, Gravity.START))
