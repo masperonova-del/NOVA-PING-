@@ -19,6 +19,15 @@ data class NetworkStabilityEvent(
  * It records observed transitions; it does not infer game-server latency.
  */
 class NetworkStabilityTracker {
+    @Synchronized
+    fun reset() {
+        wifiAvailable = null
+        wifiInternetValidated = null
+        defaultTransport = null
+        wifiDisconnectedAt = null
+        internetLostAt = null
+    }
+
     private var wifiAvailable: Boolean? = null
     private var wifiInternetValidated: Boolean? = null
     private var defaultTransport: String? = null
