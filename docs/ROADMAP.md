@@ -57,6 +57,18 @@
 - [ ] Calibrer les seuils sur un ensemble plus large de mesures répétées et d'appareils réels.
 - [ ] Comparer les recommandations avant/après et mesurer leurs effets.
 
+## Version 1.5.0 — Wi-Fi Stability Monitor
+
+- [x] Ajouter un suivi Android des réseaux Wi-Fi disponibles au premier plan.
+- [x] Distinguer perte du réseau Wi-Fi et perte de validation Internet lorsque le Wi-Fi reste présent.
+- [x] Enregistrer les changements du réseau par défaut.
+- [x] Horodater les transitions et calculer la durée de récupération observée.
+- [x] Ajouter des tests unitaires du suivi des transitions.
+- [ ] Vérifier sur appareil réel les événements de déconnexion/reconnexion et les délais de récupération.
+- [ ] Évaluer les limites des callbacks Android sur différents constructeurs et versions.
+
+**Limites :** la surveillance fonctionne au premier plan uniquement. Les événements reflètent les informations fournies par Android ; ils ne déterminent pas à eux seuls si la cause est le signal, le routeur, le répéteur ou l'opérateur. Aucun trafic du jeu n'est inspecté.
+
 ## Phase de recherche — NOVA BOOST
 
 - [ ] Étudier les coûts et la disponibilité d'infrastructures relais.
