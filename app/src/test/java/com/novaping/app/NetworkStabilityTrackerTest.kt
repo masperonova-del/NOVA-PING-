@@ -20,7 +20,10 @@ class NetworkStabilityTrackerTest {
     @Test fun distinguishesInternetLossWhileWifiRemainsConnected() {
         val tracker = NetworkStabilityTracker()
         tracker.onWifiAvailabilityChanged(true, 100L)
-        assertNull(tracker.onWifiInternetValidationChanged(true, 110L))
+        assertEquals(
+            NetworkStabilityEventType.INTERNET_STATUS,
+            tracker.onWifiInternetValidationChanged(true, 110L)?.type
+        )
         assertEquals(
             NetworkStabilityEventType.INTERNET_LOST,
             tracker.onWifiInternetValidationChanged(false, 200L)?.type
@@ -34,8 +37,14 @@ class NetworkStabilityTrackerTest {
     @Test fun doesNotCallInitialValidationARecovery() {
         val tracker = NetworkStabilityTracker()
         tracker.onWifiAvailabilityChanged(true, 100L)
-        assertNull(tracker.onWifiInternetValidationChanged(false, 110L))
-        assertNull(tracker.onWifiInternetValidationChanged(true, 200L))
+        assertEquals(
+            NetworkStabilityEventType.INTERNET_STATUS,
+            tracker.onWifiInternetValidationChanged(false, 110L)?.type
+        )
+        assertEquals(
+            NetworkStabilityEventType.INTERNET_STATUS,
+            tracker.onWifiInternetValidationChanged(true, 200L)?.type
+        )
     }
 
     @Test fun ignoresInternetChangesWhenWifiIsUnavailable() {
