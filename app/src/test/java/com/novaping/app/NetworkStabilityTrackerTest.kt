@@ -31,6 +31,13 @@ class NetworkStabilityTrackerTest {
         )
     }
 
+    @Test fun doesNotCallInitialValidationARecovery() {
+        val tracker = NetworkStabilityTracker()
+        tracker.onWifiAvailabilityChanged(true, 100L)
+        assertNull(tracker.onWifiInternetValidationChanged(false, 110L))
+        assertNull(tracker.onWifiInternetValidationChanged(true, 200L))
+    }
+
     @Test fun ignoresInternetChangesWhenWifiIsUnavailable() {
         val tracker = NetworkStabilityTracker()
         assertNull(tracker.onWifiInternetValidationChanged(false, 100L))
