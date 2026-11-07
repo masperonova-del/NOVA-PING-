@@ -57,6 +57,12 @@ Maintains structured profiles for supported games and an explicit evidence statu
 ### DIAGNOSTIC ENGINE
 Identifies relevant conditions such as network type changes, weak or unstable connectivity, and local device constraints. It should not claim access to private game internals.
 
+### WI-FI STABILITY MONITOR
+
+Uses `ConnectivityManager` callbacks while the activity is in the foreground. A Wi-Fi transport callback tracks when Android reports a Wi-Fi network becoming available or lost; its capabilities indicate whether Android currently validates Internet access over that Wi-Fi network. A default-network callback records transport changes such as Wi-Fi, cellular data or VPN.
+
+The state tracker timestamps transitions and calculates observed recovery duration after Wi-Fi loss or loss of Internet validation. It does not infer the physical cause of a disconnect, inspect packet payloads, or measure a game's server ping. Monitoring is unregistered when the activity moves to the background. Events are displayed locally for the current activity session.
+
 ### DECISION ENGINE
 Generates explainable recommendations from the active network context and repeated DNS/TCP/TLS/HTTP phase summaries. Thresholds require repeated samples and remain indicative; confidence is deliberately limited. Calibration across real devices and operator networks remains future work.
 
