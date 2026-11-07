@@ -52,7 +52,7 @@ class NetworkStabilityTrackerTest {
         assertNull(tracker.onWifiInternetValidationChanged(false, 100L))
     }
 
-    @Test fun reportsWifiRecoveryDuration() {
+    @Test fun reportsWifiRecoveryDurationWhenBothTransitionsWereObserved() {
         val tracker = NetworkStabilityTracker()
         tracker.onWifiAvailabilityChanged(true, 1_000L)
         tracker.onWifiAvailabilityChanged(false, 5_000L)
@@ -60,7 +60,35 @@ class NetworkStabilityTrackerTest {
         assertEquals("Wi-Fi rétabli après 3.5 s", restored?.details)
     }
 
-    @Test fun reportsInternetRecoveryDurationWithoutWifiDisconnect() {
+    @Test fun doesNotInventWifiRecoveryDurationAcrossMonitoringPause() {
+        val tracker = NetworkStabilityTracker()
+        tracker.synchronizeWifiState(true, true, 1_000L)
+        tracker.onWifiAvailabilityChanged(false, 2_000L)
+        val resumeEvents = tracker.synchronizeWifiState(true, true, 20_000L)
+        assertEquals(2, resumeEvents.size)
+        assertEquals(
+            "Wi-Fi disponible à la reprise ; heure de retour inconnue",
+            resumeEvents.first().details
+        )
+        assertEquals(
+            "État Internet du Wi-Fi : validé par Android",
+            resumeEvents.last().details
+        )
+        val nextLoss = tracker.onWifiAvailabilityChanged(false, 21_000L)
+        val nextRecovery = tracker.onWifiAvailabilityChanged(true, 22_000L)
+        assertEquals("Wi-Fi rétabli après 1.0 s", nextRecovery?.details)
+        assertEquals(NetworkStabilityEventType.WIFI_DISCONNECTED, nextLoss?.type)
+    }
+
+    @Test fun unchangedSnapshotOnResumeDoesNotCreateDuplicateConnectedEvents() {
+        val tracker = NetworkStabilityTracker()
+        val first = tracker.synchronizeWifiState(true, true, 1_000L)
+        val second = tracker.synchronizeWifiState(true, true, 5_000L)
+        assertEquals(2, first.size)
+        assertEquals(0, second.size)
+    }
+
+    @Test fun reportsInternetRecoveryDurationOnlyWhenObservedContinuously() {
         val tracker = NetworkStabilityTracker()
         tracker.onWifiAvailabilityChanged(true, 1_000L)
         tracker.onWifiInternetValidationChanged(true, 1_100L)
@@ -80,12 +108,11 @@ class NetworkStabilityTrackerTest {
         )
     }
 
-    @Test fun recordsDefaultNetworkTransitionsOnlyAfterInitialState() {
+    @Test fun defaultTransportSnapshotPreventsFalseTransitionOnResume() {
         val tracker = NetworkStabilityTracker()
-        assertNull(tracker.onDefaultTransportChanged("Wi-Fi", 100L))
+        tracker.synchronizeDefaultTransport("Wi-Fi")
         assertNull(tracker.onDefaultTransportChanged("Wi-Fi", 200L))
-        val event = tracker.onDefaultTransportChanged("4G", 300L)
+        val event = tracker.onDefaultTransportChanged("Données mobiles", 300L)
         assertEquals(NetworkStabilityEventType.DEFAULT_NETWORK_CHANGED, event?.type)
-        assertEquals("Réseau actif passé de Wi-Fi à 4G", event?.details)
     }
 }
