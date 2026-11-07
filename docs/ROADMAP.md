@@ -69,6 +69,14 @@
 
 **Limites :** la surveillance fonctionne au premier plan uniquement. Les événements reflètent les informations fournies par Android ; ils ne déterminent pas à eux seuls si la cause est le signal, le routeur, le répéteur ou l'opérateur. Aucun trafic du jeu n'est inspecté.
 
+## Correctif 1.5.1 — Reprise de surveillance
+
+- [x] Synchroniser l'état courant du Wi-Fi et du réseau actif lors du retour au premier plan.
+- [x] Éviter les faux événements de nouvelle connexion lorsque l'état n'a pas changé.
+- [x] Signaler explicitement les changements constatés après une pause dont l'heure exacte est inconnue.
+- [x] Ne calculer les durées de récupération que pour des transitions observées sans interruption de surveillance.
+- [x] Ajouter les tests unitaires correspondants.
+
 ## Phase de recherche — NOVA BOOST
 
 - [ ] Étudier les coûts et la disponibilité d'infrastructures relais.
