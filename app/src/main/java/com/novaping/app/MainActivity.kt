@@ -45,6 +45,7 @@ class MainActivity : Activity() {
     private lateinit var routeResults: LinearLayout
     private lateinit var stabilityStatus: TextView
     private lateinit var stabilityResults: LinearLayout
+    private var stabilityHasEvents = false
 
     private val stabilityTracker = NetworkStabilityTracker()
     private var defaultNetworkCallback: ConnectivityManager.NetworkCallback? = null
@@ -229,6 +230,11 @@ class MainActivity : Activity() {
             if (!::stabilityResults.isInitialized) return@runOnUiThread
             val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
                 .format(Date(event.timestampMillis))
+            // Replace the empty-state placeholder as soon as the first real event arrives.
+            if (!stabilityHasEvents) {
+                stabilityResults.removeAllViews()
+                stabilityHasEvents = true
+            }
             stabilityResults.addView(label(
                 "$time — ${event.details}",
                 12f,
