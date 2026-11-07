@@ -238,7 +238,8 @@ class MainActivity : Activity() {
                     NetworkStabilityEventType.INTERNET_RESTORED,
                     NetworkStabilityEventType.WIFI_CONNECTED -> Color.rgb(100, 210, 150)
                     NetworkStabilityEventType.DEFAULT_NETWORK_CHANGED,
-                    NetworkStabilityEventType.INTERNET_STATUS -> accentColor
+                    NetworkStabilityEventType.INTERNET_STATUS,
+                    NetworkStabilityEventType.WIFI_STATUS -> accentColor
                 },
                 false,
                 Gravity.START
@@ -247,9 +248,26 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun synchronizeStabilitySnapshot(manager: ConnectivityManager) {
+        val now = System.currentTimeMillis()
+        val wifiCapabilities = manager.allNetworks
+            .asSequence()
+            .mapNotNull { network -> manager.getNetworkCapabilities(network) }
+            .firstOrNull { it.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) }
+        stabilityTracker.synchronizeWifiState(
+            available = wifiCapabilities != null,
+            internetValidated = wifiCapabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
+            timestampMillis = now
+        ).forEach(::recordStabilityEvent)
+
+        val activeCapabilities = manager.activeNetwork?.let { manager.getNetworkCapabilities(it) }
+        stabilityTracker.synchronizeDefaultTransport(transportName(activeCapabilities))
+    }
+
     private fun registerStabilityMonitor() {
         if (stabilityMonitorRegistered) return
         val manager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        synchronizeStabilitySnapshot(manager)
 
         defaultNetworkCallback = object : ConnectivityManager.NetworkCallback() {
             override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
@@ -313,7 +331,6 @@ class MainActivity : Activity() {
         defaultNetworkCallback = null
         wifiNetworkCallback = null
         stabilityMonitorRegistered = false
-        stabilityTracker.reset()
         if (::stabilityStatus.isInitialized) {
             stabilityStatus.text = "Surveillance suspendue en arrière-plan"
         }
