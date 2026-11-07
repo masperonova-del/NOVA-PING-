@@ -10,6 +10,8 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
@@ -51,6 +53,28 @@ class MainActivity : Activity() {
     private var defaultNetworkCallback: ConnectivityManager.NetworkCallback? = null
     private var wifiNetworkCallback: ConnectivityManager.NetworkCallback? = null
     private var stabilityMonitorRegistered = false
+    private val stabilityHandler = Handler(Looper.getMainLooper())
+    private val stabilityRefreshIntervalMs = 60_000L
+    private val stabilityRefreshRunnable = object : Runnable {
+        override fun run() {
+            if (!stabilityMonitorRegistered || isFinishing || isDestroyed) return
+            val manager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val wifiCapabilities = manager.allNetworks
+                .asSequence()
+                .mapNotNull { network -> manager.getNetworkCapabilities(network) }
+                .firstOrNull { it.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) }
+            recordStabilityEvent(
+                stabilityTracker.periodicSnapshot(
+                    wifiAvailable = wifiCapabilities != null,
+                    internetValidated = wifiCapabilities?.hasCapability(
+                        NetworkCapabilities.NET_CAPABILITY_VALIDATED
+                    ),
+                    timestampMillis = System.currentTimeMillis()
+                )
+            )
+            stabilityHandler.postDelayed(this, stabilityRefreshIntervalMs)
+        }
+    }
 
     private val backgroundColor = Color.rgb(10, 15, 27)
     private val panelColor = Color.rgb(21, 29, 47)
@@ -105,7 +129,7 @@ class MainActivity : Activity() {
         val stabilityCard = card()
         stabilityCard.addView(label("Surveillance des coupures", 16f, Color.WHITE, true, Gravity.START))
         stabilityCard.addView(label(
-            "Observe les changements du réseau Wi-Fi et la validation Internet par Android lorsque NOVA PING est au premier plan. La surveillance s'arrête en arrière-plan.",
+            "Détecte immédiatement les changements du réseau et enregistre un état toutes les 60 secondes lorsque NOVA PING est au premier plan. La surveillance s'arrête en arrière-plan.",
             12f, mutedColor, false, Gravity.START
         ).apply { setPadding(0, dp(6), 0, dp(8)) })
         stabilityStatus = label("Surveillance en attente…", 13f, accentColor, true, Gravity.START)
@@ -272,6 +296,12 @@ class MainActivity : Activity() {
                 if (details.contains("aucun réseau", ignoreCase = true) ||
                     details.contains("indisponible", ignoreCase = true)) Color.rgb(255, 115, 105)
                 else accentColor
+            NetworkStabilityEventType.PERIODIC_STATUS -> when {
+                details.contains("aucun réseau", ignoreCase = true) -> Color.rgb(255, 115, 105)
+                details.contains("Internet validé", ignoreCase = true) -> Color.rgb(100, 210, 150)
+                details.contains("non validé", ignoreCase = true) -> Color.rgb(255, 185, 90)
+                else -> accentColor
+            }
         }
 
     private fun renderStabilityHistory() {
@@ -395,7 +425,9 @@ class MainActivity : Activity() {
                 wifiNetworkCallback!!
             )
             stabilityMonitorRegistered = true
-            stabilityStatus.text = "Surveillance active au premier plan"
+            stabilityStatus.text = "Surveillance active au premier plan · actualisation chaque minute"
+            stabilityHandler.removeCallbacks(stabilityRefreshRunnable)
+            stabilityHandler.postDelayed(stabilityRefreshRunnable, stabilityRefreshIntervalMs)
         } catch (error: RuntimeException) {
             stabilityStatus.text = "Surveillance indisponible : ${error.message ?: "erreur Android"}"
             defaultNetworkCallback?.let { runCatching { manager.unregisterNetworkCallback(it) } }
@@ -406,6 +438,7 @@ class MainActivity : Activity() {
     }
 
     private fun unregisterStabilityMonitor() {
+        stabilityHandler.removeCallbacks(stabilityRefreshRunnable)
         if (!stabilityMonitorRegistered) return
         val manager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         defaultNetworkCallback?.let { runCatching { manager.unregisterNetworkCallback(it) } }
