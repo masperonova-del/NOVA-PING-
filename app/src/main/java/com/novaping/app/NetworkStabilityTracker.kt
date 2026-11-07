@@ -5,6 +5,7 @@ enum class NetworkStabilityEventType {
     WIFI_DISCONNECTED,
     INTERNET_LOST,
     INTERNET_RESTORED,
+    INTERNET_STATUS,
     DEFAULT_NETWORK_CHANGED
 }
 
@@ -70,13 +71,26 @@ class NetworkStabilityTracker {
         if (wifiAvailable != true || wifiInternetValidated == validated) return null
         val previous = wifiInternetValidated
         wifiInternetValidated = validated
-        if (previous == null) return null
+        if (previous == null) {
+            return NetworkStabilityEvent(
+                type = NetworkStabilityEventType.INTERNET_STATUS,
+                timestampMillis = timestampMillis,
+                details = if (validated) "Internet validé sur le Wi-Fi"
+                    else "Wi-Fi présent, mais Internet non validé par Android"
+            )
+        }
         val recoveryStart = internetLostAt
         val recoveryDuration = if (validated && previous == false) {
             recoveryStart?.let { (timestampMillis - it).coerceAtLeast(0) }
         } else null
         if (!validated) internetLostAt = timestampMillis else internetLostAt = null
-        if (validated && previous == false && recoveryStart == null) return null
+        if (validated && previous == false && recoveryStart == null) {
+            return NetworkStabilityEvent(
+                type = NetworkStabilityEventType.INTERNET_STATUS,
+                timestampMillis = timestampMillis,
+                details = "Internet validé sur le Wi-Fi"
+            )
+        }
         return NetworkStabilityEvent(
             type = if (validated) NetworkStabilityEventType.INTERNET_RESTORED
                 else NetworkStabilityEventType.INTERNET_LOST,
