@@ -237,7 +237,8 @@ class MainActivity : Activity() {
                     NetworkStabilityEventType.INTERNET_LOST -> Color.rgb(255, 150, 130)
                     NetworkStabilityEventType.INTERNET_RESTORED,
                     NetworkStabilityEventType.WIFI_CONNECTED -> Color.rgb(100, 210, 150)
-                    NetworkStabilityEventType.DEFAULT_NETWORK_CHANGED -> mutedColor
+                    NetworkStabilityEventType.DEFAULT_NETWORK_CHANGED,
+                    NetworkStabilityEventType.INTERNET_STATUS -> accentColor
                 },
                 false,
                 Gravity.START
