@@ -72,6 +72,35 @@ class NetworkStabilityTrackerTest {
         )
     }
 
+
+    @Test fun recordsMobileDataAvailabilityAndInternetValidation() {
+        val tracker = NetworkStabilityTracker()
+        assertEquals(
+            NetworkStabilityEventType.MOBILE_DATA_CONNECTED,
+            tracker.onMobileAvailabilityChanged(true, 100L)?.type
+        )
+        assertEquals(
+            NetworkStabilityEventType.MOBILE_INTERNET_STATUS,
+            tracker.onMobileInternetValidationChanged(true, 120L)?.type
+        )
+        assertNull(tracker.onMobileInternetValidationChanged(true, 130L))
+        assertEquals(
+            NetworkStabilityEventType.MOBILE_DATA_DISCONNECTED,
+            tracker.onMobileAvailabilityChanged(false, 200L)?.type
+        )
+    }
+
+    @Test fun synchronizesMobileNetworkAtMonitorStartWithoutFalseTransition() {
+        val tracker = NetworkStabilityTracker()
+        val initial = tracker.synchronizeMobileState(true, true, 100L)
+        assertEquals(2, initial.size)
+        assertEquals(
+            "État initial : réseau de données mobiles disponible",
+            initial.first().details
+        )
+        assertNull(tracker.onMobileAvailabilityChanged(true, 200L))
+    }
+
     @Test fun detectsWifiDisconnectSeparately() {
         val tracker = NetworkStabilityTracker()
         assertEquals(
