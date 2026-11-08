@@ -12,6 +12,13 @@ class SampleStatisticsTest {
     }
 
     @Test
+    fun twentyFiveSamplesUseTwentyFourthValueForNearestRankP95() {
+        val result = SampleStatistics.summarize((1L..25L).toList())
+        assertEquals(13L, result.medianMs)
+        assertEquals(24L, result.p95ObservedMs)
+    }
+
+    @Test
     fun evenSampleMedianDoesNotOverflowWhenAddingLargeValues() {
         val result = SampleStatistics.summarize(listOf(Long.MAX_VALUE - 2L, Long.MAX_VALUE))
         assertEquals(Long.MAX_VALUE - 1L, result.medianMs)
