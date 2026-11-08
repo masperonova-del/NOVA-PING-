@@ -121,3 +121,15 @@ Une réponse HTTPS vers un service cloud n'est pas le ping du serveur de jeu. Un
 - [ ] Vérifier sur appareil réel l'affichage des 25 essais, les échecs et l'export CSV.
 
 **Limite :** les anciennes sessions enregistrées avant 1.9.0-dev ne contiennent que des résumés. Les mesures brutes ne sont disponibles que pour les diagnostics réalisés après installation de cette version.
+
+## Version 1.10.0-dev — Comparaison prudente des points de contrôle
+
+- [x] Distinguer le classement de fiabilité (connexions HTTPS complètes sur cinq essais) du classement des délais de phase.
+- [x] Ne classer la fiabilité que lorsque plusieurs destinations disposent chacune d'un lot complet de cinq essais.
+- [x] Signaler explicitement les données insuffisantes ou l'absence de gagnant clair.
+- [x] Comparer les sommes des médianes DNS, TCP, TLS et HTTP uniquement si chaque phase dispose d'au moins trois mesures réussies pour au moins deux destinations.
+- [x] Préciser que la somme des médianes de phase est indicative et n'est pas une mesure directe du temps total de connexion.
+- [x] Interdire toute assimilation du meilleur point de contrôle au meilleur serveur de jeu.
+- [x] Ajouter des tests unitaires pour les classements, les égalités et les données incomplètes.
+
+**Limite :** ces comparaisons portent uniquement sur les points de contrôle HTTPS publics. Elles ne mesurent ni le ping CODM, ni la route réelle du match, ni une amélioration de routage.
