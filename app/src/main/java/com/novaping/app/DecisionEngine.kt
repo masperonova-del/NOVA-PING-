@@ -109,8 +109,6 @@ object DecisionEngine {
             }
         }
 
-        addRouteComparisonRecommendations(aggregates, recommendations)
-
         val allHaveRepeatedSuccessfulResponses = aggregates.size == 3 && aggregates.all {
             it.sampleCount == MeasurementPlan.ROUTE_SAMPLES_PER_TARGET &&
                 it.completeSamples >= MeasurementPlan.MIN_COMPLETE_ROUTE_SAMPLES_FOR_CLEAN_RESULT && it.failures.isEmpty() &&
@@ -125,6 +123,8 @@ object DecisionEngine {
                 RecommendationConfidence.LOW
             )
         }
+        addRouteComparisonRecommendations(aggregates, recommendations)
+
         if (recommendations.isEmpty()) {
             recommendations += NetworkRecommendation(
                 "Données insuffisantes",
@@ -157,9 +157,6 @@ object DecisionEngine {
         )
         val best = byReliability[0]
         val second = byReliability[1]
-        val bestFailures = best.failures.values.sum()
-        val secondFailures = second.failures.values.sum()
-
         when {
             best.completeSamples < 2 -> recommendations += NetworkRecommendation(
                 "Données insuffisantes pour classer la fiabilité",
@@ -167,8 +164,7 @@ object DecisionEngine {
                 "Répéter l'analyse dans les mêmes conditions. Ne pas choisir une destination sur la base de ces seuls résultats.",
                 RecommendationConfidence.LOW
             )
-            best.completeSamples > second.completeSamples ||
-                (best.completeSamples == second.completeSamples && bestFailures < secondFailures) -> {
+            best.completeSamples > second.completeSamples -> {
                 recommendations += NetworkRecommendation(
                     "Point de contrôle le plus fiable dans cet échantillon",
                     "${best.host} a obtenu ${best.completeSamples}/${best.sampleCount} connexions HTTPS complètes, contre ${second.completeSamples}/${second.sampleCount} pour ${second.host}. Ce classement concerne uniquement ces points de contrôle.",
