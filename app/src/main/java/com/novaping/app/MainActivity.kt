@@ -5,6 +5,8 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
@@ -30,6 +32,7 @@ import java.util.Locale
 import java.util.concurrent.Executors
 
 private const val MAX_STABILITY_EVENTS = 15
+private const val ACTION_STABILITY_HISTORY_UPDATED = "com.novaping.app.action.STABILITY_HISTORY_UPDATED"
 
 private data class ProbeTarget(val name: String, val endpoint: String)
 private data class TargetResult(
@@ -43,6 +46,14 @@ private data class TargetResult(
 
 class MainActivity : Activity() {
     private val executor = Executors.newSingleThreadExecutor()
+    private var stabilityReceiverRegistered = false
+    private val stabilityHistoryReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == ACTION_STABILITY_HISTORY_UPDATED) {
+                refreshStabilityMonitorUi()
+            }
+        }
+    }
     private lateinit var status: TextView
     private lateinit var networkInfo: TextView
     private lateinit var testButton: Button
@@ -437,6 +448,29 @@ class MainActivity : Activity() {
     override fun onStart() {
         super.onStart()
         refreshStabilityMonitorUi()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (!stabilityReceiverRegistered) {
+            val filter = IntentFilter(ACTION_STABILITY_HISTORY_UPDATED)
+            if (Build.VERSION.SDK_INT >= 33) {
+                registerReceiver(stabilityHistoryReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("DEPRECATION")
+                registerReceiver(stabilityHistoryReceiver, filter)
+            }
+            stabilityReceiverRegistered = true
+        }
+        refreshStabilityMonitorUi()
+    }
+
+    override fun onPause() {
+        if (stabilityReceiverRegistered) {
+            unregisterReceiver(stabilityHistoryReceiver)
+            stabilityReceiverRegistered = false
+        }
+        super.onPause()
     }
 
     private fun currentNetworkContext(): NetworkContext {
