@@ -91,23 +91,29 @@ class NetworkStabilityTracker {
     fun periodicSnapshot(
         wifiAvailable: Boolean,
         internetValidated: Boolean?,
+        activeTransport: String,
+        activeInternetAvailable: Boolean,
+        activeInternetValidated: Boolean,
         timestampMillis: Long
     ): NetworkStabilityEvent {
         require(timestampMillis >= 0)
-        val details = when {
-            !wifiAvailable ->
-                "État périodique : aucun réseau Wi-Fi détecté"
-            internetValidated == true ->
-                "État périodique : Wi-Fi disponible · Internet validé par Android"
-            internetValidated == false ->
-                "État périodique : Wi-Fi disponible · Internet non validé par Android"
-            else ->
-                "État périodique : Wi-Fi disponible · validation Internet indisponible"
+        require(activeTransport.isNotBlank())
+        val activeDetails = when {
+            activeTransport == "Aucun" -> "aucun réseau actif"
+            activeInternetValidated -> "$activeTransport · Internet validé par Android"
+            activeInternetAvailable -> "$activeTransport · Internet non validé par Android"
+            else -> "$activeTransport · accès Internet non confirmé"
+        }
+        val wifiDetails = when {
+            !wifiAvailable -> "Wi-Fi absent"
+            internetValidated == true -> "Wi-Fi présent et validé"
+            internetValidated == false -> "Wi-Fi présent mais non validé"
+            else -> "état Internet du Wi-Fi inconnu"
         }
         return NetworkStabilityEvent(
             NetworkStabilityEventType.PERIODIC_STATUS,
             timestampMillis,
-            details
+            "État périodique : réseau actif $activeDetails | $wifiDetails"
         )
     }
 
