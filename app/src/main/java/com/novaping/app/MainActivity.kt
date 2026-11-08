@@ -313,7 +313,13 @@ class MainActivity : Activity() {
             NetworkStabilityEventType.INTERNET_LOST -> Color.rgb(255, 115, 105)
             NetworkStabilityEventType.INTERNET_RESTORED -> Color.rgb(100, 210, 150)
             NetworkStabilityEventType.WIFI_CONNECTED,
+            NetworkStabilityEventType.MOBILE_DATA_CONNECTED,
             NetworkStabilityEventType.DEFAULT_NETWORK_CHANGED -> accentColor
+            NetworkStabilityEventType.MOBILE_DATA_DISCONNECTED -> Color.rgb(255, 115, 105)
+            NetworkStabilityEventType.MOBILE_INTERNET_STATUS ->
+                if (details.contains("validé", ignoreCase = true) &&
+                    !details.contains("non validé", ignoreCase = true)) Color.rgb(100, 210, 150)
+                else Color.rgb(255, 185, 90)
             NetworkStabilityEventType.INTERNET_STATUS ->
                 if (details.contains("validé", ignoreCase = true) && !details.contains("non validé", ignoreCase = true)) Color.rgb(100, 210, 150)
                 else Color.rgb(255, 185, 90)
