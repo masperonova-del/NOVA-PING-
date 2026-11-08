@@ -42,6 +42,7 @@ class NetworkMonitorService : Service() {
     private lateinit var connectivityManager: ConnectivityManager
     private var defaultCallback: ConnectivityManager.NetworkCallback? = null
     private var wifiCallback: ConnectivityManager.NetworkCallback? = null
+    private var mobileCallback: ConnectivityManager.NetworkCallback? = null
     private var monitoring = false
 
     private val sampleRunnable = object : Runnable {
@@ -122,6 +123,12 @@ class NetworkMonitorService : Service() {
             internetValidated = wifi?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
             timestampMillis = now
         ).forEach(::recordEvent)
+        val mobile = currentMobileCapabilities()
+        tracker.synchronizeMobileState(
+            available = mobile != null,
+            internetValidated = mobile?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
+            timestampMillis = now
+        ).forEach(::recordEvent)
         tracker.synchronizeDefaultTransport(transportName(currentActiveCapabilities()))
 
         defaultCallback = object : ConnectivityManager.NetworkCallback() {
@@ -157,6 +164,32 @@ class NetworkMonitorService : Service() {
                 .build(),
             wifiCallback!!
         )
+        mobileCallback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                recordEvent(tracker.onMobileAvailabilityChanged(true, System.currentTimeMillis()))
+            }
+
+            override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+                if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) {
+                    recordEvent(
+                        tracker.onMobileInternetValidationChanged(
+                            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
+                            System.currentTimeMillis()
+                        )
+                    )
+                }
+            }
+
+            override fun onLost(network: Network) {
+                recordEvent(tracker.onMobileAvailabilityChanged(false, System.currentTimeMillis()))
+            }
+        }
+        connectivityManager.registerNetworkCallback(
+            NetworkRequest.Builder()
+                .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
+                .build(),
+            mobileCallback!!
+        )
 
         monitoring = true
         preferences.edit()
@@ -176,6 +209,12 @@ class NetworkMonitorService : Service() {
 
     private fun currentActiveCapabilities(): NetworkCapabilities? =
         connectivityManager.activeNetwork?.let { connectivityManager.getNetworkCapabilities(it) }
+
+    private fun currentMobileCapabilities(): NetworkCapabilities? =
+        connectivityManager.allNetworks
+            .asSequence()
+            .mapNotNull { connectivityManager.getNetworkCapabilities(it) }
+            .firstOrNull { it.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) }
 
     private fun transportName(capabilities: NetworkCapabilities?): String = when {
         capabilities == null -> "Aucun"
@@ -225,8 +264,10 @@ class NetworkMonitorService : Service() {
         handler.removeCallbacks(sampleRunnable)
         defaultCallback?.let { runCatching { connectivityManager.unregisterNetworkCallback(it) } }
         wifiCallback?.let { runCatching { connectivityManager.unregisterNetworkCallback(it) } }
+        mobileCallback?.let { runCatching { connectivityManager.unregisterNetworkCallback(it) } }
         defaultCallback = null
         wifiCallback = null
+        mobileCallback = null
         preferences.edit().putBoolean("stability_monitor_running", false).apply()
     }
 
