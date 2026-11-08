@@ -121,3 +121,16 @@ Correctif du suivi Wi-Fi après le passage de NOVA PING en arrière-plan :
 - Ajoute des tests unitaires pour les reprises, les états inchangés et les durées inconnues.
 
 La surveillance reste limitée au premier plan. Les changements survenus pendant une pause ne peuvent pas être reconstruits avec précision.
+
+
+## Version 1.8.0-dev — Renforcement des mesures
+
+- Le diagnostic HTTPS passe à cinq cycles indépendants de cinq mesures par destination, soit 25 tentatives planifiées par destination.
+- L'ordre des destinations continue de tourner entre les cycles afin de limiter le biais d'ordre.
+- Le nombre réellement tenté est enregistré : une session interrompue n'est plus présentée comme si les 25 requêtes avaient été exécutées.
+- Une destination n'est classée que si les 25 tentatives ont été exécutées et qu'au moins 20 réponses ont abouti (80 %).
+- Les diagnostics de régularité exigent au moins 15 réponses exploitables ; en dessous, le résultat reste « Données insuffisantes ».
+- L'analyse DNS/TCP/TLS/HTTP passe à cinq essais par destination. Son P95 de phase reste le maximum observé sur cinq échantillons et doit être interprété avec prudence.
+- Les compteurs, l'historique et les tests sont alignés sur le nouveau plan de mesure.
+
+Cette version ne mesure toujours pas directement le ping d'un serveur de jeu et ne modifie pas le routage réseau.
