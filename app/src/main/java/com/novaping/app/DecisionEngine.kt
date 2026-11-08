@@ -110,8 +110,9 @@ object DecisionEngine {
         }
 
         val allHaveRepeatedSuccessfulResponses = aggregates.size == 3 && aggregates.all {
-            it.sampleCount == 3 && it.completeSamples >= 2 && it.failures.isEmpty() &&
-                it.httpStatuses.filterKeys { code -> code in 200..299 }.values.sum() >= 2 &&
+            it.sampleCount == MeasurementPlan.ROUTE_SAMPLES_PER_TARGET &&
+                it.completeSamples >= MeasurementPlan.MIN_COMPLETE_ROUTE_SAMPLES_FOR_CLEAN_RESULT && it.failures.isEmpty() &&
+                it.httpStatuses.filterKeys { code -> code in 200..299 }.values.sum() >= MeasurementPlan.MIN_COMPLETE_ROUTE_SAMPLES_FOR_CLEAN_RESULT &&
                 it.httpStatuses.filterKeys { code -> code !in 200..299 }.values.sum() == 0
         }
         if (recommendations.isEmpty() && allHaveRepeatedSuccessfulResponses) {
