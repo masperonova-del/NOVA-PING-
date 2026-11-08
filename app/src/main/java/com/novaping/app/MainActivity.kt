@@ -1,7 +1,9 @@
 package com.novaping.app
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Context
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -20,6 +22,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
+import android.widget.Toast
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -35,7 +38,8 @@ private data class TargetResult(
     val metrics: PingMetrics?,
     val attemptedRequests: Int,
     val roundMedians: List<Long>,
-    val failures: Map<ProbeFailure, Int>
+    val failures: Map<ProbeFailure, Int>,
+    val cycleOutcomes: List<List<ProbeOutcome>>
 )
 
 class MainActivity : Activity() {
@@ -51,6 +55,8 @@ class MainActivity : Activity() {
     private lateinit var stabilityStatus: TextView
     private lateinit var stabilityResults: LinearLayout
     private var stabilityHasEvents = false
+    private var pendingCsvExport: String? = null
+    private val exportRequestCode = 9104
 
     private val stabilityTracker = NetworkStabilityTracker()
     private var defaultNetworkCallback: ConnectivityManager.NetworkCallback? = null
@@ -261,6 +267,35 @@ class MainActivity : Activity() {
         historyCard.addView(historyText)
         root.addView(historyCard)
         renderHistory()
+
+        root.addView(sectionTitle("DÉTAILS DES MESURES"))
+        val measurementDetailCard = card()
+        measurementDetailCard.addView(label(
+            "Consulte les tentatives individuelles de la dernière comparaison et les cinq essais de chaque phase DNS, TCP, TLS et HTTP.",
+            12f, mutedColor, false, Gravity.START
+        ).apply { setPadding(0, 0, 0, dp(10)) })
+        measurementDetailCard.addView(Button(this).apply {
+            text = "VOIR LES MESURES HTTPS"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            setBackgroundTintList(android.content.res.ColorStateList.valueOf(accentColor))
+            setOnClickListener { showLatestMeasurementDetails() }
+        })
+        measurementDetailCard.addView(Button(this).apply {
+            text = "VOIR LES PHASES DNS / TCP / TLS / HTTP"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            setBackgroundTintList(android.content.res.ColorStateList.valueOf(accentColor))
+            setOnClickListener { showLatestRouteDetails() }
+        })
+        measurementDetailCard.addView(Button(this).apply {
+            text = "EXPORTER LES DONNÉES CSV"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            setBackgroundTintList(android.content.res.ColorStateList.valueOf(accentColor))
+            setOnClickListener { exportLatestMeasurements() }
+        })
+        root.addView(measurementDetailCard)
 
         root.addView(sectionTitle("FEUILLE DE ROUTE"))
         val roadmapCard = card()
@@ -536,6 +571,7 @@ class MainActivity : Activity() {
                 interrupted = error.message ?: "Erreur inconnue pendant l'analyse"
             }
 
+            saveRouteDetails(samplesByTarget)
             val aggregates = targets.mapNotNull { target ->
                 samplesByTarget.getValue(target).takeIf { it.isNotEmpty() }
                     ?.let { RouteStatistics.aggregate(it) }
@@ -671,6 +707,7 @@ class MainActivity : Activity() {
             var failure: String? = null
             val samplesByTarget = targets.associateWith { mutableListOf<Long>() }
             val roundMediansByTarget = targets.associateWith { mutableListOf<Long>() }
+            val cycleOutcomesByTarget = targets.associateWith { mutableListOf<List<ProbeOutcome>>() }
             val failuresByTarget = targets.associateWith { mutableMapOf<ProbeFailure, Int>() }
             val attemptsByTarget = targets.associateWith { 0 }.toMutableMap()
             var completedCycles = 0
@@ -693,6 +730,7 @@ class MainActivity : Activity() {
                         }
 
                         val roundSamples = mutableListOf<Long>()
+                        val roundOutcomes = mutableListOf<ProbeOutcome>()
                         repeat(MeasurementPlan.HTTPS_REQUESTS_PER_CYCLE) { attempt ->
                             runOnUiThread {
                                 resultsContainer.removeAllViews()
@@ -703,6 +741,7 @@ class MainActivity : Activity() {
                             }
                             attemptsByTarget[target] = attemptsByTarget.getValue(target) + 1
                             val probe = HttpsProbe.measureOnce(target.endpoint)
+                            roundOutcomes.add(probe)
                             if (probe.elapsedMs != null) {
                                 roundSamples.add(probe.elapsedMs)
                             } else {
@@ -713,6 +752,7 @@ class MainActivity : Activity() {
                             if (attempt < MeasurementPlan.HTTPS_REQUESTS_PER_CYCLE - 1) Thread.sleep(150)
                         }
                         samplesByTarget.getValue(target).addAll(roundSamples)
+                        cycleOutcomesByTarget.getValue(target).add(roundOutcomes.toList())
                         if (roundSamples.isNotEmpty()) {
                             roundMediansByTarget.getValue(target).add(
                                 PingMetrics.from(roundSamples, MeasurementPlan.HTTPS_REQUESTS_PER_CYCLE).medianMs
@@ -732,7 +772,8 @@ class MainActivity : Activity() {
                     metrics = if (samples.isNotEmpty()) PingMetrics.from(samples, attemptsByTarget.getValue(target)) else null,
                     attemptedRequests = attemptsByTarget.getValue(target),
                     roundMedians = roundMediansByTarget.getValue(target),
-                    failures = failuresByTarget.getValue(target).toMap()
+                    failures = failuresByTarget.getValue(target).toMap(),
+                    cycleOutcomes = cycleOutcomesByTarget.getValue(target).toList()
                 )
             }
             val ranked = outcomes.filter { outcome ->
@@ -855,6 +896,19 @@ class MainActivity : Activity() {
                         put("lostRequests", metrics?.lostRequests ?: outcome.attemptedRequests)
                         put("totalRequests", metrics?.totalRequests ?: outcome.attemptedRequests)
                         put("cycleMedians", JSONArray(outcome.roundMedians))
+                        put("attempts", JSONArray().apply {
+                            outcome.cycleOutcomes.forEachIndexed { cycleIndex, cycle ->
+                                cycle.forEachIndexed { attemptIndex, probe ->
+                                    put(JSONObject().apply {
+                                        put("cycle", cycleIndex + 1)
+                                        put("attempt", attemptIndex + 1)
+                                        put("elapsedMs", probe.elapsedMs ?: JSONObject.NULL)
+                                        put("httpCode", probe.httpCode ?: JSONObject.NULL)
+                                        put("failure", probe.failure?.name ?: JSONObject.NULL)
+                                    })
+                                }
+                            }
+                        })
                         put("failureCategories", JSONObject().apply {
                             outcome.failures.forEach { (failure, count) -> put(failure.name, count) }
                         })
