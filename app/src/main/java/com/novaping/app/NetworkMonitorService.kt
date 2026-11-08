@@ -257,6 +257,7 @@ class NetworkMonitorService : Service() {
             trimmed.put(history.get(index))
         }
         preferences.edit().putString("stability_events", trimmed.toString()).apply()
+        sendBroadcast(Intent("com.novaping.app.action.STABILITY_HISTORY_UPDATED").setPackage(packageName))
     }
 
     private fun stopMonitoring() {
