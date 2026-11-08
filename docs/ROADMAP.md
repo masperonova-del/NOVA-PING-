@@ -97,3 +97,14 @@ Une fonction n'est considérée comme terminée que lorsque :
 ## Règle produit
 
 Une réponse HTTPS vers un service cloud n'est pas le ping du serveur de jeu. Un échec de requête HTTPS n'est pas automatiquement une perte de paquets IP. Un DNS différent ou un VPN ne constitue pas une optimisation tant qu'un gain réel n'a pas été mesuré.
+
+
+## Version 1.8.0-dev — Renforcement des mesures
+
+- [x] Centraliser le plan de mesure : cinq cycles HTTPS et cinq tentatives par cycle (25 par destination).
+- [x] Utiliser le P95 nearest-rank sur 25 mesures (24e valeur ordonnée).
+- [x] Enregistrer le nombre réellement tenté afin de ne pas transformer une interruption en fausses pertes.
+- [x] Exiger au moins 20 réponses sur 25 et un lot complet avant de classer une destination.
+- [x] Exiger 15 réponses exploitables avant d'évaluer la régularité HTTPS.
+- [x] Porter l'analyse de phase à cinq essais par destination et expliciter les limites du P95 sur cinq valeurs.
+- [x] Ajouter des tests sur le plan d'échantillonnage et les seuils de comparabilité.
