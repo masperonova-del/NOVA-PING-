@@ -29,6 +29,6 @@ class MeasurementCsvTest {
         val csv = MeasurementCsv.toCsv(listOf(
             MeasurementCsvRow("HTTPS", "now", "Cloudflare, Inc.", "1", "1", "HTTPS", null, null, "TLS \"alert\"\nfailed")
         ))
-        assertEquals("\"HTTPS\",now,\"Cloudflare, Inc.\",1,1,HTTPS,,,\"TLS \"\"alert\"\"\nfailed\"", csv.trimEnd())
+        assertEquals("HTTPS,now,\"Cloudflare, Inc.\",1,1,HTTPS,,,\"TLS \"\"alert\"\"\nfailed\"", csv.trimEnd())
     }
 }
