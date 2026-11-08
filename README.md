@@ -144,3 +144,12 @@ Cette version ne mesure toujours pas directement le ping d'un serveur de jeu et 
 - Ajoute l'export CSV local des mesures HTTPS et des phases réseau.
 - Les dix dernières sessions de comparaison restent conservées localement ; les sessions antérieures à cette version ne contiennent pas rétroactivement les mesures brutes.
 - Les résultats exportés restent des mesures de points de contrôle HTTPS et ne représentent pas le ping des serveurs de match.
+
+## Version 1.10.0-dev — Comparaison prudente des points de contrôle
+
+Le Decision Engine distingue désormais deux lectures indépendantes :
+
+- **Fiabilité observée** : nombre de connexions HTTPS complètes parmi cinq essais par destination.
+- **Délais des phases** : somme indicative des médianes DNS, TCP, TLS et HTTP, calculée uniquement si au moins trois mesures sont disponibles pour chacune des phases et pour au moins deux destinations.
+
+Lorsque les données ne permettent pas un classement, l'application l'indique au lieu de désigner artificiellement un gagnant. Les comparaisons portent exclusivement sur les points de contrôle HTTPS publics. Elles ne déterminent pas le meilleur serveur de match CODM et ne prouvent aucune amélioration du ping en jeu.
