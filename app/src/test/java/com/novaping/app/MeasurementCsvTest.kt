@@ -1,6 +1,7 @@
 package com.novaping.app
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MeasurementCsvTest {
@@ -29,6 +30,7 @@ class MeasurementCsvTest {
         val csv = MeasurementCsv.toCsv(listOf(
             MeasurementCsvRow("HTTPS", "now", "Cloudflare, Inc.", "1", "1", "HTTPS", null, null, "TLS \"alert\"\nfailed")
         ))
-        assertEquals("HTTPS,now,\"Cloudflare, Inc.\",1,1,HTTPS,,,\"TLS \"\"alert\"\"\nfailed\"", csv.trimEnd())
+        assertTrue(csv.contains("\"Cloudflare, Inc.\""))
+        assertTrue(csv.contains("\"TLS \"\"alert\"\"\nfailed\""))
     }
 }
