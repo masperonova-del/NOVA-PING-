@@ -1051,21 +1051,21 @@ class MainActivity : Activity() {
 
         val output = StringBuilder()
         output.append("Session : ").append(session.optString("timestamp", "Date inconnue"))
-            .append("\\nRéseau : ").append(session.optString("network", "Inconnu"))
-            .append("\\nProfil : ").append(session.optString("game", "Inconnu"))
-            .append("\\n\\n")
+            .append("\nRéseau : ").append(session.optString("network", "Inconnu"))
+            .append("\nProfil : ").append(session.optString("game", "Inconnu"))
+            .append("\n\n")
         val targetsArray = session.optJSONArray("targets") ?: JSONArray()
         for (targetIndex in 0 until targetsArray.length()) {
             val target = targetsArray.optJSONObject(targetIndex) ?: continue
-            output.append("━━━━━━━━━━━━━━━━━━━━\\n")
-                .append(target.optString("name", "Destination")).append("\\n")
+            output.append("━━━━━━━━━━━━━━━━━━━━\n")
+                .append(target.optString("name", "Destination")).append("\n")
             val attempts = target.optJSONArray("attempts") ?: JSONArray()
             if (attempts.length() == 0) {
-                output.append("Aucune mesure individuelle conservée pour cette ancienne session. Relance un diagnostic avec cette version.\\n\\n")
+                output.append("Aucune mesure individuelle conservée pour cette ancienne session. Relance un diagnostic avec cette version.\n\n")
                 continue
             }
             for (cycle in 1..MeasurementPlan.HTTPS_CYCLES) {
-                output.append("\\nCYCLE ").append(cycle).append("\\n")
+                output.append("\nCYCLE ").append(cycle).append("\n")
                 var found = false
                 for (index in 0 until attempts.length()) {
                     val attempt = attempts.optJSONObject(index) ?: continue
@@ -1081,11 +1081,11 @@ class MainActivity : Activity() {
                             output.append(" · HTTP ").append(attempt.optInt("httpCode"))
                         }
                     }
-                    output.append("\\n")
+                    output.append("\n")
                 }
-                if (!found) output.append("  Aucune tentative enregistrée\\n")
+                if (!found) output.append("  Aucune tentative enregistrée\n")
             }
-            output.append("\\n")
+            output.append("\n")
         }
         showMeasurementDialog("MESURES HTTPS INDIVIDUELLES", output.toString())
     }
@@ -1103,7 +1103,7 @@ class MainActivity : Activity() {
             return
         }
         val stamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(timestamp))
-        val output = StringBuilder("Analyse : ").append(stamp).append("\\n")
+        val output = StringBuilder("Analyse : ").append(stamp).append("\n")
         val phases = listOf(
             "DNS" to "dnsMs",
             "TCP" to "tcpMs",
@@ -1112,25 +1112,25 @@ class MainActivity : Activity() {
         )
         for (targetIndex in 0 until targetsArray.length()) {
             val target = targetsArray.optJSONObject(targetIndex) ?: continue
-            output.append("\\n━━━━━━━━━━━━━━━━━━━━\\n")
-                .append(target.optString("name", "Destination")).append("\\n")
+            output.append("\n━━━━━━━━━━━━━━━━━━━━\n")
+                .append(target.optString("name", "Destination")).append("\n")
             val outcomes = target.optJSONArray("outcomes") ?: JSONArray()
             for (index in 0 until outcomes.length()) {
                 val sample = outcomes.optJSONObject(index) ?: continue
-                output.append("\\nEssai ").append(sample.optInt("sample", index + 1)).append("\\n")
+                output.append("\nEssai ").append(sample.optInt("sample", index + 1)).append("\n")
                 phases.forEach { (label, key) ->
                     output.append("  ").append(label).append(" : ")
                     if (sample.isNull(key)) output.append("indisponible")
                     else output.append(sample.optLong(key)).append(" ms")
-                    output.append("\\n")
+                    output.append("\n")
                 }
                 if (!sample.isNull("httpStatus")) {
-                    output.append("  Code HTTP : ").append(sample.optInt("httpStatus")).append("\\n")
+                    output.append("  Code HTTP : ").append(sample.optInt("httpStatus")).append("\n")
                 }
                 if (!sample.isNull("failure")) {
-                    output.append("  Échec : ").append(sample.optString("failure")).append("\\n")
+                    output.append("  Échec : ").append(sample.optString("failure")).append("\n")
                 }
-                output.append("  Total : ").append(sample.optLong("totalMs")).append(" ms\\n")
+                output.append("  Total : ").append(sample.optLong("totalMs")).append(" ms\n")
             }
         }
         showMeasurementDialog("PHASES INDIVIDUELLES", output.toString())
