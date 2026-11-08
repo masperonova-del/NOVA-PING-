@@ -988,6 +988,258 @@ class MainActivity : Activity() {
             sessionLines.joinToString("\n\n")
     }
 
+    private fun saveRouteDetails(samplesByTarget: Map<ProbeTarget, List<RouteProbeOutcome>>) {
+        val details = JSONObject().apply {
+            put("timestamp", System.currentTimeMillis())
+            put("targets", JSONArray().apply {
+                targets.forEach { target ->
+                    val samples = samplesByTarget[target].orEmpty()
+                    put(JSONObject().apply {
+                        put("name", target.name)
+                        put("outcomes", JSONArray().apply {
+                            samples.forEachIndexed { index, outcome ->
+                                put(JSONObject().apply {
+                                    put("sample", index + 1)
+                                    put("host", outcome.host)
+                                    put("dnsMs", outcome.dnsMs ?: JSONObject.NULL)
+                                    put("tcpMs", outcome.tcpConnectMs ?: JSONObject.NULL)
+                                    put("tlsMs", outcome.tlsHandshakeMs ?: JSONObject.NULL)
+                                    put("httpStatusLineMs", outcome.httpStatusLineMs ?: JSONObject.NULL)
+                                    put("httpStatus", outcome.httpStatus ?: JSONObject.NULL)
+                                    put("failure", outcome.failure?.name ?: JSONObject.NULL)
+                                    put("totalMs", outcome.totalMs)
+                                })
+                            }
+                        })
+                    })
+                }
+            })
+        }
+        preferences.edit().putString("last_route_details", details.toString()).apply()
+    }
+
+    private fun showMeasurementDialog(title: String, content: String) {
+        val text = TextView(this).apply {
+            this.text = content
+            textSize = 13f
+            setTextColor(Color.WHITE)
+            setPadding(dp(18), dp(12), dp(18), dp(12))
+            setTextIsSelectable(true)
+        }
+        val scroll = ScrollView(this).apply {
+            addView(text)
+            setBackgroundColor(backgroundColor)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setView(scroll)
+            .setPositiveButton("FERMER", null)
+            .show()
+    }
+
+    private fun showLatestMeasurementDetails() {
+        val history = try {
+            JSONArray(preferences.getString("sessions", "[]"))
+        } catch (_: Exception) {
+            JSONArray()
+        }
+        val session = history.optJSONObject(0)
+        if (session == null) {
+            Toast.makeText(this, "Aucune session enregistrée.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val output = StringBuilder()
+        output.append("Session : ").append(session.optString("timestamp", "Date inconnue"))
+            .append("\\nRéseau : ").append(session.optString("network", "Inconnu"))
+            .append("\\nProfil : ").append(session.optString("game", "Inconnu"))
+            .append("\\n\\n")
+        val targetsArray = session.optJSONArray("targets") ?: JSONArray()
+        for (targetIndex in 0 until targetsArray.length()) {
+            val target = targetsArray.optJSONObject(targetIndex) ?: continue
+            output.append("━━━━━━━━━━━━━━━━━━━━\\n")
+                .append(target.optString("name", "Destination")).append("\\n")
+            val attempts = target.optJSONArray("attempts") ?: JSONArray()
+            if (attempts.length() == 0) {
+                output.append("Aucune mesure individuelle conservée pour cette ancienne session. Relance un diagnostic avec cette version.\\n\\n")
+                continue
+            }
+            for (cycle in 1..MeasurementPlan.HTTPS_CYCLES) {
+                output.append("\\nCYCLE ").append(cycle).append("\\n")
+                var found = false
+                for (index in 0 until attempts.length()) {
+                    val attempt = attempts.optJSONObject(index) ?: continue
+                    if (attempt.optInt("cycle") != cycle) continue
+                    found = true
+                    val number = attempt.optInt("attempt")
+                    output.append("  Essai ").append(number).append(" : ")
+                    if (attempt.isNull("elapsedMs")) {
+                        output.append("ÉCHEC — ").append(attempt.optString("failure", "Cause inconnue"))
+                    } else {
+                        output.append(attempt.optLong("elapsedMs")).append(" ms")
+                        if (!attempt.isNull("httpCode")) {
+                            output.append(" · HTTP ").append(attempt.optInt("httpCode"))
+                        }
+                    }
+                    output.append("\\n")
+                }
+                if (!found) output.append("  Aucune tentative enregistrée\\n")
+            }
+            output.append("\\n")
+        }
+        showMeasurementDialog("MESURES HTTPS INDIVIDUELLES", output.toString())
+    }
+
+    private fun showLatestRouteDetails() {
+        val details = try {
+            JSONObject(preferences.getString("last_route_details", "{}"))
+        } catch (_: Exception) {
+            JSONObject()
+        }
+        val timestamp = details.optLong("timestamp", 0L)
+        val targetsArray = details.optJSONArray("targets")
+        if (timestamp <= 0L || targetsArray == null || targetsArray.length() == 0) {
+            Toast.makeText(this, "Aucune analyse de phases enregistrée. Lance d'abord « Analyser les phases ».", Toast.LENGTH_LONG).show()
+            return
+        }
+        val stamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(timestamp))
+        val output = StringBuilder("Analyse : ").append(stamp).append("\\n")
+        val phases = listOf(
+            "DNS" to "dnsMs",
+            "TCP" to "tcpMs",
+            "TLS" to "tlsMs",
+            "HTTP (ligne de statut)" to "httpStatusLineMs"
+        )
+        for (targetIndex in 0 until targetsArray.length()) {
+            val target = targetsArray.optJSONObject(targetIndex) ?: continue
+            output.append("\\n━━━━━━━━━━━━━━━━━━━━\\n")
+                .append(target.optString("name", "Destination")).append("\\n")
+            val outcomes = target.optJSONArray("outcomes") ?: JSONArray()
+            for (index in 0 until outcomes.length()) {
+                val sample = outcomes.optJSONObject(index) ?: continue
+                output.append("\\nEssai ").append(sample.optInt("sample", index + 1)).append("\\n")
+                phases.forEach { (label, key) ->
+                    output.append("  ").append(label).append(" : ")
+                    if (sample.isNull(key)) output.append("indisponible")
+                    else output.append(sample.optLong(key)).append(" ms")
+                    output.append("\\n")
+                }
+                if (!sample.isNull("httpStatus")) {
+                    output.append("  Code HTTP : ").append(sample.optInt("httpStatus")).append("\\n")
+                }
+                if (!sample.isNull("failure")) {
+                    output.append("  Échec : ").append(sample.optString("failure")).append("\\n")
+                }
+                output.append("  Total : ").append(sample.optLong("totalMs")).append(" ms\\n")
+            }
+        }
+        showMeasurementDialog("PHASES INDIVIDUELLES", output.toString())
+    }
+
+    private fun exportLatestMeasurements() {
+        val rows = mutableListOf<MeasurementCsvRow>()
+        val history = try {
+            JSONArray(preferences.getString("sessions", "[]"))
+        } catch (_: Exception) {
+            JSONArray()
+        }
+        val session = history.optJSONObject(0)
+        if (session != null) {
+            val stamp = session.optString("timestamp", "")
+            val targetArray = session.optJSONArray("targets") ?: JSONArray()
+            for (targetIndex in 0 until targetArray.length()) {
+                val target = targetArray.optJSONObject(targetIndex) ?: continue
+                val attempts = target.optJSONArray("attempts") ?: JSONArray()
+                for (index in 0 until attempts.length()) {
+                    val item = attempts.optJSONObject(index) ?: continue
+                    rows.add(MeasurementCsvRow(
+                        dataset = "HTTPS",
+                        timestamp = stamp,
+                        target = target.optString("name", ""),
+                        cycle = item.optInt("cycle").toString(),
+                        attempt = item.optInt("attempt").toString(),
+                        phase = "HTTPS",
+                        elapsedMs = if (item.isNull("elapsedMs")) null else item.optLong("elapsedMs").toString(),
+                        httpStatus = if (item.isNull("httpCode")) null else item.optInt("httpCode").toString(),
+                        failure = if (item.isNull("failure")) null else item.optString("failure")
+                    ))
+                }
+            }
+        }
+
+        val route = try {
+            JSONObject(preferences.getString("last_route_details", "{}"))
+        } catch (_: Exception) {
+            JSONObject()
+        }
+        val routeTimestamp = route.optLong("timestamp", 0L)
+        val routeStamp = if (routeTimestamp > 0L) {
+            SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(routeTimestamp))
+        } else ""
+        val routeTargets = route.optJSONArray("targets") ?: JSONArray()
+        val routePhases = listOf(
+            "DNS" to "dnsMs",
+            "TCP" to "tcpMs",
+            "TLS" to "tlsMs",
+            "HTTP_STATUS_LINE" to "httpStatusLineMs"
+        )
+        for (targetIndex in 0 until routeTargets.length()) {
+            val target = routeTargets.optJSONObject(targetIndex) ?: continue
+            val outcomes = target.optJSONArray("outcomes") ?: JSONArray()
+            for (index in 0 until outcomes.length()) {
+                val item = outcomes.optJSONObject(index) ?: continue
+                routePhases.forEach { (phase, key) ->
+                    rows.add(MeasurementCsvRow(
+                        dataset = "ROUTE_PHASE",
+                        timestamp = routeStamp,
+                        target = target.optString("name", ""),
+                        cycle = item.optInt("sample", index + 1).toString(),
+                        attempt = "1",
+                        phase = phase,
+                        elapsedMs = if (item.isNull(key)) null else item.optLong(key).toString(),
+                        httpStatus = if (phase == "HTTP_STATUS_LINE" && !item.isNull("httpStatus")) item.optInt("httpStatus").toString() else null,
+                        failure = if (item.isNull("failure")) null else item.optString("failure")
+                    ))
+                }
+            }
+        }
+
+        if (rows.isEmpty()) {
+            Toast.makeText(this, "Aucune donnée brute à exporter. Effectue d'abord un diagnostic.", Toast.LENGTH_LONG).show()
+            return
+        }
+        pendingCsvExport = MeasurementCsv.toCsv(rows)
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "text/csv"
+            putExtra(Intent.EXTRA_TITLE, "NOVA-PING-mesures.csv")
+        }
+        try {
+            startActivityForResult(intent, exportRequestCode)
+        } catch (_: Exception) {
+            pendingCsvExport = null
+            Toast.makeText(this, "Impossible d'ouvrir le sélecteur de fichiers.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    @Deprecated("Deprecated in Android API Activity, retained for compatibility with the current target SDK.")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != exportRequestCode) return
+        val csv = pendingCsvExport
+        pendingCsvExport = null
+        if (resultCode != RESULT_OK || data?.data == null || csv == null) return
+        try {
+            val uri = data.data!!
+            contentResolver.openOutputStream(uri)?.use { stream ->
+                stream.write(csv.toByteArray(Charsets.UTF_8))
+            } ?: throw java.io.IOException("Fichier de destination inaccessible")
+            Toast.makeText(this, "Export CSV enregistré.", Toast.LENGTH_LONG).show()
+        } catch (error: Exception) {
+            Toast.makeText(this, "Échec de l'export : ${error.message ?: "erreur inconnue"}", Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun sectionTitle(value: String): TextView =
         label(value, 12f, accentColor, true, Gravity.START).apply {
             setPadding(dp(2), dp(20), 0, dp(9))
