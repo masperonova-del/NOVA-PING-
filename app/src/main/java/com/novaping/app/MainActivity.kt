@@ -27,6 +27,8 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executors
 
+private const val MAX_STABILITY_EVENTS = 15
+
 private data class ProbeTarget(val name: String, val endpoint: String)
 private data class TargetResult(
     val target: ProbeTarget,
@@ -64,12 +66,22 @@ class MainActivity : Activity() {
                 .asSequence()
                 .mapNotNull { network -> manager.getNetworkCapabilities(network) }
                 .firstOrNull { it.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) }
+            val activeCapabilities = manager.activeNetwork?.let {
+                manager.getNetworkCapabilities(it)
+            }
             recordStabilityEvent(
                 stabilityTracker.periodicSnapshot(
                     wifiAvailable = wifiCapabilities != null,
                     internetValidated = wifiCapabilities?.hasCapability(
                         NetworkCapabilities.NET_CAPABILITY_VALIDATED
                     ),
+                    activeTransport = transportName(activeCapabilities),
+                    activeInternetAvailable = activeCapabilities?.hasCapability(
+                        NetworkCapabilities.NET_CAPABILITY_INTERNET
+                    ) == true,
+                    activeInternetValidated = activeCapabilities?.hasCapability(
+                        NetworkCapabilities.NET_CAPABILITY_VALIDATED
+                    ) == true,
                     timestampMillis = System.currentTimeMillis()
                 )
             )
@@ -126,11 +138,11 @@ class MainActivity : Activity() {
         root.addView(networkCard)
         refreshNetworkInfo()
 
-        root.addView(sectionTitle("WI-FI STABILITY MONITOR"))
+        root.addView(sectionTitle("SURVEILLANCE RÉSEAU"))
         val stabilityCard = card()
         stabilityCard.addView(label("Surveillance des coupures", 16f, Color.WHITE, true, Gravity.START))
         stabilityCard.addView(label(
-            "Détecte immédiatement les changements du réseau et enregistre un état toutes les 60 secondes lorsque NOVA PING est au premier plan. La surveillance s'arrête en arrière-plan.",
+            "Surveille séparément le Wi-Fi et le réseau actif (données mobiles, Wi-Fi ou VPN). Enregistre un état toutes les 60 secondes au premier plan et conserve au maximum 15 événements récents.",
             12f, mutedColor, false, Gravity.START
         ).apply { setPadding(0, dp(6), 0, dp(8)) })
         stabilityStatus = label("Surveillance en attente…", 13f, accentColor, true, Gravity.START)
@@ -321,7 +333,7 @@ class MainActivity : Activity() {
             ))
             return
         }
-        val start = maxOf(0, events.length() - 20)
+        val start = maxOf(0, events.length() - MAX_STABILITY_EVENTS)
         for (i in start until events.length()) {
             val item = events.optJSONObject(i) ?: continue
             val type = runCatching {
@@ -353,7 +365,7 @@ class MainActivity : Activity() {
                 put("details", event.details)
             })
             val trimmed = JSONArray()
-            for (i in maxOf(0, history.length() - 20) until history.length()) {
+            for (i in maxOf(0, history.length() - MAX_STABILITY_EVENTS) until history.length()) {
                 trimmed.put(history.get(i))
             }
             preferences.edit().putString("stability_events", trimmed.toString()).apply()
