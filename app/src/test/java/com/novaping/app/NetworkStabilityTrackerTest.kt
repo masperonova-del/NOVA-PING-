@@ -7,10 +7,17 @@ import org.junit.Test
 class NetworkStabilityTrackerTest {
     @Test fun recordsPeriodicWifiAndInternetSnapshot() {
         val tracker = NetworkStabilityTracker()
-        val event = tracker.periodicSnapshot(true, true, 60_000L)
+        val event = tracker.periodicSnapshot(
+            wifiAvailable = true,
+            internetValidated = true,
+            activeTransport = "Wi-Fi",
+            activeInternetAvailable = true,
+            activeInternetValidated = true,
+            timestampMillis = 60_000L
+        )
         assertEquals(NetworkStabilityEventType.PERIODIC_STATUS, event.type)
         assertEquals(
-            "État périodique : Wi-Fi disponible · Internet validé par Android",
+            "État périodique : réseau actif Wi-Fi · Internet validé par Android | Wi-Fi présent et validé",
             event.details
         )
         assertEquals(60_000L, event.timestampMillis)
@@ -18,18 +25,49 @@ class NetworkStabilityTrackerTest {
 
     @Test fun recordsPeriodicSnapshotWhenWifiHasNoValidatedInternet() {
         val tracker = NetworkStabilityTracker()
-        val event = tracker.periodicSnapshot(true, false, 120_000L)
+        val event = tracker.periodicSnapshot(
+            wifiAvailable = true,
+            internetValidated = false,
+            activeTransport = "Wi-Fi",
+            activeInternetAvailable = true,
+            activeInternetValidated = false,
+            timestampMillis = 120_000L
+        )
         assertEquals(
-            "État périodique : Wi-Fi disponible · Internet non validé par Android",
+            "État périodique : réseau actif Wi-Fi · Internet non validé par Android | Wi-Fi présent mais non validé",
             event.details
         )
     }
 
     @Test fun recordsPeriodicSnapshotWhenWifiIsUnavailable() {
         val tracker = NetworkStabilityTracker()
-        val event = tracker.periodicSnapshot(false, null, 180_000L)
+        val event = tracker.periodicSnapshot(
+            wifiAvailable = false,
+            internetValidated = null,
+            activeTransport = "Aucun",
+            activeInternetAvailable = false,
+            activeInternetValidated = false,
+            timestampMillis = 180_000L
+        )
         assertEquals(
-            "État périodique : aucun réseau Wi-Fi détecté",
+            "État périodique : réseau actif aucun réseau actif | Wi-Fi absent",
+            event.details
+        )
+    }
+
+
+    @Test fun reportsMobileDataAsActiveWhenWifiIsUnavailable() {
+        val tracker = NetworkStabilityTracker()
+        val event = tracker.periodicSnapshot(
+            wifiAvailable = false,
+            internetValidated = null,
+            activeTransport = "Données mobiles",
+            activeInternetAvailable = true,
+            activeInternetValidated = true,
+            timestampMillis = 240_000L
+        )
+        assertEquals(
+            "État périodique : réseau actif Données mobiles · Internet validé par Android | Wi-Fi absent",
             event.details
         )
     }
