@@ -97,3 +97,39 @@ Une fonction n'est considérée comme terminée que lorsque :
 ## Règle produit
 
 Une réponse HTTPS vers un service cloud n'est pas le ping du serveur de jeu. Un échec de requête HTTPS n'est pas automatiquement une perte de paquets IP. Un DNS différent ou un VPN ne constitue pas une optimisation tant qu'un gain réel n'a pas été mesuré.
+
+
+## Version 1.8.0-dev — Renforcement des mesures
+
+- [x] Centraliser le plan de mesure : cinq cycles HTTPS et cinq tentatives par cycle (25 par destination).
+- [x] Utiliser le P95 nearest-rank sur 25 mesures (24e valeur ordonnée).
+- [x] Enregistrer le nombre réellement tenté afin de ne pas transformer une interruption en fausses pertes.
+- [x] Exiger au moins 20 réponses sur 25 et un lot complet avant de classer une destination.
+- [x] Exiger 15 réponses exploitables avant d'évaluer la régularité HTTPS.
+- [x] Porter l'analyse de phase à cinq essais par destination et expliciter les limites du P95 sur cinq valeurs.
+- [x] Ajouter des tests sur le plan d'échantillonnage et les seuils de comparabilité.
+
+
+## Version 1.9.0-dev — Inspection des mesures brutes
+
+- [x] Enregistrer chaque essai HTTPS avec son cycle, son index, son temps, son code HTTP ou sa cause d'échec.
+- [x] Enregistrer séparément les cinq essais DNS, TCP, TLS et ligne de statut HTTP par destination.
+- [x] Afficher les tentatives HTTPS individuelles de la dernière session.
+- [x] Afficher les phases individuelles de la dernière analyse Route Engine.
+- [x] Exporter les mesures brutes et les phases au format CSV.
+- [x] Conserver les dix dernières sessions dans l'historique local.
+- [ ] Vérifier sur appareil réel l'affichage des 25 essais, les échecs et l'export CSV.
+
+**Limite :** les anciennes sessions enregistrées avant 1.9.0-dev ne contiennent que des résumés. Les mesures brutes ne sont disponibles que pour les diagnostics réalisés après installation de cette version.
+
+## Version 1.10.0-dev — Comparaison prudente des points de contrôle
+
+- [x] Distinguer le classement de fiabilité (connexions HTTPS complètes sur cinq essais) du classement des délais de phase.
+- [x] Ne classer la fiabilité que lorsque plusieurs destinations disposent chacune d'un lot complet de cinq essais.
+- [x] Signaler explicitement les données insuffisantes ou l'absence de gagnant clair.
+- [x] Comparer les sommes des médianes DNS, TCP, TLS et HTTP uniquement si chaque phase dispose d'au moins trois mesures réussies pour au moins deux destinations.
+- [x] Préciser que la somme des médianes de phase est indicative et n'est pas une mesure directe du temps total de connexion.
+- [x] Interdire toute assimilation du meilleur point de contrôle au meilleur serveur de jeu.
+- [x] Ajouter des tests unitaires pour les classements, les égalités et les données incomplètes.
+
+**Limite :** ces comparaisons portent uniquement sur les points de contrôle HTTPS publics. Elles ne mesurent ni le ping CODM, ni la route réelle du match, ni une amélioration de routage.

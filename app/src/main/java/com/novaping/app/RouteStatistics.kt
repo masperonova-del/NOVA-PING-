@@ -1,8 +1,5 @@
 package com.novaping.app
 
-import kotlin.math.ceil
-import kotlin.math.abs
-
 data class PhaseStatistics(
     val medianMs: Long?,
     val p95ObservedMs: Long?,
@@ -41,15 +38,13 @@ object RouteStatistics {
 
     private fun phase(samples: List<Long>, attempted: Int): PhaseStatistics {
         if (samples.isEmpty()) return PhaseStatistics(null, null, null, 0, attempted)
-        val sorted = samples.sorted()
-        val middle = sorted.size / 2
-        val median = if (sorted.size % 2 == 0) {
-            (sorted[middle - 1] + sorted[middle]) / 2
-        } else sorted[middle]
-        val p95Index = (ceil(sorted.size * 0.95).toInt() - 1).coerceAtLeast(0)
-        val variation = if (samples.size < 2) null else {
-            samples.zipWithNext { a, b -> abs(a - b) }.average().toLong()
-        }
-        return PhaseStatistics(median, sorted[p95Index], variation, samples.size, attempted)
+        val summary = SampleStatistics.summarize(samples)
+        return PhaseStatistics(
+            medianMs = summary.medianMs,
+            p95ObservedMs = summary.p95ObservedMs,
+            meanAbsoluteVariationMs = summary.meanAbsoluteVariationMs,
+            successfulSamples = samples.size,
+            attemptedSamples = attempted
+        )
     }
 }

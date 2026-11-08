@@ -5,6 +5,102 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class NetworkStabilityTrackerTest {
+    @Test fun recordsPeriodicWifiAndInternetSnapshot() {
+        val tracker = NetworkStabilityTracker()
+        val event = tracker.periodicSnapshot(
+            wifiAvailable = true,
+            internetValidated = true,
+            activeTransport = "Wi-Fi",
+            activeInternetAvailable = true,
+            activeInternetValidated = true,
+            timestampMillis = 60_000L
+        )
+        assertEquals(NetworkStabilityEventType.PERIODIC_STATUS, event.type)
+        assertEquals(
+            "État périodique : réseau actif Wi-Fi · Internet validé par Android | Wi-Fi présent et validé",
+            event.details
+        )
+        assertEquals(60_000L, event.timestampMillis)
+    }
+
+    @Test fun recordsPeriodicSnapshotWhenWifiHasNoValidatedInternet() {
+        val tracker = NetworkStabilityTracker()
+        val event = tracker.periodicSnapshot(
+            wifiAvailable = true,
+            internetValidated = false,
+            activeTransport = "Wi-Fi",
+            activeInternetAvailable = true,
+            activeInternetValidated = false,
+            timestampMillis = 120_000L
+        )
+        assertEquals(
+            "État périodique : réseau actif Wi-Fi · Internet non validé par Android | Wi-Fi présent mais non validé",
+            event.details
+        )
+    }
+
+    @Test fun recordsPeriodicSnapshotWhenWifiIsUnavailable() {
+        val tracker = NetworkStabilityTracker()
+        val event = tracker.periodicSnapshot(
+            wifiAvailable = false,
+            internetValidated = null,
+            activeTransport = "Aucun",
+            activeInternetAvailable = false,
+            activeInternetValidated = false,
+            timestampMillis = 180_000L
+        )
+        assertEquals(
+            "État périodique : réseau actif aucun réseau actif | Wi-Fi absent",
+            event.details
+        )
+    }
+
+
+    @Test fun reportsMobileDataAsActiveWhenWifiIsUnavailable() {
+        val tracker = NetworkStabilityTracker()
+        val event = tracker.periodicSnapshot(
+            wifiAvailable = false,
+            internetValidated = null,
+            activeTransport = "Données mobiles",
+            activeInternetAvailable = true,
+            activeInternetValidated = true,
+            timestampMillis = 240_000L
+        )
+        assertEquals(
+            "État périodique : réseau actif Données mobiles · Internet validé par Android | Wi-Fi absent",
+            event.details
+        )
+    }
+
+
+    @Test fun recordsMobileDataAvailabilityAndInternetValidation() {
+        val tracker = NetworkStabilityTracker()
+        assertEquals(
+            NetworkStabilityEventType.MOBILE_DATA_CONNECTED,
+            tracker.onMobileAvailabilityChanged(true, 100L)?.type
+        )
+        assertEquals(
+            NetworkStabilityEventType.MOBILE_INTERNET_STATUS,
+            tracker.onMobileInternetValidationChanged(true, 120L)?.type
+        )
+        assertNull(tracker.onMobileInternetValidationChanged(true, 130L))
+        assertEquals(
+            NetworkStabilityEventType.MOBILE_DATA_DISCONNECTED,
+            tracker.onMobileAvailabilityChanged(false, 200L)?.type
+        )
+    }
+
+    @Test fun synchronizesMobileNetworkAtMonitorStartWithoutFalseTransition() {
+        val tracker = NetworkStabilityTracker()
+        val initial = tracker.synchronizeMobileState(true, true, 100L)
+        assertEquals(2, initial.size)
+        assertEquals(
+            "État initial : réseau de données mobiles disponible",
+            initial.first().details
+        )
+        assertNull(tracker.onMobileAvailabilityChanged(true, 200L))
+    }
+
     @Test fun detectsWifiDisconnectSeparately() {
         val tracker = NetworkStabilityTracker()
         assertEquals(

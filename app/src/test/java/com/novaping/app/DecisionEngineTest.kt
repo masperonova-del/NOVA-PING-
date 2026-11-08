@@ -31,21 +31,15 @@ class DecisionEngineTest {
 
     @Test fun cleanResultRequiresRepeatedCompleteResponses() {
         val result = DecisionEngine.recommend(readyWifi, listOf(
-            aggregate(listOf(
-                RouteProbeOutcome("google.example", 12, 20, 30, 40, 204, null, 110),
-                RouteProbeOutcome("google.example", 13, 21, 31, 41, 204, null, 115),
-                RouteProbeOutcome("google.example", 14, 22, 32, 42, 204, null, 120)
-            )),
-            aggregate(listOf(
-                RouteProbeOutcome("cloudflare.example", 12, 20, 30, 40, 204, null, 110),
-                RouteProbeOutcome("cloudflare.example", 13, 21, 31, 41, 204, null, 115),
-                RouteProbeOutcome("cloudflare.example", 14, 22, 32, 42, 204, null, 120)
-            )),
-            aggregate(listOf(
-                RouteProbeOutcome("microsoft.example", 12, 20, 30, 40, 204, null, 110),
-                RouteProbeOutcome("microsoft.example", 13, 21, 31, 41, 204, null, 115),
-                RouteProbeOutcome("microsoft.example", 14, 22, 32, 42, 204, null, 120)
-            ))
+            aggregate(List(5) { i ->
+                RouteProbeOutcome("google.example", 12L + i, 20L + i, 30L + i, 40L + i, 204, null, 110L + i)
+            }),
+            aggregate(List(5) { i ->
+                RouteProbeOutcome("cloudflare.example", 12L + i, 20L + i, 30L + i, 40L + i, 204, null, 110L + i)
+            }),
+            aggregate(List(5) { i ->
+                RouteProbeOutcome("microsoft.example", 12L + i, 20L + i, 30L + i, 40L + i, 204, null, 110L + i)
+            })
         ))
         assertTrue(result.any { it.title.contains("Aucune anomalie majeure") })
     }
@@ -76,6 +70,62 @@ class DecisionEngineTest {
             RouteProbeOutcome("google.example", 14, 22, 32, 42, 204, null, 120)
         ))))
         assertFalse(result.any { it.title.contains("Aucune anomalie majeure") })
+    }
+
+    @Test fun identifiesTheMostReliableControlEndpointWithoutCallingItAGameServer() {
+        val result = DecisionEngine.recommend(readyWifi, listOf(
+            aggregate(List(5) { i ->
+                if (i < 3) RouteProbeOutcome("cloudflare.example", 5, 100, 300, 400, 204, null, 900)
+                else RouteProbeOutcome("cloudflare.example", failure = RouteProbeFailure.TLS_HANDSHAKE, totalMs = 500)
+            }),
+            aggregate(List(5) {
+                RouteProbeOutcome("google.example", failure = RouteProbeFailure.TIMEOUT, totalMs = 1800)
+            }),
+            aggregate(List(5) {
+                RouteProbeOutcome("microsoft.example", failure = RouteProbeFailure.TLS_HANDSHAKE, totalMs = 1700)
+            })
+        ))
+        val reliability = result.first { it.title == "Point de contrôle le plus fiable dans cet échantillon" }
+        assertTrue(reliability.explanation.contains("cloudflare.example"))
+        assertTrue(reliability.explanation.contains("3/5"))
+        assertTrue(reliability.action.contains("ne désigne pas le meilleur serveur CODM"))
+    }
+
+    @Test fun reportsInsufficientDataWhenNoEndpointCompletesEnoughConnections() {
+        val result = DecisionEngine.recommend(readyWifi, listOf(
+            aggregate(List(5) { RouteProbeOutcome("google.example", failure = RouteProbeFailure.TIMEOUT, totalMs = 1800) }),
+            aggregate(List(5) { RouteProbeOutcome("cloudflare.example", failure = RouteProbeFailure.TLS_HANDSHAKE, totalMs = 900) })
+        ))
+        assertTrue(result.any { it.title == "Données insuffisantes pour classer la fiabilité" })
+        assertTrue(result.any { it.title == "Comparaison des délais de phase non concluante" })
+    }
+
+    @Test fun comparesPhaseMedianSumsOnlyWhenEveryPhaseHasEnoughSamples() {
+        val result = DecisionEngine.recommend(readyWifi, listOf(
+            aggregate(List(5) { i ->
+                RouteProbeOutcome("cloudflare.example", 5L + i, 100L + i, 200L + i, 300L + i, 204, null, 700L + i)
+            }),
+            aggregate(List(5) { i ->
+                RouteProbeOutcome("google.example", 10L + i, 200L + i, 400L + i, 500L + i, 204, null, 1100L + i)
+            })
+        ))
+        val latency = result.first { it.title == "Phases cumulées les plus courtes (indicatif)" }
+        assertTrue(latency.explanation.contains("cloudflare.example"))
+        assertTrue(latency.explanation.contains("somme des médianes"))
+        assertTrue(latency.action.contains("ne mesure pas la latence d'un serveur de jeu"))
+    }
+
+    @Test fun refusesPhaseLatencyRankingWhenOnePhaseHasTooFewSamples() {
+        val partialTls = List(5) { i ->
+            if (i < 2) RouteProbeOutcome("google.example", 5, 100, 200, 300, 204, null, 700)
+            else RouteProbeOutcome("google.example", 5, 100, failure = RouteProbeFailure.TLS_HANDSHAKE, totalMs = 400)
+        }
+        val complete = List(5) { i ->
+            RouteProbeOutcome("cloudflare.example", 5L + i, 100L + i, 200L + i, 300L + i, 204, null, 700L + i)
+        }
+        val result = DecisionEngine.recommend(readyWifi, listOf(aggregate(partialTls), aggregate(complete)))
+        assertTrue(result.any { it.title == "Comparaison des délais de phase non concluante" })
+        assertFalse(result.any { it.title == "Phases cumulées les plus courtes (indicatif)" })
     }
 
 }

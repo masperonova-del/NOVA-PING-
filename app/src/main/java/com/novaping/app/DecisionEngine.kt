@@ -110,8 +110,9 @@ object DecisionEngine {
         }
 
         val allHaveRepeatedSuccessfulResponses = aggregates.size == 3 && aggregates.all {
-            it.sampleCount == 3 && it.completeSamples >= 2 && it.failures.isEmpty() &&
-                it.httpStatuses.filterKeys { code -> code in 200..299 }.values.sum() >= 2 &&
+            it.sampleCount == MeasurementPlan.ROUTE_SAMPLES_PER_TARGET &&
+                it.completeSamples >= MeasurementPlan.MIN_COMPLETE_ROUTE_SAMPLES_FOR_CLEAN_RESULT && it.failures.isEmpty() &&
+                it.httpStatuses.filterKeys { code -> code in 200..299 }.values.sum() >= MeasurementPlan.MIN_COMPLETE_ROUTE_SAMPLES_FOR_CLEAN_RESULT &&
                 it.httpStatuses.filterKeys { code -> code !in 200..299 }.values.sum() == 0
         }
         if (recommendations.isEmpty() && allHaveRepeatedSuccessfulResponses) {
@@ -122,6 +123,8 @@ object DecisionEngine {
                 RecommendationConfidence.LOW
             )
         }
+        addRouteComparisonRecommendations(aggregates, recommendations)
+
         if (recommendations.isEmpty()) {
             recommendations += NetworkRecommendation(
                 "Données insuffisantes",
@@ -131,6 +134,88 @@ object DecisionEngine {
             )
         }
         return recommendations.distinctBy { it.title }
+    }
+
+
+    /**
+     * Compares only complete five-sample batches. These are public HTTPS control
+     * endpoints, never game match servers. Phase-median sums are indicative and
+     * are not an end-to-end latency measurement.
+     */
+    private fun addRouteComparisonRecommendations(
+        aggregates: List<RouteAggregate>,
+        recommendations: MutableList<NetworkRecommendation>
+    ) {
+        val comparable = aggregates.filter {
+            it.sampleCount == MeasurementPlan.ROUTE_SAMPLES_PER_TARGET
+        }
+        if (comparable.size < 2) return
+
+        val byReliability = comparable.sortedWith(
+            compareByDescending<RouteAggregate> { it.completeSamples }
+                .thenBy { it.failures.values.sum() }
+        )
+        val best = byReliability[0]
+        val second = byReliability[1]
+        when {
+            best.completeSamples < 2 -> recommendations += NetworkRecommendation(
+                "Données insuffisantes pour classer la fiabilité",
+                "Aucun point de contrôle n'a obtenu au moins deux connexions HTTPS complètes sur cinq essais.",
+                "Répéter l'analyse dans les mêmes conditions. Ne pas choisir une destination sur la base de ces seuls résultats.",
+                RecommendationConfidence.LOW
+            )
+            best.completeSamples > second.completeSamples -> {
+                recommendations += NetworkRecommendation(
+                    "Point de contrôle le plus fiable dans cet échantillon",
+                    "${best.host} a obtenu ${best.completeSamples}/${best.sampleCount} connexions HTTPS complètes, contre ${second.completeSamples}/${second.sampleCount} pour ${second.host}. Ce classement concerne uniquement ces points de contrôle.",
+                    "Répéter le test sur plusieurs sessions et réseaux. Cela ne désigne pas le meilleur serveur CODM.",
+                    RecommendationConfidence.LOW
+                )
+            }
+            else -> recommendations += NetworkRecommendation(
+                "Aucun point de contrôle ne se détache en fiabilité",
+                "Les résultats de connexions complètes sont trop proches pour désigner un gagnant fiable parmi ces destinations.",
+                "Répéter les mesures à plusieurs moments avant de comparer les destinations.",
+                RecommendationConfidence.LOW
+            )
+        }
+
+        fun phaseMedianSum(aggregate: RouteAggregate): Long? {
+            val phases = listOf(aggregate.dns, aggregate.tcp, aggregate.tls, aggregate.httpStatusLine)
+            if (phases.any { it.successfulSamples < 3 || it.medianMs == null }) return null
+            return phases.sumOf { it.medianMs!! }
+        }
+
+        val latencyCandidates = comparable.mapNotNull { aggregate ->
+            phaseMedianSum(aggregate)?.let { aggregate to it }
+        }.sortedBy { it.second }
+
+        if (latencyCandidates.size < 2) {
+            recommendations += NetworkRecommendation(
+                "Comparaison des délais de phase non concluante",
+                "Moins de deux destinations disposent d'au moins trois mesures réussies pour chacune des quatre phases DNS, TCP, TLS et HTTP.",
+                "Répéter l'analyse. Aucune destination ne peut être déclarée la plus rapide sur la base des phases incomplètes.",
+                RecommendationConfidence.LOW
+            )
+        } else {
+            val fastest = latencyCandidates[0]
+            val runnerUp = latencyCandidates[1]
+            if (fastest.second < runnerUp.second) {
+                recommendations += NetworkRecommendation(
+                    "Phases cumulées les plus courtes (indicatif)",
+                    "${fastest.first.host} présente une somme des médianes DNS + TCP + TLS + HTTP de ${fastest.second} ms, contre ${runnerUp.second} ms pour ${runnerUp.first.host}. Cette somme n'est pas une mesure directe du temps total de connexion.",
+                    "Confirmer sur plusieurs sessions. Ce résultat ne mesure pas la latence d'un serveur de jeu.",
+                    RecommendationConfidence.LOW
+                )
+            } else {
+                recommendations += NetworkRecommendation(
+                    "Aucun gagnant clair sur les délais de phase",
+                    "Les sommes des médianes de phase ne permettent pas de distinguer clairement les destinations.",
+                    "Répéter les mesures avant de conclure.",
+                    RecommendationConfidence.LOW
+                )
+            }
+        }
     }
 
     private fun recommendation(title: String, explanation: String, action: String) =

@@ -34,6 +34,7 @@ class RouteProbeModelTest {
         assertEquals(2, aggregate.tcp.successfulSamples)
         assertEquals(1, aggregate.failures[RouteProbeFailure.TCP_CONNECT])
         assertEquals(2, aggregate.httpStatuses[204])
+        assertTrue(aggregate.dns.p95ObservedMs!! >= aggregate.dns.medianMs!!)
     }
 
     @Test fun missingPhaseHasNoInventedLatency() {
@@ -42,5 +43,15 @@ class RouteProbeModelTest {
         ))
         assertNull(aggregate.dns.medianMs)
         assertEquals(0, aggregate.dns.successfulSamples)
+    }
+
+    @Test fun phaseP95UsesNearestRankAndCannotBeBelowMedian() {
+        val aggregate = RouteStatistics.aggregate(listOf(
+            RouteProbeOutcome("example.com", dnsMs = 100, totalMs = 100),
+            RouteProbeOutcome("example.com", dnsMs = 300, totalMs = 300),
+            RouteProbeOutcome("example.com", dnsMs = 200, totalMs = 200)
+        ))
+        assertEquals(200L, aggregate.dns.medianMs)
+        assertEquals(300L, aggregate.dns.p95ObservedMs)
     }
 }

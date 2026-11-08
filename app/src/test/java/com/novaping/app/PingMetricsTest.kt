@@ -1,6 +1,7 @@
 package com.novaping.app
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PingMetricsTest {
@@ -21,5 +22,13 @@ class PingMetricsTest {
         assertEquals(42L, result.p95Ms)
         assertEquals(0L, result.jitterMs)
         assertEquals(2, result.lostRequests)
+    }
+
+    @Test
+    fun p95CannotBeBelowMedianForNineSuccessfulSamples() {
+        val result = PingMetrics.from(listOf(900, 100, 500, 300, 700, 200, 800, 400, 600), 9)
+        assertEquals(500L, result.medianMs)
+        assertEquals(900L, result.p95Ms)
+        assertTrue(result.p95Ms >= result.medianMs)
     }
 }

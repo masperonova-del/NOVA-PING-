@@ -10,7 +10,7 @@ data class StabilityAssessment(
 )
 
 object DiagnosticEngine {
-    private const val MIN_SUCCESSFUL_SAMPLES = 6
+    private const val MIN_SUCCESSFUL_SAMPLES = MeasurementPlan.MIN_SUCCESSFUL_HTTPS_FOR_ASSESSMENT
     private const val HIGH_LOSS_PERCENT = 33
     private const val HIGH_JITTER_MS = 100L
     private const val HIGH_CYCLE_SPREAD_MS = 150L

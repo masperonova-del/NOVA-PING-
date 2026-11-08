@@ -4,10 +4,14 @@ enum class NetworkStabilityEventType {
     WIFI_CONNECTED,
     WIFI_DISCONNECTED,
     WIFI_STATUS,
+    MOBILE_DATA_CONNECTED,
+    MOBILE_DATA_DISCONNECTED,
+    MOBILE_INTERNET_STATUS,
     INTERNET_LOST,
     INTERNET_RESTORED,
     INTERNET_STATUS,
-    DEFAULT_NETWORK_CHANGED
+    DEFAULT_NETWORK_CHANGED,
+    PERIODIC_STATUS
 }
 
 data class NetworkStabilityEvent(
@@ -24,6 +28,8 @@ class NetworkStabilityTracker {
     private var wifiAvailable: Boolean? = null
     private var wifiInternetValidated: Boolean? = null
     private var defaultTransport: String? = null
+    private var mobileAvailable: Boolean? = null
+    private var mobileInternetValidated: Boolean? = null
     private var wifiDisconnectedAt: Long? = null
     private var internetLostAt: Long? = null
 
@@ -32,6 +38,8 @@ class NetworkStabilityTracker {
         wifiAvailable = null
         wifiInternetValidated = null
         defaultTransport = null
+        mobileAvailable = null
+        mobileInternetValidated = null
         wifiDisconnectedAt = null
         internetLostAt = null
     }
@@ -85,10 +93,111 @@ class NetworkStabilityTracker {
         return events
     }
 
+    /** Records a periodic foreground snapshot without pretending it was a transition. */
+    @Synchronized
+    fun periodicSnapshot(
+        wifiAvailable: Boolean,
+        internetValidated: Boolean?,
+        activeTransport: String,
+        activeInternetAvailable: Boolean,
+        activeInternetValidated: Boolean,
+        timestampMillis: Long
+    ): NetworkStabilityEvent {
+        require(timestampMillis >= 0)
+        require(activeTransport.isNotBlank())
+        val activeDetails = when {
+            activeTransport == "Aucun" -> "aucun réseau actif"
+            activeInternetValidated -> "$activeTransport · Internet validé par Android"
+            activeInternetAvailable -> "$activeTransport · Internet non validé par Android"
+            else -> "$activeTransport · accès Internet non confirmé"
+        }
+        val wifiDetails = when {
+            !wifiAvailable -> "Wi-Fi absent"
+            internetValidated == true -> "Wi-Fi présent et validé"
+            internetValidated == false -> "Wi-Fi présent mais non validé"
+            else -> "état Internet du Wi-Fi inconnu"
+        }
+        return NetworkStabilityEvent(
+            NetworkStabilityEventType.PERIODIC_STATUS,
+            timestampMillis,
+            "État périodique : réseau actif $activeDetails | $wifiDetails"
+        )
+    }
+
     @Synchronized
     fun synchronizeDefaultTransport(transport: String) {
         require(transport.isNotBlank())
         defaultTransport = transport
+    }
+
+
+    /** Synchronizes cellular availability when monitoring starts or resumes. */
+    @Synchronized
+    fun synchronizeMobileState(
+        available: Boolean,
+        internetValidated: Boolean?,
+        timestampMillis: Long
+    ): List<NetworkStabilityEvent> {
+        require(timestampMillis >= 0)
+        val previousAvailable = mobileAvailable
+        val previousValidated = mobileInternetValidated
+        mobileAvailable = available
+        mobileInternetValidated = if (available) internetValidated else null
+        val events = mutableListOf<NetworkStabilityEvent>()
+        if (previousAvailable == null || previousAvailable != available) {
+            events += NetworkStabilityEvent(
+                NetworkStabilityEventType.MOBILE_INTERNET_STATUS,
+                timestampMillis,
+                if (available) "État initial : réseau de données mobiles disponible"
+                else "État initial : réseau de données mobiles indisponible"
+            )
+        }
+        if (available && internetValidated != null &&
+            (previousAvailable == null || previousAvailable != available ||
+                previousValidated != internetValidated)
+        ) {
+            events += NetworkStabilityEvent(
+                NetworkStabilityEventType.MOBILE_INTERNET_STATUS,
+                timestampMillis,
+                if (internetValidated) "Internet validé sur les données mobiles"
+                else "Données mobiles détectées, mais Internet non validé par Android"
+            )
+        }
+        return events
+    }
+
+    @Synchronized
+    fun onMobileAvailabilityChanged(
+        available: Boolean,
+        timestampMillis: Long
+    ): NetworkStabilityEvent? {
+        require(timestampMillis >= 0)
+        if (mobileAvailable == available) return null
+        mobileAvailable = available
+        if (!available) mobileInternetValidated = null
+        return NetworkStabilityEvent(
+            if (available) NetworkStabilityEventType.MOBILE_DATA_CONNECTED
+            else NetworkStabilityEventType.MOBILE_DATA_DISCONNECTED,
+            timestampMillis,
+            if (available) "Réseau de données mobiles disponible selon Android"
+            else "Réseau de données mobiles perdu selon Android"
+        )
+    }
+
+    @Synchronized
+    fun onMobileInternetValidationChanged(
+        validated: Boolean,
+        timestampMillis: Long
+    ): NetworkStabilityEvent? {
+        require(timestampMillis >= 0)
+        if (mobileAvailable != true || mobileInternetValidated == validated) return null
+        mobileInternetValidated = validated
+        return NetworkStabilityEvent(
+            NetworkStabilityEventType.MOBILE_INTERNET_STATUS,
+            timestampMillis,
+            if (validated) "Internet validé sur les données mobiles"
+            else "Données mobiles disponibles, mais Internet non validé par Android"
+        )
     }
 
     @Synchronized
