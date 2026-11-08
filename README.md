@@ -134,3 +134,13 @@ La surveillance reste limitée au premier plan. Les changements survenus pendant
 - Les compteurs, l'historique et les tests sont alignés sur le nouveau plan de mesure.
 
 Cette version ne mesure toujours pas directement le ping d'un serveur de jeu et ne modifie pas le routage réseau.
+
+
+## Version 1.9.0-dev — Détails des mesures
+
+- Enregistre chaque tentative HTTPS individuelle avec son cycle, son numéro d'essai, son temps de réponse, son code HTTP ou sa cause d'échec.
+- Conserve les résultats individuels DNS, TCP, TLS et ligne de statut HTTP des cinq essais Route Engine.
+- Ajoute deux vues de détail pour consulter la dernière comparaison et la dernière analyse des phases.
+- Ajoute l'export CSV local des mesures HTTPS et des phases réseau.
+- Les dix dernières sessions de comparaison restent conservées localement ; les sessions antérieures à cette version ne contiennent pas rétroactivement les mesures brutes.
+- Les résultats exportés restent des mesures de points de contrôle HTTPS et ne représentent pas le ping des serveurs de match.
