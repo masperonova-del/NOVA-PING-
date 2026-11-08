@@ -108,3 +108,16 @@ Une réponse HTTPS vers un service cloud n'est pas le ping du serveur de jeu. Un
 - [x] Exiger 15 réponses exploitables avant d'évaluer la régularité HTTPS.
 - [x] Porter l'analyse de phase à cinq essais par destination et expliciter les limites du P95 sur cinq valeurs.
 - [x] Ajouter des tests sur le plan d'échantillonnage et les seuils de comparabilité.
+
+
+## Version 1.9.0-dev — Inspection des mesures brutes
+
+- [x] Enregistrer chaque essai HTTPS avec son cycle, son index, son temps, son code HTTP ou sa cause d'échec.
+- [x] Enregistrer séparément les cinq essais DNS, TCP, TLS et ligne de statut HTTP par destination.
+- [x] Afficher les tentatives HTTPS individuelles de la dernière session.
+- [x] Afficher les phases individuelles de la dernière analyse Route Engine.
+- [x] Exporter les mesures brutes et les phases au format CSV.
+- [x] Conserver les dix dernières sessions dans l'historique local.
+- [ ] Vérifier sur appareil réel l'affichage des 25 essais, les échecs et l'export CSV.
+
+**Limite :** les anciennes sessions enregistrées avant 1.9.0-dev ne contiennent que des résumés. Les mesures brutes ne sont disponibles que pour les diagnostics réalisés après installation de cette version.
