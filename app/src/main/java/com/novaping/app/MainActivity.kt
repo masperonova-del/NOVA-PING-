@@ -1,19 +1,18 @@
 package com.novaping.app
 
+import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.ConnectivityManager
-import android.net.Network
 import android.net.NetworkCapabilities
-import android.net.NetworkRequest
+import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
@@ -53,47 +52,11 @@ class MainActivity : Activity() {
     private lateinit var routeButton: Button
     private lateinit var routeResults: LinearLayout
     private lateinit var stabilityStatus: TextView
+    private lateinit var stabilityToggleButton: Button
     private lateinit var stabilityResults: LinearLayout
     private var stabilityHasEvents = false
     private var pendingCsvExport: String? = null
     private val exportRequestCode = 9104
-
-    private val stabilityTracker = NetworkStabilityTracker()
-    private var defaultNetworkCallback: ConnectivityManager.NetworkCallback? = null
-    private var wifiNetworkCallback: ConnectivityManager.NetworkCallback? = null
-    private var stabilityMonitorRegistered = false
-    private val stabilityHandler = Handler(Looper.getMainLooper())
-    private val stabilityRefreshIntervalMs = 60_000L
-    private val stabilityRefreshRunnable = object : Runnable {
-        override fun run() {
-            if (!stabilityMonitorRegistered || isFinishing || isDestroyed) return
-            val manager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            val wifiCapabilities = manager.allNetworks
-                .asSequence()
-                .mapNotNull { network -> manager.getNetworkCapabilities(network) }
-                .firstOrNull { it.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) }
-            val activeCapabilities = manager.activeNetwork?.let {
-                manager.getNetworkCapabilities(it)
-            }
-            recordStabilityEvent(
-                stabilityTracker.periodicSnapshot(
-                    wifiAvailable = wifiCapabilities != null,
-                    internetValidated = wifiCapabilities?.hasCapability(
-                        NetworkCapabilities.NET_CAPABILITY_VALIDATED
-                    ),
-                    activeTransport = transportName(activeCapabilities),
-                    activeInternetAvailable = activeCapabilities?.hasCapability(
-                        NetworkCapabilities.NET_CAPABILITY_INTERNET
-                    ) == true,
-                    activeInternetValidated = activeCapabilities?.hasCapability(
-                        NetworkCapabilities.NET_CAPABILITY_VALIDATED
-                    ) == true,
-                    timestampMillis = System.currentTimeMillis()
-                )
-            )
-            stabilityHandler.postDelayed(this, stabilityRefreshIntervalMs)
-        }
-    }
 
     private val backgroundColor = Color.rgb(10, 15, 27)
     private val panelColor = Color.rgb(21, 29, 47)
@@ -148,11 +111,25 @@ class MainActivity : Activity() {
         val stabilityCard = card()
         stabilityCard.addView(label("Surveillance des coupures", 16f, Color.WHITE, true, Gravity.START))
         stabilityCard.addView(label(
-            "Surveille séparément le Wi-Fi et le réseau actif (données mobiles, Wi-Fi ou VPN). Enregistre un état toutes les 60 secondes au premier plan et conserve au maximum 15 événements récents.",
+            "Surveille le Wi-Fi et le réseau actif même lorsque tu quittes l'application. Un service visible conserve les relevés locaux à intervalle d'environ 60 secondes. Tu peux l'arrêter à tout moment.",
             12f, mutedColor, false, Gravity.START
         ).apply { setPadding(0, dp(6), 0, dp(8)) })
-        stabilityStatus = label("Surveillance en attente…", 13f, accentColor, true, Gravity.START)
+        stabilityStatus = label("Surveillance arrêtée", 13f, accentColor, true, Gravity.START)
         stabilityCard.addView(stabilityStatus)
+        stabilityToggleButton = Button(this).apply {
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            setBackgroundTintList(android.content.res.ColorStateList.valueOf(accentColor))
+            setOnClickListener {
+                if (preferences.getBoolean("stability_monitor_running", false)) {
+                    stopNetworkMonitor()
+                } else {
+                    requestNotificationPermissionAndStartMonitor()
+                }
+            }
+        }
+        stabilityCard.addView(stabilityToggleButton)
+        refreshStabilityMonitorUi()
         stabilityResults = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(8), 0, 0)
@@ -385,128 +362,75 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun recordStabilityEvent(event: NetworkStabilityEvent?) {
-        if (event == null) return
-        runOnUiThread {
-            if (!::stabilityResults.isInitialized) return@runOnUiThread
-            val history = try {
-                JSONArray(preferences.getString("stability_events", "[]"))
-            } catch (_: Exception) {
-                JSONArray()
-            }
-            history.put(JSONObject().apply {
-                put("type", event.type.name)
-                put("timestamp", event.timestampMillis)
-                put("details", event.details)
-            })
-            val trimmed = JSONArray()
-            for (i in maxOf(0, history.length() - MAX_STABILITY_EVENTS) until history.length()) {
-                trimmed.put(history.get(i))
-            }
-            preferences.edit().putString("stability_events", trimmed.toString()).apply()
-            renderStabilityHistory()
+    private fun refreshStabilityMonitorUi() {
+        if (!::stabilityStatus.isInitialized || !::stabilityToggleButton.isInitialized) return
+        val running = preferences.getBoolean("stability_monitor_running", false)
+        stabilityStatus.text = if (running) {
+            "Surveillance active en arrière-plan · relevé environ chaque minute"
+        } else {
+            preferences.getString("stability_monitor_error", null)
+                ?: "Surveillance arrêtée"
         }
+        stabilityToggleButton.text = if (running) {
+            "ARRÊTER LA SURVEILLANCE"
+        } else {
+            "DÉMARRER LA SURVEILLANCE"
+        }
+        renderStabilityHistory()
     }
 
-    private fun synchronizeStabilitySnapshot(manager: ConnectivityManager) {
-        val now = System.currentTimeMillis()
-        val wifiCapabilities = manager.allNetworks
-            .asSequence()
-            .mapNotNull { network -> manager.getNetworkCapabilities(network) }
-            .firstOrNull { it.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) }
-        stabilityTracker.synchronizeWifiState(
-            available = wifiCapabilities != null,
-            internetValidated = wifiCapabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
-            timestampMillis = now
-        ).forEach(::recordStabilityEvent)
-
-        val activeCapabilities = manager.activeNetwork?.let { manager.getNetworkCapabilities(it) }
-        stabilityTracker.synchronizeDefaultTransport(transportName(activeCapabilities))
+    private fun requestNotificationPermissionAndStartMonitor() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 9201)
+            return
+        }
+        startNetworkMonitor()
     }
 
-    private fun registerStabilityMonitor() {
-        if (stabilityMonitorRegistered) return
-        val manager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        synchronizeStabilitySnapshot(manager)
-
-        defaultNetworkCallback = object : ConnectivityManager.NetworkCallback() {
-            override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
-                recordStabilityEvent(
-                    stabilityTracker.onDefaultTransportChanged(
-                        transportName(networkCapabilities), System.currentTimeMillis()
-                    )
-                )
-            }
-        }
-
-        wifiNetworkCallback = object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: Network) {
-                recordStabilityEvent(
-                    stabilityTracker.onWifiAvailabilityChanged(true, System.currentTimeMillis())
-                )
-            }
-
-            override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
-                if (networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
-                    recordStabilityEvent(
-                        stabilityTracker.onWifiInternetValidationChanged(
-                            networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
-                            System.currentTimeMillis()
-                        )
-                    )
-                }
-            }
-
-            override fun onLost(network: Network) {
-                recordStabilityEvent(
-                    stabilityTracker.onWifiAvailabilityChanged(false, System.currentTimeMillis())
-                )
-            }
-        }
-
+    private fun startNetworkMonitor() {
+        preferences.edit().remove("stability_monitor_error").apply()
+        val intent = Intent(this, NetworkMonitorService::class.java)
+            .setAction(NetworkMonitorService.ACTION_START)
         try {
-            manager.registerDefaultNetworkCallback(defaultNetworkCallback!!)
-            manager.registerNetworkCallback(
-                NetworkRequest.Builder()
-                    .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
-                    .build(),
-                wifiNetworkCallback!!
-            )
-            stabilityMonitorRegistered = true
-            stabilityStatus.text = "Surveillance active au premier plan · actualisation chaque minute"
-            stabilityHandler.removeCallbacks(stabilityRefreshRunnable)
-            stabilityHandler.postDelayed(stabilityRefreshRunnable, stabilityRefreshIntervalMs)
-        } catch (error: RuntimeException) {
-            stabilityStatus.text = "Surveillance indisponible : ${error.message ?: "erreur Android"}"
-            defaultNetworkCallback?.let { runCatching { manager.unregisterNetworkCallback(it) } }
-            wifiNetworkCallback?.let { runCatching { manager.unregisterNetworkCallback(it) } }
-            defaultNetworkCallback = null
-            wifiNetworkCallback = null
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent)
+            else startService(intent)
+            stabilityStatus.text = "Démarrage de la surveillance…"
+        } catch (error: Exception) {
+            stabilityStatus.text = "Impossible de démarrer : ${error.message ?: "erreur Android"}"
         }
     }
 
-    private fun unregisterStabilityMonitor() {
-        stabilityHandler.removeCallbacks(stabilityRefreshRunnable)
-        if (!stabilityMonitorRegistered) return
-        val manager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        defaultNetworkCallback?.let { runCatching { manager.unregisterNetworkCallback(it) } }
-        wifiNetworkCallback?.let { runCatching { manager.unregisterNetworkCallback(it) } }
-        defaultNetworkCallback = null
-        wifiNetworkCallback = null
-        stabilityMonitorRegistered = false
-        if (::stabilityStatus.isInitialized) {
-            stabilityStatus.text = "Surveillance suspendue en arrière-plan"
+    private fun stopNetworkMonitor() {
+        val intent = Intent(this, NetworkMonitorService::class.java)
+            .setAction(NetworkMonitorService.ACTION_STOP)
+        try {
+            startService(intent)
+            stabilityStatus.text = "Arrêt de la surveillance…"
+        } catch (error: Exception) {
+            stabilityStatus.text = "Impossible d'arrêter : ${error.message ?: "erreur Android"}"
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 9201) {
+            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+                startNetworkMonitor()
+            } else {
+                stabilityStatus.text = "Autorisation de notification refusée : surveillance non démarrée"
+            }
         }
     }
 
     override fun onStart() {
         super.onStart()
-        if (::stabilityStatus.isInitialized) registerStabilityMonitor()
-    }
-
-    override fun onStop() {
-        unregisterStabilityMonitor()
-        super.onStop()
+        refreshStabilityMonitorUi()
     }
 
     private fun currentNetworkContext(): NetworkContext {
@@ -1270,7 +1194,6 @@ class MainActivity : Activity() {
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     override fun onDestroy() {
-        unregisterStabilityMonitor()
         executor.shutdownNow()
         super.onDestroy()
     }
