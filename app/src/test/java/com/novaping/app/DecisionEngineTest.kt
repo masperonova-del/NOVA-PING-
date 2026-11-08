@@ -31,21 +31,15 @@ class DecisionEngineTest {
 
     @Test fun cleanResultRequiresRepeatedCompleteResponses() {
         val result = DecisionEngine.recommend(readyWifi, listOf(
-            aggregate(listOf(
-                RouteProbeOutcome("google.example", 12, 20, 30, 40, 204, null, 110),
-                RouteProbeOutcome("google.example", 13, 21, 31, 41, 204, null, 115),
-                RouteProbeOutcome("google.example", 14, 22, 32, 42, 204, null, 120)
-            )),
-            aggregate(listOf(
-                RouteProbeOutcome("cloudflare.example", 12, 20, 30, 40, 204, null, 110),
-                RouteProbeOutcome("cloudflare.example", 13, 21, 31, 41, 204, null, 115),
-                RouteProbeOutcome("cloudflare.example", 14, 22, 32, 42, 204, null, 120)
-            )),
-            aggregate(listOf(
-                RouteProbeOutcome("microsoft.example", 12, 20, 30, 40, 204, null, 110),
-                RouteProbeOutcome("microsoft.example", 13, 21, 31, 41, 204, null, 115),
-                RouteProbeOutcome("microsoft.example", 14, 22, 32, 42, 204, null, 120)
-            ))
+            aggregate(List(5) { i ->
+                RouteProbeOutcome("google.example", 12L + i, 20L + i, 30L + i, 40L + i, 204, null, 110L + i)
+            }),
+            aggregate(List(5) { i ->
+                RouteProbeOutcome("cloudflare.example", 12L + i, 20L + i, 30L + i, 40L + i, 204, null, 110L + i)
+            }),
+            aggregate(List(5) { i ->
+                RouteProbeOutcome("microsoft.example", 12L + i, 20L + i, 30L + i, 40L + i, 204, null, 110L + i)
+            })
         ))
         assertTrue(result.any { it.title.contains("Aucune anomalie majeure") })
     }
