@@ -31,6 +31,7 @@ private data class ProbeTarget(val name: String, val endpoint: String)
 private data class TargetResult(
     val target: ProbeTarget,
     val metrics: PingMetrics?,
+    val attemptedRequests: Int,
     val roundMedians: List<Long>,
     val failures: Map<ProbeFailure, Int>
 )
@@ -163,7 +164,7 @@ class MainActivity : Activity() {
         val testCard = card()
         testCard.addView(label("Diagnostic multi-points", 16f, Color.WHITE, true, Gravity.START))
         testCard.addView(label(
-            "Vérification préalable de l’accès Internet, puis 3 cycles indépendants avec 3 mesures par destination (9 mesures). Les échecs sont classés lorsque possible. Les résultats restent des temps de réponse HTTPS, pas le ping du jeu.",
+            "Vérification préalable de l’accès Internet, puis 5 cycles indépendants avec 5 mesures par destination (25 mesures). Les échecs sont classés lorsque possible. Les résultats restent des temps de réponse HTTPS, pas le ping du jeu.",
             13f, mutedColor, false, Gravity.START
         ).apply { setPadding(0, dp(6), 0, dp(14)) })
         testButton = Button(this).apply {
@@ -186,7 +187,7 @@ class MainActivity : Activity() {
         val routeCard = card()
         routeCard.addView(label("Décomposition d'une connexion HTTPS", 16f, Color.WHITE, true, Gravity.START))
         routeCard.addView(label(
-            "Effectue 3 essais par destination et résume séparément DNS, TCP, TLS et le délai jusqu'à la ligne de statut HTTP. Ce test ne trace pas les routeurs intermédiaires et ne mesure pas le serveur de match.",
+            "Effectue 5 essais indépendants par destination et résume séparément DNS, TCP, TLS et le délai jusqu'à la ligne de statut HTTP. Avec 5 essais, le P95 de phase reste le maximum observé. Ce test ne trace pas les routeurs intermédiaires et ne mesure pas le serveur de match.",
             13f, mutedColor, false, Gravity.START
         ).apply { setPadding(0, dp(6), 0, dp(14)) })
         routeButton = Button(this).apply {
@@ -499,19 +500,19 @@ class MainActivity : Activity() {
         }
 
         routeResults.removeAllViews()
-        routeResults.addView(label("3 cycles de mesure DNS, TCP, TLS et HTTP en cours…", 13f, mutedColor, false, Gravity.START))
+        routeResults.addView(label("5 essais indépendants par destination — analyse DNS, TCP, TLS et HTTP…", 13f, mutedColor, false, Gravity.START))
         executor.execute {
             val samplesByTarget = targets.associateWith { mutableListOf<RouteProbeOutcome>() }
             var interrupted: String? = null
             try {
-                repeat(3) { cycleIndex ->
+                repeat(MeasurementPlan.ROUTE_SAMPLES_PER_TARGET) { cycleIndex ->
                     val offset = cycleIndex % targets.size
                     val cycleOrder = targets.drop(offset) + targets.take(offset)
                     cycleOrder.forEachIndexed { targetIndex, target ->
                         runOnUiThread {
                             routeResults.removeAllViews()
                             routeResults.addView(label(
-                                "Cycle ${cycleIndex + 1}/3 — ${target.name}",
+                                "Essai ${cycleIndex + 1}/${MeasurementPlan.ROUTE_SAMPLES_PER_TARGET} — ${target.name}",
                                 13f, mutedColor, false, Gravity.START
                             ))
                         }
@@ -580,7 +581,7 @@ class MainActivity : Activity() {
                     routeResults.addView(item)
                 }
                 routeResults.addView(label(
-                    "Statistiques calculées séparément sur les réponses disponibles. Le P95 est un percentile observé sur un petit échantillon, pas une garantie. Les points de contrôle HTTPS ne représentent pas les serveurs de jeu.",
+                    "Statistiques calculées séparément sur les réponses disponibles. Avec 5 essais par phase, le P95 observé est le maximum de cet échantillon et ne constitue pas une garantie. Les points de contrôle HTTPS ne représentent pas les serveurs de jeu.",
                     11f, mutedColor, false, Gravity.START
                 ).apply { setPadding(0, dp(8), 0, 0) })
             }
@@ -659,16 +660,18 @@ class MainActivity : Activity() {
             val samplesByTarget = targets.associateWith { mutableListOf<Long>() }
             val roundMediansByTarget = targets.associateWith { mutableListOf<Long>() }
             val failuresByTarget = targets.associateWith { mutableMapOf<ProbeFailure, Int>() }
+            val attemptsByTarget = targets.associateWith { 0 }.toMutableMap()
+            var completedCycles = 0
             try {
-                repeat(3) { roundIndex ->
+                repeat(MeasurementPlan.HTTPS_CYCLES) { roundIndex ->
                     val offset = roundIndex % targets.size
                     val roundOrder = targets.drop(offset) + targets.take(offset)
                     roundOrder.forEach { target ->
                         runOnUiThread {
-                            status.text = "Cycle ${roundIndex + 1}/3"
+                            status.text = "Cycle ${roundIndex + 1}/${MeasurementPlan.HTTPS_CYCLES}"
                             resultsContainer.removeAllViews()
                             resultsContainer.addView(label(
-                                "Cycle ${roundIndex + 1}/3 — ${target.name}",
+                                "Cycle ${roundIndex + 1}/${MeasurementPlan.HTTPS_CYCLES} — ${target.name}",
                                 13f, mutedColor, false, Gravity.START
                             ))
                         }
@@ -678,14 +681,15 @@ class MainActivity : Activity() {
                         }
 
                         val roundSamples = mutableListOf<Long>()
-                        repeat(3) { attempt ->
+                        repeat(MeasurementPlan.HTTPS_REQUESTS_PER_CYCLE) { attempt ->
                             runOnUiThread {
                                 resultsContainer.removeAllViews()
                                 resultsContainer.addView(label(
-                                    "Cycle ${roundIndex + 1}/3 — ${target.name} — mesure ${attempt + 1}/3",
+                                    "Cycle ${roundIndex + 1}/${MeasurementPlan.HTTPS_CYCLES} — ${target.name} — mesure ${attempt + 1}/${MeasurementPlan.HTTPS_REQUESTS_PER_CYCLE}",
                                     13f, mutedColor, false, Gravity.START
                                 ))
                             }
+                            attemptsByTarget[target] = attemptsByTarget.getValue(target) + 1
                             val probe = HttpsProbe.measureOnce(target.endpoint)
                             if (probe.elapsedMs != null) {
                                 roundSamples.add(probe.elapsedMs)
@@ -694,15 +698,16 @@ class MainActivity : Activity() {
                                 failures[probe.failure ?: ProbeFailure.UNKNOWN] =
                                     (failures[probe.failure ?: ProbeFailure.UNKNOWN] ?: 0) + 1
                             }
-                            if (attempt < 2) Thread.sleep(150)
+                            if (attempt < MeasurementPlan.HTTPS_REQUESTS_PER_CYCLE - 1) Thread.sleep(150)
                         }
                         samplesByTarget.getValue(target).addAll(roundSamples)
                         if (roundSamples.isNotEmpty()) {
                             roundMediansByTarget.getValue(target).add(
-                                PingMetrics.from(roundSamples, 3).medianMs
+                                PingMetrics.from(roundSamples, MeasurementPlan.HTTPS_REQUESTS_PER_CYCLE).medianMs
                             )
                         }
                     }
+                    completedCycles += 1
                 }
             } catch (error: Exception) {
                 failure = error.message ?: "Erreur inconnue pendant le diagnostic"
@@ -712,13 +717,14 @@ class MainActivity : Activity() {
                 val samples = samplesByTarget.getValue(target)
                 TargetResult(
                     target = target,
-                    metrics = if (samples.isNotEmpty()) PingMetrics.from(samples, 9) else null,
+                    metrics = if (samples.isNotEmpty()) PingMetrics.from(samples, attemptsByTarget.getValue(target)) else null,
+                    attemptedRequests = attemptsByTarget.getValue(target),
                     roundMedians = roundMediansByTarget.getValue(target),
                     failures = failuresByTarget.getValue(target).toMap()
                 )
             }
             val ranked = outcomes.filter { outcome ->
-                outcome.metrics?.let { it.totalRequests - it.lostRequests >= 6 } == true
+                outcome.metrics?.let { MeasurementPlan.isHttpsRankable(it.totalRequests - it.lostRequests, it.totalRequests) } == true
             }.sortedBy { it.metrics!!.medianMs }
 
             runOnUiThread {
@@ -745,7 +751,7 @@ class MainActivity : Activity() {
                 }
 
                 resultsContainer.addView(label("Profil : " + selectedGame, 13f, mutedColor, false, Gravity.START))
-                resultsContainer.addView(label("Cycles terminés : ${if (failure == null) 3 else "interrompu"}", 12f, mutedColor, false, Gravity.START))
+                resultsContainer.addView(label("Cycles terminés : $completedCycles/${MeasurementPlan.HTTPS_CYCLES}${if (failure != null) " — interrompu" else ""}", 12f, mutedColor, false, Gravity.START))
 
                 if (ranked.isNotEmpty()) {
                     val best = ranked.first()
@@ -772,9 +778,9 @@ class MainActivity : Activity() {
                         12f, mutedColor, false, Gravity.START
                     ).apply { setPadding(0, dp(4), 0, dp(4)) })
                     val failureLine = if (outcome.failures.isEmpty()) {
-                        "Échecs HTTPS : 0/9"
+                        "Échecs HTTPS : ${outcome.failures.values.sum()}/${outcome.attemptedRequests}"
                     } else {
-                        "Causes des échecs HTTPS : " + outcome.failures.entries
+                        "Échecs HTTPS : ${outcome.failures.values.sum()}/${outcome.attemptedRequests} — " + outcome.failures.entries
                             .sortedByDescending { it.value }
                             .joinToString(" · ") { "${it.key.label} : ${it.value}" }
                     }
@@ -789,7 +795,7 @@ class MainActivity : Activity() {
                         val spreadLine = if (outcome.roundMedians.size >= 2) {
                             "Écart entre cycles : ${outcome.roundMedians.maxOrNull()!! - outcome.roundMedians.minOrNull()!!} ms"
                         } else {
-                            "Cycles exploitables : ${outcome.roundMedians.size}/3"
+                            "Cycles exploitables : ${outcome.roundMedians.size}/${MeasurementPlan.HTTPS_CYCLES}"
                         }
                         "Médiane globale : ${metrics.medianMs} ms\nP95 observé : ${metrics.p95Ms} ms\nVariation moyenne entre réponses réussies : ${metrics.jitterMs} ms\n$failureLine\n$cycleLine\n$spreadLine"
                     }
@@ -834,8 +840,8 @@ class MainActivity : Activity() {
                         put("medianMs", metrics?.medianMs ?: JSONObject.NULL)
                         put("p95Ms", metrics?.p95Ms ?: JSONObject.NULL)
                         put("variationMs", metrics?.jitterMs ?: JSONObject.NULL)
-                        put("lostRequests", metrics?.lostRequests ?: 9)
-                        put("totalRequests", metrics?.totalRequests ?: 9)
+                        put("lostRequests", metrics?.lostRequests ?: outcome.attemptedRequests)
+                        put("totalRequests", metrics?.totalRequests ?: outcome.attemptedRequests)
                         put("cycleMedians", JSONArray(outcome.roundMedians))
                         put("failureCategories", JSONObject().apply {
                             outcome.failures.forEach { (failure, count) -> put(failure.name, count) }
@@ -886,7 +892,7 @@ class MainActivity : Activity() {
                     val total = target.optInt("totalRequests", 9)
                     if (median != null) {
                         targetLines.add("$name : $median ms — échecs HTTPS $lost/$total")
-                        if (total - lost >= 6 && (bestMedian == null || median < bestMedian)) bestMedian = median
+                        if ((if (total >= MeasurementPlan.HTTPS_TOTAL_REQUESTS) MeasurementPlan.MIN_SUCCESSFUL_HTTPS_FOR_RANKING else 6) <= total - lost && (bestMedian == null || median < bestMedian)) bestMedian = median
                     } else {
                         targetLines.add("$name : aucune réponse — échecs HTTPS $lost/$total")
                     }
