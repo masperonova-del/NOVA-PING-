@@ -16,6 +16,16 @@ class PingMetricsTest {
     }
 
     @Test
+    fun orderedAttemptsDoNotBridgeAcrossFailedRequests() {
+        val result = PingMetrics.fromAttempts(listOf(30L, null, 180L, 190L))
+        assertEquals(180L, result.medianMs)
+        assertEquals(190L, result.p95Ms)
+        assertEquals(10L, result.jitterMs)
+        assertEquals(1, result.lostRequests)
+        assertEquals(4, result.totalRequests)
+    }
+
+    @Test
     fun handlesSingleSuccessfulSample() {
         val result = PingMetrics.from(listOf(42), 3)
         assertEquals(42L, result.medianMs)
