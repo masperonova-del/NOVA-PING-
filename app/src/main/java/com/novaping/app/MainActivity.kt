@@ -1196,8 +1196,11 @@ class MainActivity : Activity() {
             val newSuccess = newTotal - current.optInt("lostRequests")
 
             if (oldMedian == null || newMedian == null ||
-                oldSuccess < 15 || newSuccess < 15 ||
-                oldSuccess != newSuccess || oldTotal != newTotal || oldTotal == 0
+                oldTotal != MeasurementPlan.HTTPS_TOTAL_REQUESTS ||
+                newTotal != MeasurementPlan.HTTPS_TOTAL_REQUESTS ||
+                oldSuccess < MeasurementPlan.MIN_SUCCESSFUL_HTTPS_FOR_ASSESSMENT ||
+                newSuccess < MeasurementPlan.MIN_SUCCESSFUL_HTTPS_FOR_ASSESSMENT ||
+                oldSuccess != newSuccess
             ) {
                 output.append(current.optString("name"))
                     .append(" : données insuffisantes ou échantillons non comparables\n")
@@ -1217,7 +1220,8 @@ class MainActivity : Activity() {
                 .append(" ms (").append(direction).append(")")
                 .append("\n  Réponses réussies : ").append(oldSuccess).append("/")
                 .append(oldTotal).append(" → ").append(newSuccess).append("/")
-                .append(newTotal).append("\n\n")
+                .append(newTotal).append("\n  Échantillon : 25 tentatives planifiées dans chaque session")
+                .append("\n\n")
             compared++
         }
 
