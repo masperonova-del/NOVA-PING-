@@ -133,3 +133,14 @@ Une réponse HTTPS vers un service cloud n'est pas le ping du serveur de jeu. Un
 - [x] Ajouter des tests unitaires pour les classements, les égalités et les données incomplètes.
 
 **Limite :** ces comparaisons portent uniquement sur les points de contrôle HTTPS publics. Elles ne mesurent ni le ping CODM, ni la route réelle du match, ni une amélioration de routage.
+
+
+## Version 1.11.0-dev — Comparaison de sessions
+
+- [x] Ajouter une comparaison locale entre deux sessions terminées ayant le même profil de jeu et le même type de connexion.
+- [x] Exclure les sessions interrompues par un changement de réseau.
+- [x] Comparer les médianes HTTPS destination par destination et afficher les écarts en millisecondes.
+- [x] Afficher les nombres de réponses réussies et ignorer les paires avec moins de 15 réponses exploitables ou des plans de mesure différents.
+- [ ] Vérifier sur appareil réel l'affichage, les anciennes sessions et les cas de données insuffisantes.
+
+**Limite :** la comparaison porte sur les points de contrôle HTTPS publics. Elle ne mesure pas l'évolution du ping en jeu et ne démontre pas une amélioration de la route vers un serveur de match. Les résultats restent sensibles à l'heure, à la charge locale et au comportement des services distants.
