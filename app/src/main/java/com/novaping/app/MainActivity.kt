@@ -628,7 +628,8 @@ class MainActivity : Activity() {
                     }
                     val details = listOf(
                         phaseLine("DNS", aggregate.dns),
-                        phaseLine("TCP", aggregate.tcp),
+                        phaseLine("TCP — adresse connectée", aggregate.tcp),
+                        phaseLine("TCP — total des tentatives d’adresses", aggregate.tcpAttemptTotal),
                         phaseLine("TLS", aggregate.tls),
                         phaseLine("Ligne de statut HTTP", aggregate.httpStatusLine),
                         "Connexions HTTPS complètes : ${aggregate.completeSamples}/${aggregate.sampleCount}",
@@ -1268,6 +1269,7 @@ class MainActivity : Activity() {
                                     put("host", outcome.host)
                                     put("dnsMs", outcome.dnsMs ?: JSONObject.NULL)
                                     put("tcpMs", outcome.tcpConnectMs ?: JSONObject.NULL)
+                                    put("tcpAttemptTotalMs", outcome.tcpAttemptTotalMs ?: JSONObject.NULL)
                                     put("tlsMs", outcome.tlsHandshakeMs ?: JSONObject.NULL)
                                     put("httpStatusLineMs", outcome.httpStatusLineMs ?: JSONObject.NULL)
                                     put("httpStatus", outcome.httpStatus ?: JSONObject.NULL)
@@ -1419,7 +1421,8 @@ class MainActivity : Activity() {
         output.append("\n")
         val phases = listOf(
             "DNS" to "dnsMs",
-            "TCP" to "tcpMs",
+            "TCP — adresse connectée" to "tcpMs",
+            "TCP — total des tentatives d’adresses" to "tcpAttemptTotalMs",
             "TLS" to "tlsMs",
             "HTTP (ligne de statut)" to "httpStatusLineMs"
         )
@@ -1530,7 +1533,8 @@ class MainActivity : Activity() {
         val routeTargets = route.optJSONArray("targets") ?: JSONArray()
         val routePhases = listOf(
             "DNS" to "dnsMs",
-            "TCP" to "tcpMs",
+            "TCP_CONNECTED_ADDRESS" to "tcpMs",
+            "TCP_ADDRESS_ATTEMPTS_TOTAL" to "tcpAttemptTotalMs",
             "TLS" to "tlsMs",
             "HTTP_STATUS_LINE" to "httpStatusLineMs"
         )
