@@ -167,7 +167,7 @@ object DecisionEngine {
             best.completeSamples > second.completeSamples -> {
                 recommendations += NetworkRecommendation(
                     "Point de contrôle le plus fiable dans cet échantillon",
-                    "${best.host} a obtenu ${best.completeSamples}/${best.sampleCount} connexions HTTPS complètes, contre ${second.completeSamples}/${second.sampleCount} pour ${second.host}. Ce classement concerne uniquement ces points de contrôle.",
+                    "Dans cette analyse Route Engine (5 essais indépendants par destination), ${best.host} a obtenu ${best.completeSamples}/${best.sampleCount} connexions HTTPS complètes, contre ${second.completeSamples}/${second.sampleCount} pour ${second.host}. Ce classement est distinct du diagnostic HTTPS global (25 requêtes planifiées par destination) et concerne uniquement ces points de contrôle.",
                     "Répéter le test sur plusieurs sessions et réseaux. Cela ne désigne pas le meilleur serveur CODM.",
                     RecommendationConfidence.LOW
                 )
@@ -203,7 +203,7 @@ object DecisionEngine {
             if (fastest.second < runnerUp.second) {
                 recommendations += NetworkRecommendation(
                     "Phases cumulées les plus courtes (indicatif)",
-                    "${fastest.first.host} présente une somme des médianes DNS + TCP + TLS + HTTP de ${fastest.second} ms, contre ${runnerUp.second} ms pour ${runnerUp.first.host}. Cette somme n'est pas une mesure directe du temps total de connexion.",
+                    "Dans cette analyse Route Engine (5 essais indépendants par destination), ${fastest.first.host} présente une somme des médianes DNS + TCP + TLS + HTTP de ${fastest.second} ms, contre ${runnerUp.second} ms pour ${runnerUp.first.host}. Ces phases sont mesurées séparément du diagnostic HTTPS global ; leur somme n'est pas une mesure directe du temps total de connexion.",
                     "Confirmer sur plusieurs sessions. Ce résultat ne mesure pas la latence d'un serveur de jeu.",
                     RecommendationConfidence.LOW
                 )
