@@ -41,7 +41,8 @@ private data class TargetResult(
     val attemptedRequests: Int,
     val roundMedians: List<Long>,
     val failures: Map<ProbeFailure, Int>,
-    val cycleOutcomes: List<List<ProbeOutcome>>
+    val cycleOutcomes: List<List<ProbeOutcome>>,
+    val attemptTraces: List<List<ProbeAttemptTrace>>
 )
 
 class MainActivity : Activity() {
@@ -473,6 +474,26 @@ class MainActivity : Activity() {
         super.onPause()
     }
 
+    private fun currentNetworkObservation(): NetworkObservation {
+        val manager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = manager.activeNetwork
+        val caps = network?.let { manager.getNetworkCapabilities(it) }
+        val transport = when {
+            caps == null -> NetworkTransport.NONE
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> NetworkTransport.VPN
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> NetworkTransport.WIFI
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> NetworkTransport.CELLULAR
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> NetworkTransport.ETHERNET
+            else -> NetworkTransport.OTHER
+        }
+        return NetworkObservation(
+            networkId = network?.toString(),
+            transport = transport,
+            internetAvailable = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true,
+            validated = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+        )
+    }
+
     private fun currentNetworkContext(): NetworkContext {
         val manager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val network = manager.activeNetwork
@@ -646,8 +667,14 @@ class MainActivity : Activity() {
     private fun runNetworkTest() {
         testButton.isEnabled = false
         val selectedGame = gameSpinner.selectedItem?.toString() ?: "Autre jeu"
-        val networkType = refreshNetworkInfo()
-        val preflight = currentNetworkPreflight()
+        refreshNetworkInfo()
+        val sessionStartNetwork = currentNetworkObservation()
+        val networkType = sessionStartNetwork.displayName()
+        val preflight = NetworkReadiness.from(
+            hasNetwork = !sessionStartNetwork.networkId.isNullOrBlank(),
+            hasInternet = sessionStartNetwork.internetAvailable,
+            validated = sessionStartNetwork.validated
+        )
         if (preflight != NetworkReadiness.READY) {
             testButton.isEnabled = true
             status.text = "Connexion non prête"
@@ -667,19 +694,22 @@ class MainActivity : Activity() {
         resultsContainer.removeAllViews()
         resultsContainer.addView(label("Préparation du diagnostic…", 13f, mutedColor, false, Gravity.START))
 
+        val sessionStartedAtEpochMs = System.currentTimeMillis()
         executor.execute {
             var failure: String? = null
+            var networkIssue: NetworkSessionIssue? = null
             val samplesByTarget = targets.associateWith { mutableListOf<Long>() }
             val roundMediansByTarget = targets.associateWith { mutableListOf<Long>() }
             val cycleOutcomesByTarget = targets.associateWith { mutableListOf<List<ProbeOutcome>>() }
+            val attemptTracesByTarget = targets.associateWith { mutableListOf<List<ProbeAttemptTrace>>() }
             val failuresByTarget = targets.associateWith { mutableMapOf<ProbeFailure, Int>() }
             val attemptsByTarget = targets.associateWith { 0 }.toMutableMap()
             var completedCycles = 0
             try {
-                repeat(MeasurementPlan.HTTPS_CYCLES) { roundIndex ->
+                cycleLoop@ for (roundIndex in 0 until MeasurementPlan.HTTPS_CYCLES) {
                     val offset = roundIndex % targets.size
                     val roundOrder = targets.drop(offset) + targets.take(offset)
-                    roundOrder.forEach { target ->
+                    for (target in roundOrder) {
                         runOnUiThread {
                             status.text = "Cycle ${roundIndex + 1}/${MeasurementPlan.HTTPS_CYCLES}"
                             resultsContainer.removeAllViews()
@@ -689,13 +719,20 @@ class MainActivity : Activity() {
                             ))
                         }
 
-                        if (roundIndex == 0) {
+                        if (roundIndex == 0 && networkIssue == null) {
+                            val beforeWarmup = currentNetworkObservation()
+                            networkIssue = sessionStartNetwork.issueComparedTo(beforeWarmup)
+                            if (networkIssue != null) break@cycleLoop
                             HttpsProbe.measureOnce(target.endpoint)
+                            val afterWarmup = currentNetworkObservation()
+                            networkIssue = sessionStartNetwork.issueComparedTo(afterWarmup)
+                            if (networkIssue != null) break@cycleLoop
                         }
 
                         val roundSamples = mutableListOf<Long>()
                         val roundOutcomes = mutableListOf<ProbeOutcome>()
-                        repeat(MeasurementPlan.HTTPS_REQUESTS_PER_CYCLE) { attempt ->
+                        val roundTraces = mutableListOf<ProbeAttemptTrace>()
+                        for (attempt in 0 until MeasurementPlan.HTTPS_REQUESTS_PER_CYCLE) {
                             runOnUiThread {
                                 resultsContainer.removeAllViews()
                                 resultsContainer.addView(label(
@@ -703,8 +740,24 @@ class MainActivity : Activity() {
                                     13f, mutedColor, false, Gravity.START
                                 ))
                             }
-                            attemptsByTarget[target] = attemptsByTarget.getValue(target) + 1
+
+                            val networkBefore = currentNetworkObservation()
+                            networkIssue = sessionStartNetwork.issueComparedTo(networkBefore)
+                            if (networkIssue != null) break
+
+                            val attemptStartedAt = System.currentTimeMillis()
                             val probe = HttpsProbe.measureOnce(target.endpoint)
+                            val attemptCompletedAt = System.currentTimeMillis()
+                            val networkAfter = currentNetworkObservation()
+                            roundTraces.add(
+                                ProbeAttemptTrace(
+                                    startedAtEpochMs = attemptStartedAt,
+                                    completedAtEpochMs = attemptCompletedAt,
+                                    networkBefore = networkBefore,
+                                    networkAfter = networkAfter
+                                )
+                            )
+                            attemptsByTarget[target] = attemptsByTarget.getValue(target) + 1
                             roundOutcomes.add(probe)
                             if (probe.elapsedMs != null) {
                                 roundSamples.add(probe.elapsedMs)
@@ -713,20 +766,34 @@ class MainActivity : Activity() {
                                 failures[probe.failure ?: ProbeFailure.UNKNOWN] =
                                     (failures[probe.failure ?: ProbeFailure.UNKNOWN] ?: 0) + 1
                             }
+
+                            networkIssue = sessionStartNetwork.issueComparedTo(networkAfter)
+                            if (networkIssue != null) break
                             if (attempt < MeasurementPlan.HTTPS_REQUESTS_PER_CYCLE - 1) Thread.sleep(150)
                         }
-                        samplesByTarget.getValue(target).addAll(roundSamples)
-                        cycleOutcomesByTarget.getValue(target).add(roundOutcomes.toList())
-                        if (roundSamples.isNotEmpty()) {
-                            roundMediansByTarget.getValue(target).add(
-                                PingMetrics.from(roundSamples, MeasurementPlan.HTTPS_REQUESTS_PER_CYCLE).medianMs
-                            )
+
+                        if (roundOutcomes.isNotEmpty()) {
+                            samplesByTarget.getValue(target).addAll(roundSamples)
+                            cycleOutcomesByTarget.getValue(target).add(roundOutcomes.toList())
+                            attemptTracesByTarget.getValue(target).add(roundTraces.toList())
+                            if (roundSamples.isNotEmpty()) {
+                                roundMediansByTarget.getValue(target).add(
+                                    PingMetrics.from(roundSamples, roundOutcomes.size).medianMs
+                                )
+                            }
                         }
+                        if (networkIssue != null) break@cycleLoop
                     }
                     completedCycles += 1
                 }
             } catch (error: Exception) {
                 failure = error.message ?: "Erreur inconnue pendant le diagnostic"
+            }
+
+            val sessionEndedAtEpochMs = System.currentTimeMillis()
+            val sessionEndNetwork = currentNetworkObservation()
+            if (networkIssue == null) {
+                networkIssue = sessionStartNetwork.issueComparedTo(sessionEndNetwork)
             }
 
             val outcomes = targets.map { target ->
@@ -737,23 +804,36 @@ class MainActivity : Activity() {
                     attemptedRequests = attemptsByTarget.getValue(target),
                     roundMedians = roundMediansByTarget.getValue(target),
                     failures = failuresByTarget.getValue(target).toMap(),
-                    cycleOutcomes = cycleOutcomesByTarget.getValue(target).toList()
+                    cycleOutcomes = cycleOutcomesByTarget.getValue(target).toList(),
+                    attemptTraces = attemptTracesByTarget.getValue(target).toList()
                 )
             }
-            val ranked = outcomes.filter { outcome ->
-                outcome.metrics?.let { MeasurementPlan.isHttpsRankable(it.totalRequests - it.lostRequests, it.totalRequests) } == true
-            }.sortedBy { it.metrics!!.medianMs }
+            val ranked = if (failure == null && networkIssue == null) {
+                outcomes.filter { outcome ->
+                    outcome.metrics?.let { MeasurementPlan.isHttpsRankable(it.totalRequests - it.lostRequests, it.totalRequests) } == true
+                }.sortedBy { it.metrics!!.medianMs }
+            } else {
+                emptyList()
+            }
 
             runOnUiThread {
                 testButton.isEnabled = true
                 resultsContainer.removeAllViews()
-                if (failure != null) {
+                if (failure != null || networkIssue != null) {
                     status.text = "Diagnostic interrompu"
                     status.setTextColor(Color.rgb(255, 115, 105))
-                    resultsContainer.addView(label(
-                        "Erreur : " + failure,
-                        13f, Color.rgb(255, 150, 130), false, Gravity.START
-                    ))
+                    if (failure != null) {
+                        resultsContainer.addView(label(
+                            "Erreur : " + failure,
+                            13f, Color.rgb(255, 150, 130), false, Gravity.START
+                        ))
+                    }
+                    if (networkIssue != null) {
+                        resultsContainer.addView(label(
+                            networkIssue.userMessage + " Les mesures partielles sont conservées, mais aucun point de contrôle ne sera classé.",
+                            13f, Color.rgb(255, 185, 90), false, Gravity.START
+                        ))
+                    }
                 } else {
                     status.text = when {
                         ranked.isNotEmpty() -> "Comparaison terminée"
@@ -768,7 +848,7 @@ class MainActivity : Activity() {
                 }
 
                 resultsContainer.addView(label("Profil : " + selectedGame, 13f, mutedColor, false, Gravity.START))
-                resultsContainer.addView(label("Cycles terminés : $completedCycles/${MeasurementPlan.HTTPS_CYCLES}${if (failure != null) " — interrompu" else ""}", 12f, mutedColor, false, Gravity.START))
+                resultsContainer.addView(label("Cycles terminés : $completedCycles/${MeasurementPlan.HTTPS_CYCLES}${if (failure != null || networkIssue != null) " — interrompu" else ""}", 12f, mutedColor, false, Gravity.START))
 
                 if (ranked.isNotEmpty()) {
                     val best = ranked.first()
@@ -829,7 +909,16 @@ class MainActivity : Activity() {
                         "Comparaison de points de contrôle HTTPS uniquement : la médiane et la régularité observées ne désignent pas le meilleur serveur ni la meilleure route de jeu.",
                         11f, mutedColor, false, Gravity.START
                     ).apply { setPadding(0, dp(10), 0, 0) })
-                    saveHistory(selectedGame, networkType, outcomes)
+                    saveHistory(
+                        selectedGame,
+                        networkType,
+                        outcomes,
+                        sessionStartedAtEpochMs,
+                        sessionEndedAtEpochMs,
+                        sessionStartNetwork,
+                        sessionEndNetwork,
+                        networkIssue
+                    )
                     renderHistory()
                 }
                 refreshNetworkInfo()
@@ -837,18 +926,36 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun saveHistory(game: String, network: String, outcomes: List<TargetResult>) {
+    private fun saveHistory(
+        game: String,
+        network: String,
+        outcomes: List<TargetResult>,
+        startedAtEpochMs: Long,
+        completedAtEpochMs: Long,
+        startNetwork: NetworkObservation,
+        endNetwork: NetworkObservation,
+        networkIssue: NetworkSessionIssue?
+    ) {
         val history = try {
             JSONArray(preferences.getString("sessions", "[]"))
         } catch (_: Exception) {
             JSONArray()
         }
 
-        val stamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+        val stampFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+        val stamp = stampFormat.format(Date(startedAtEpochMs))
+        val completedStamp = stampFormat.format(Date(completedAtEpochMs))
         val session = JSONObject().apply {
             put("timestamp", stamp)
+            put("completedAt", completedStamp)
+            put("startedAtEpochMs", startedAtEpochMs)
+            put("completedAtEpochMs", completedAtEpochMs)
             put("game", game)
             put("network", network)
+            put("networkStart", startNetwork.displayName())
+            put("networkEnd", endNetwork.displayName())
+            put("networkChanged", networkIssue != null)
+            put("networkIssue", networkIssue?.userMessage ?: JSONObject.NULL)
             put("targets", JSONArray().apply {
                 outcomes.forEach { outcome ->
                     val metrics = outcome.metrics
@@ -869,6 +976,16 @@ class MainActivity : Activity() {
                                         put("elapsedMs", probe.elapsedMs ?: JSONObject.NULL)
                                         put("httpCode", probe.httpCode ?: JSONObject.NULL)
                                         put("failure", probe.failure?.name ?: JSONObject.NULL)
+                                        val trace = outcome.attemptTraces.getOrNull(cycleIndex)?.getOrNull(attemptIndex)
+                                        put("startedAtEpochMs", trace?.startedAtEpochMs ?: JSONObject.NULL)
+                                        put("completedAtEpochMs", trace?.completedAtEpochMs ?: JSONObject.NULL)
+                                        put("networkBefore", trace?.networkBefore?.displayName() ?: JSONObject.NULL)
+                                        put("networkAfter", trace?.networkAfter?.displayName() ?: JSONObject.NULL)
+                                        put("networkBeforeId", trace?.networkBefore?.networkId ?: JSONObject.NULL)
+                                        put("networkAfterId", trace?.networkAfter?.networkId ?: JSONObject.NULL)
+                                        put("internetValidatedBefore", trace?.networkBefore?.validated ?: JSONObject.NULL)
+                                        put("internetValidatedAfter", trace?.networkAfter?.validated ?: JSONObject.NULL)
+                                        put("networkStable", trace?.networkStable ?: JSONObject.NULL)
                                     })
                                 }
                             }
@@ -910,6 +1027,10 @@ class MainActivity : Activity() {
                 val network = item.optString("network", "Réseau inconnu")
                 val game = item.optString("game", "Jeu inconnu")
                 val timestamp = item.optString("timestamp", "Date inconnue")
+                val completedAt = item.optString("completedAt", "")
+                val networkChanged = item.optBoolean("networkChanged", false)
+                val networkStart = item.optString("networkStart", network)
+                val networkEnd = item.optString("networkEnd", network)
                 val targetsArray = item.optJSONArray("targets") ?: JSONArray()
                 val targetLines = mutableListOf<String>()
                 var bestMedian: Long? = null
@@ -922,15 +1043,27 @@ class MainActivity : Activity() {
                     val total = target.optInt("totalRequests", 9)
                     if (median != null) {
                         targetLines.add("$name : $median ms — échecs HTTPS $lost/$total")
-                        if ((if (total >= MeasurementPlan.HTTPS_TOTAL_REQUESTS) MeasurementPlan.MIN_SUCCESSFUL_HTTPS_FOR_RANKING else 6) <= total - lost && (bestMedian == null || median < bestMedian)) bestMedian = median
+                        if (!networkChanged &&
+                            (if (total >= MeasurementPlan.HTTPS_TOTAL_REQUESTS) MeasurementPlan.MIN_SUCCESSFUL_HTTPS_FOR_RANKING else 6) <= total - lost &&
+                            (bestMedian == null || median < bestMedian)
+                        ) bestMedian = median
                     } else {
                         targetLines.add("$name : aucune réponse — échecs HTTPS $lost/$total")
                     }
                 }
 
-                val summary = "$timestamp | $network | $game"
-                sessionLines.add(summary + if (targetLines.isEmpty()) "" else "\n" + targetLines.joinToString("\n"))
-                if (bestMedian != null) {
+                val sessionNetworkLabel = if (networkChanged) {
+                    "⚠ réseau modifié : $networkStart → $networkEnd"
+                } else {
+                    network
+                }
+                val durationLabel = if (completedAt.isNotBlank()) " → $completedAt" else ""
+                val summary = "$timestamp$durationLabel | $sessionNetworkLabel | $game"
+                val issueLine = if (networkChanged) {
+                    "\nClassement ignoré : ${item.optString("networkIssue", "conditions réseau modifiées")}"
+                } else ""
+                sessionLines.add(summary + issueLine + if (targetLines.isEmpty()) "" else "\n" + targetLines.joinToString("\n"))
+                if (!networkChanged && bestMedian != null) {
                     grouped.getOrPut(network) { mutableListOf() }
                         .add("$timestamp : meilleur point HTTPS $bestMedian ms")
                 }
