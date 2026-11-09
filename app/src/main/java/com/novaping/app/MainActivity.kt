@@ -812,6 +812,9 @@ class MainActivity : Activity() {
                                 probe.elapsedMs != null -> {
                                     orderedAttemptsByTarget.getValue(target).add(probe.elapsedMs)
                                     roundSamples.add(probe.elapsedMs)
+                                    probe.failure?.let { category ->
+                                        failures[category] = (failures[category] ?: 0) + 1
+                                    }
                                 }
                                 else -> {
                                     orderedAttemptsByTarget.getValue(target).add(null)
