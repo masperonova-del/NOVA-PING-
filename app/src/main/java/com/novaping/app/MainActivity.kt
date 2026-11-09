@@ -785,22 +785,26 @@ class MainActivity : Activity() {
                             val probe = HttpsProbe.measureOnce(target.endpoint)
                             val attemptCompletedAt = System.currentTimeMillis()
                             val networkAfter = currentNetworkObservation()
-                            roundTraces.add(
-                                ProbeAttemptTrace(
-                                    startedAtEpochMs = attemptStartedAt,
-                                    completedAtEpochMs = attemptCompletedAt,
-                                    networkBefore = networkBefore,
-                                    networkAfter = networkAfter
-                                )
+                            val trace = ProbeAttemptTrace(
+                                startedAtEpochMs = attemptStartedAt,
+                                completedAtEpochMs = attemptCompletedAt,
+                                networkBefore = networkBefore,
+                                networkAfter = networkAfter
                             )
+                            roundTraces.add(trace)
                             attemptsByTarget[target] = attemptsByTarget.getValue(target) + 1
                             roundOutcomes.add(probe)
-                            if (probe.elapsedMs != null) {
-                                roundSamples.add(probe.elapsedMs)
-                            } else {
-                                val failures = failuresByTarget.getValue(target)
-                                failures[probe.failure ?: ProbeFailure.UNKNOWN] =
-                                    (failures[probe.failure ?: ProbeFailure.UNKNOWN] ?: 0) + 1
+                            val failures = failuresByTarget.getValue(target)
+                            when {
+                                !trace.networkStable -> {
+                                    failures[ProbeFailure.NETWORK_CHANGED] =
+                                        (failures[ProbeFailure.NETWORK_CHANGED] ?: 0) + 1
+                                }
+                                probe.elapsedMs != null -> roundSamples.add(probe.elapsedMs)
+                                else -> {
+                                    val category = probe.failure ?: ProbeFailure.UNKNOWN
+                                    failures[category] = (failures[category] ?: 0) + 1
+                                }
                             }
 
                             networkIssue = sessionStartNetwork.issueComparedTo(networkAfter)
@@ -1009,10 +1013,13 @@ class MainActivity : Activity() {
                                     put(JSONObject().apply {
                                         put("cycle", cycleIndex + 1)
                                         put("attempt", attemptIndex + 1)
-                                        put("elapsedMs", probe.elapsedMs ?: JSONObject.NULL)
-                                        put("httpCode", probe.httpCode ?: JSONObject.NULL)
-                                        put("failure", probe.failure?.name ?: JSONObject.NULL)
                                         val trace = outcome.attemptTraces.getOrNull(cycleIndex)?.getOrNull(attemptIndex)
+                                        val networkChangedDuringAttempt = trace?.networkStable == false
+                                        put("elapsedMs", if (networkChangedDuringAttempt) JSONObject.NULL else probe.elapsedMs ?: JSONObject.NULL)
+                                        put("rawElapsedMs", probe.elapsedMs ?: JSONObject.NULL)
+                                        put("httpCode", probe.httpCode ?: JSONObject.NULL)
+                                        put("failure", if (networkChangedDuringAttempt) ProbeFailure.NETWORK_CHANGED.name else probe.failure?.name ?: JSONObject.NULL)
+                                        put("probeFailure", probe.failure?.name ?: JSONObject.NULL)
                                         put("startedAtEpochMs", trace?.startedAtEpochMs ?: JSONObject.NULL)
                                         put("completedAtEpochMs", trace?.completedAtEpochMs ?: JSONObject.NULL)
                                         put("networkBefore", trace?.networkBefore?.displayName() ?: JSONObject.NULL)
@@ -1232,7 +1239,12 @@ class MainActivity : Activity() {
                         output.append(" · réseau : ").append(attempt.optString("networkBefore"))
                     }
                     output.append(" : ")
-                    if (attempt.isNull("elapsedMs")) {
+                    if (attempt.optString("failure", "") == ProbeFailure.NETWORK_CHANGED.name &&
+                        !attempt.isNull("rawElapsedMs")
+                    ) {
+                        output.append("RÉPONSE NON CLASSÉE — ")
+                            .append(attempt.optLong("rawElapsedMs")).append(" ms")
+                    } else if (attempt.isNull("elapsedMs")) {
                         output.append("ÉCHEC — ").append(attempt.optString("failure", "Cause inconnue"))
                     } else {
                         output.append(attempt.optLong("elapsedMs")).append(" ms")
@@ -1325,16 +1337,27 @@ class MainActivity : Activity() {
                 val attempts = target.optJSONArray("attempts") ?: JSONArray()
                 for (index in 0 until attempts.length()) {
                     val item = attempts.optJSONObject(index) ?: continue
+                    val attemptStartedAt = item.optLong("startedAtEpochMs", 0L)
+                    val attemptStamp = if (attemptStartedAt > 0L) {
+                        SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault()).format(Date(attemptStartedAt))
+                    } else {
+                        stamp
+                    }
+                    val attemptFailure = if (!item.isNull("networkStable") &&
+                        !item.optBoolean("networkStable", true)
+                    ) {
+                        ProbeFailure.NETWORK_CHANGED.name
+                    } else if (item.isNull("failure")) null else item.optString("failure")
                     rows.add(MeasurementCsvRow(
                         dataset = "HTTPS",
-                        timestamp = stamp,
+                        timestamp = attemptStamp,
                         target = target.optString("name", ""),
                         cycle = item.optInt("cycle").toString(),
                         attempt = item.optInt("attempt").toString(),
                         phase = "HTTPS",
                         elapsedMs = if (item.isNull("elapsedMs")) null else item.optLong("elapsedMs").toString(),
                         httpStatus = if (item.isNull("httpCode")) null else item.optInt("httpCode").toString(),
-                        failure = if (item.isNull("failure")) null else item.optString("failure")
+                        failure = attemptFailure
                     ))
                 }
             }
