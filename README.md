@@ -14,7 +14,7 @@ NOVA PING aide à comprendre la qualité de réponses réseau vers des points de
 - Demander un consentement explicite avant toute future fonction de routage VPN.
 - Ne jamais prétendre qu'un changement DNS ou qu'un test vers un service cloud réduit le ping en jeu sans mesure directe qui le démontre.
 
-## État de la base 1.0.0
+## Base historique 1.0.0
 
 La version 1.0.0 consolide la base de diagnostic Android.
 
