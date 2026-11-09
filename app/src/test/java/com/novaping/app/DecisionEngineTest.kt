@@ -88,6 +88,8 @@ class DecisionEngineTest {
         val reliability = result.first { it.title == "Point de contrôle le plus fiable dans cet échantillon" }
         assertTrue(reliability.explanation.contains("cloudflare.example"))
         assertTrue(reliability.explanation.contains("3/5"))
+        assertTrue(reliability.explanation.contains("Route Engine"))
+        assertTrue(reliability.explanation.contains("25 requêtes planifiées"))
         assertTrue(reliability.action.contains("ne désigne pas le meilleur serveur CODM"))
     }
 
@@ -112,6 +114,8 @@ class DecisionEngineTest {
         val latency = result.first { it.title == "Phases cumulées les plus courtes (indicatif)" }
         assertTrue(latency.explanation.contains("cloudflare.example"))
         assertTrue(latency.explanation.contains("somme des médianes"))
+        assertTrue(latency.explanation.contains("Route Engine"))
+        assertTrue(latency.explanation.contains("diagnostic HTTPS global"))
         assertTrue(latency.action.contains("ne mesure pas la latence d'un serveur de jeu"))
     }
 
