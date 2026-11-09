@@ -1145,6 +1145,27 @@ class MainActivity : Activity() {
             sessionLines.joinToString("\n\n")
     }
 
+    private fun successfulAttemptSlots(target: JSONObject): Set<String>? {
+        val attempts = target.optJSONArray("attempts") ?: return null
+        if (attempts.length() != MeasurementPlan.HTTPS_TOTAL_REQUESTS) return null
+        val seen = mutableSetOf<String>()
+        val successful = mutableSetOf<String>()
+        for (index in 0 until attempts.length()) {
+            val attempt = attempts.optJSONObject(index) ?: return null
+            val cycle = attempt.optInt("cycle", -1)
+            val number = attempt.optInt("attempt", -1)
+            if (cycle !in 1..MeasurementPlan.HTTPS_CYCLES ||
+                number !in 1..MeasurementPlan.HTTPS_REQUESTS_PER_CYCLE
+            ) return null
+            val slot = "$cycle:$number"
+            if (!seen.add(slot)) return null
+            if (!attempt.isNull("elapsedMs") &&
+                attempt.optString("failure") != ProbeFailure.NETWORK_CHANGED.name
+            ) successful.add(slot)
+        }
+        return successful
+    }
+
     private fun compareRecentSessions() {
         val history = try {
             JSONArray(preferences.getString("sessions", "[]"))
@@ -1204,16 +1225,26 @@ class MainActivity : Activity() {
             val newTotal = current.optInt("totalRequests")
             val oldSuccess = oldTotal - old.optInt("lostRequests")
             val newSuccess = newTotal - current.optInt("lostRequests")
+            val oldSuccessfulSlots = successfulAttemptSlots(old)
+            val newSuccessfulSlots = successfulAttemptSlots(current)
+            val sameAttemptPattern = oldSuccessfulSlots != null &&
+                newSuccessfulSlots != null && oldSuccessfulSlots == newSuccessfulSlots
 
             if (oldMedian == null || newMedian == null ||
                 oldTotal != MeasurementPlan.HTTPS_TOTAL_REQUESTS ||
                 newTotal != MeasurementPlan.HTTPS_TOTAL_REQUESTS ||
                 oldSuccess < MeasurementPlan.MIN_SUCCESSFUL_HTTPS_FOR_ASSESSMENT ||
                 newSuccess < MeasurementPlan.MIN_SUCCESSFUL_HTTPS_FOR_ASSESSMENT ||
-                oldSuccess != newSuccess
+                oldSuccessfulSlots == null || newSuccessfulSlots == null ||
+                !sameAttemptPattern
             ) {
+                val reason = if (oldSuccessfulSlots != null && newSuccessfulSlots != null) {
+                    "positions des réponses réussies différentes"
+                } else {
+                    "données brutes incomplètes ou échantillons non comparables"
+                }
                 output.append(current.optString("name"))
-                    .append(" : données insuffisantes ou échantillons non comparables\n")
+                    .append(" : ").append(reason).append("\\n")
                 continue
             }
 
