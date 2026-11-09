@@ -1236,6 +1236,7 @@ class MainActivity : Activity() {
                 oldSuccess < MeasurementPlan.MIN_SUCCESSFUL_HTTPS_FOR_ASSESSMENT ||
                 newSuccess < MeasurementPlan.MIN_SUCCESSFUL_HTTPS_FOR_ASSESSMENT ||
                 oldSuccessfulSlots == null || newSuccessfulSlots == null ||
+                oldSuccessfulSlots.size != oldSuccess || newSuccessfulSlots.size != newSuccess ||
                 !sameAttemptPattern
             ) {
                 val reason = if (oldSuccessfulSlots != null && newSuccessfulSlots != null) {
