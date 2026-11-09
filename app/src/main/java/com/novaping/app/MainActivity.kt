@@ -520,8 +520,9 @@ class MainActivity : Activity() {
 
     private fun runRouteAnalysis() {
         routeButton.isEnabled = false
+        val sessionStartNetwork = currentNetworkObservation()
         val context = currentNetworkContext()
-        if (!context.internetValidated) {
+        if (!sessionStartNetwork.isReady || !context.internetValidated) {
             routeButton.isEnabled = true
             routeResults.removeAllViews()
             routeResults.addView(label(
@@ -533,14 +534,16 @@ class MainActivity : Activity() {
 
         routeResults.removeAllViews()
         routeResults.addView(label("5 essais indépendants par destination — analyse DNS, TCP, TLS et HTTP…", 13f, mutedColor, false, Gravity.START))
+        val sessionStartedAtEpochMs = System.currentTimeMillis()
         executor.execute {
             val samplesByTarget = targets.associateWith { mutableListOf<RouteProbeOutcome>() }
             var interrupted: String? = null
+            var networkIssue: NetworkSessionIssue? = null
             try {
-                repeat(MeasurementPlan.ROUTE_SAMPLES_PER_TARGET) { cycleIndex ->
+                routeLoop@ for (cycleIndex in 0 until MeasurementPlan.ROUTE_SAMPLES_PER_TARGET) {
                     val offset = cycleIndex % targets.size
                     val cycleOrder = targets.drop(offset) + targets.take(offset)
-                    cycleOrder.forEachIndexed { targetIndex, target ->
+                    for ((targetIndex, target) in cycleOrder.withIndex()) {
                         runOnUiThread {
                             routeResults.removeAllViews()
                             routeResults.addView(label(
@@ -548,7 +551,13 @@ class MainActivity : Activity() {
                                 13f, mutedColor, false, Gravity.START
                             ))
                         }
+                        networkIssue = sessionStartNetwork.issueComparedTo(currentNetworkObservation())
+                        if (networkIssue != null) break@routeLoop
+
                         samplesByTarget.getValue(target).add(RouteProbe.measure(target.endpoint))
+
+                        networkIssue = sessionStartNetwork.issueComparedTo(currentNetworkObservation())
+                        if (networkIssue != null) break@routeLoop
                         if (targetIndex < cycleOrder.lastIndex) Thread.sleep(200)
                     }
                 }
@@ -556,12 +565,33 @@ class MainActivity : Activity() {
                 interrupted = error.message ?: "Erreur inconnue pendant l'analyse"
             }
 
-            saveRouteDetails(samplesByTarget)
+            val sessionEndedAtEpochMs = System.currentTimeMillis()
+            val sessionEndNetwork = currentNetworkObservation()
+            if (networkIssue == null) {
+                networkIssue = sessionStartNetwork.issueComparedTo(sessionEndNetwork)
+            }
+            saveRouteDetails(
+                samplesByTarget,
+                sessionStartedAtEpochMs,
+                sessionEndedAtEpochMs,
+                sessionStartNetwork,
+                sessionEndNetwork,
+                networkIssue
+            )
             val aggregates = targets.mapNotNull { target ->
                 samplesByTarget.getValue(target).takeIf { it.isNotEmpty() }
                     ?.let { RouteStatistics.aggregate(it) }
             }
-            val recommendations = DecisionEngine.recommend(context, aggregates)
+            val recommendations = if (networkIssue == null) {
+                DecisionEngine.recommend(context, aggregates)
+            } else {
+                listOf(NetworkRecommendation(
+                    "Analyse non classée",
+                    networkIssue.userMessage,
+                    "Rétablir une connexion stable puis relancer l’analyse complète.",
+                    RecommendationConfidence.LOW
+                ))
+            }
 
             runOnUiThread {
                 routeButton.isEnabled = true
@@ -570,6 +600,12 @@ class MainActivity : Activity() {
                     routeResults.addView(label(
                         "Analyse interrompue : $interrupted. Les résultats partiels ne permettent pas une conclusion complète.",
                         12f, Color.rgb(255, 150, 130), false, Gravity.START
+                    ))
+                }
+                if (networkIssue != null) {
+                    routeResults.addView(label(
+                        networkIssue.userMessage + " Les mesures partielles sont conservées sans classement.",
+                        12f, Color.rgb(255, 185, 90), false, Gravity.START
                     ))
                 }
                 aggregates.forEach { aggregate ->
@@ -1085,9 +1121,21 @@ class MainActivity : Activity() {
             sessionLines.joinToString("\n\n")
     }
 
-    private fun saveRouteDetails(samplesByTarget: Map<ProbeTarget, List<RouteProbeOutcome>>) {
+    private fun saveRouteDetails(
+        samplesByTarget: Map<ProbeTarget, List<RouteProbeOutcome>>,
+        startedAtEpochMs: Long,
+        completedAtEpochMs: Long,
+        startNetwork: NetworkObservation,
+        endNetwork: NetworkObservation,
+        networkIssue: NetworkSessionIssue?
+    ) {
         val details = JSONObject().apply {
-            put("timestamp", System.currentTimeMillis())
+            put("timestamp", startedAtEpochMs)
+            put("completedAtEpochMs", completedAtEpochMs)
+            put("networkStart", startNetwork.displayName())
+            put("networkEnd", endNetwork.displayName())
+            put("networkChanged", networkIssue != null)
+            put("networkIssue", networkIssue?.userMessage ?: JSONObject.NULL)
             put("targets", JSONArray().apply {
                 targets.forEach { target ->
                     val samples = samplesByTarget[target].orEmpty()
