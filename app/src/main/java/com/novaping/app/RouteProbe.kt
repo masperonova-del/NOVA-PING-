@@ -39,6 +39,10 @@ data class RouteProbeOutcome(
     val errorType: String? = null,
     val errorMessage: String? = null
 ) {
+    /** Sum of sequential TCP address attempts; null when no address was attempted. */
+    val tcpAttemptTotalMs: Long?
+        get() = tcpAttempts.takeIf { it.isNotEmpty() }?.sumOf { it.elapsedMs }
+
     val completed: Boolean
         get() = dnsMs != null && tcpConnectMs != null && tlsHandshakeMs != null &&
             httpStatusLineMs != null && httpStatus != null
