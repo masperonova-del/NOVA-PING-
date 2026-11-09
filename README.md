@@ -158,3 +158,14 @@ Lorsque les données ne permettent pas un classement, l'application l'indique au
 ## Version 1.11.0-dev — Comparaison de sessions
 
 La prochaine version de développement ajoute un comparateur local qui met en regard deux sessions terminées sur le même profil de jeu et le même type de connexion. Il affiche les écarts de médiane HTTPS et les volumes de réponses réussies, tout en excluant les sessions interrompues ou insuffisamment mesurées. Cette comparaison concerne les points de contrôle publics, jamais le ping direct d'un serveur de jeu.
+
+
+## Version 1.11.1-dev — Comparaison stricte des sessions
+
+- Comparaison locale de deux sessions terminées sur le même profil de jeu et le même type de connexion.
+- Comparaison destination par destination des médianes HTTPS et des réponses réussies.
+- Validation des 25 positions d'essai brutes : les sessions ne sont comparées que si les mêmes positions ont fourni une réponse exploitable dans les deux sessions.
+- Les sessions interrompues, les données historiques sans essais bruts et les échantillons incomplets sont écartés.
+- Les résultats restent des mesures vers des points de contrôle HTTPS publics ; ils ne représentent pas le ping du serveur CODM et ne modifient pas le routage.
+
+Version Android de développement : **1.11.1-dev** (versionCode **26**).
