@@ -122,7 +122,7 @@ object RouteProbe {
             tlsMs = SystemClock.elapsedRealtime() - tlsStart
 
             val path = (url.path.ifEmpty { "/" }) + (url.query?.let { "?$it" } ?: "")
-            val request = "GET $path HTTP/1.1\r\nHost: $host\r\nConnection: close\r\nUser-Agent: NOVA-PING/1.10\r\n\r\n"
+            val request = "GET $path HTTP/1.1\r\nHost: $host\r\nConnection: close\r\nUser-Agent: NOVA-PING/1.11.1\r\n\r\n"
             val output: OutputStream = tlsSocket.outputStream
             val responseStart = SystemClock.elapsedRealtime()
             output.write(request.toByteArray(Charsets.US_ASCII))
