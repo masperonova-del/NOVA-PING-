@@ -1,7 +1,7 @@
 name: Android CI
 on:
   push:
-    branches: [ "main", "nova-boost-foundation", "fix/session-network-provenance" ]
+    branches: [ "main", "nova-boost-foundation", "fix/session-network-provenance", "feature/nova-ping-1.11-session-compare" ]
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
