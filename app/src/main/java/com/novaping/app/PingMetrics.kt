@@ -13,7 +13,14 @@ data class PingMetrics(
             require(totalRequests > 0) { "totalRequests must be positive" }
             require(samplesMs.isNotEmpty()) { "At least one successful sample is required" }
             require(samplesMs.size <= totalRequests) { "Samples cannot exceed total requests" }
-            return fromAttempts(samplesMs.map { it }, totalRequests)
+            val summary = SampleStatistics.summarize(samplesMs)
+            return PingMetrics(
+                medianMs = summary.medianMs,
+                p95Ms = summary.p95ObservedMs,
+                jitterMs = summary.meanAbsoluteVariationMs ?: 0L,
+                lostRequests = totalRequests - samplesMs.size,
+                totalRequests = totalRequests
+            )
         }
 
         /**
