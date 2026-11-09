@@ -1197,10 +1197,10 @@ class MainActivity : Activity() {
 
             if (oldMedian == null || newMedian == null ||
                 oldSuccess < 15 || newSuccess < 15 ||
-                oldTotal != newTotal || oldTotal == 0
+                oldSuccess != newSuccess || oldTotal != newTotal || oldTotal == 0
             ) {
                 output.append(current.optString("name"))
-                    .append(" : données insuffisantes ou plans de mesure différents\n")
+                    .append(" : données insuffisantes ou échantillons non comparables\n")
                 continue
             }
 
