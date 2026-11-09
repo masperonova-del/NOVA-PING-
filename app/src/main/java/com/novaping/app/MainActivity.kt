@@ -254,6 +254,13 @@ class MainActivity : Activity() {
             setPadding(0, dp(8), 0, 0)
         }
         historyCard.addView(historyText)
+        historyCard.addView(Button(this).apply {
+            text = "COMPARER LES 2 DERNIÈRES SESSIONS COMPARABLES"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            setBackgroundTintList(android.content.res.ColorStateList.valueOf(accentColor))
+            setOnClickListener { compareRecentSessions() }
+        }.apply { setPadding(0, dp(8), 0, 0) })
         root.addView(historyCard)
         renderHistory()
 
@@ -1126,6 +1133,99 @@ class MainActivity : Activity() {
 
         historyText.text = comparison + "\n\n10 DERNIÈRES SESSIONS\n" +
             sessionLines.joinToString("\n\n")
+    }
+
+    private fun compareRecentSessions() {
+        val history = try {
+            JSONArray(preferences.getString("sessions", "[]"))
+        } catch (_: Exception) {
+            JSONArray()
+        }
+        val eligible = (0 until history.length()).mapNotNull { history.optJSONObject(it) }
+            .filter { session ->
+                !session.optBoolean("networkChanged", false) &&
+                    session.optString("networkStart", session.optString("network")) ==
+                        session.optString("networkEnd", session.optString("network")) &&
+                    session.optString("network").isNotBlank() &&
+                    session.optString("game").isNotBlank()
+            }
+
+        if (eligible.size < 2) {
+            showMeasurementDialog(
+                "Comparaison indisponible",
+                "Il faut au moins deux sessions terminées sans changement de réseau pendant les tests. Les sessions doivent utiliser le même type de connexion et le même profil de jeu."
+            )
+            return
+        }
+
+        val latest = eligible[0]
+        val previous = eligible.drop(1).firstOrNull {
+            it.optString("network") == latest.optString("network") &&
+                it.optString("game") == latest.optString("game")
+        }
+        if (previous == null) {
+            showMeasurementDialog(
+                "Aucune paire comparable",
+                "Les deux sessions les plus récentes ne partagent pas le même type de connexion et le même profil de jeu. Relance deux diagnostics dans des conditions comparables."
+            )
+            return
+        }
+
+        val previousTargets = previous.optJSONArray("targets") ?: JSONArray()
+        val latestTargets = latest.optJSONArray("targets") ?: JSONArray()
+        val previousByName = (0 until previousTargets.length()).mapNotNull {
+            previousTargets.optJSONObject(it)
+        }.associateBy { it.optString("name") }
+
+        val output = StringBuilder()
+        output.append("PROFIL : ").append(latest.optString("game"))
+            .append("\nRÉSEAU : ").append(latest.optString("network"))
+            .append("\nSESSION PRÉCÉDENTE : ").append(previous.optString("timestamp"))
+            .append("\nSESSION RÉCENTE : ").append(latest.optString("timestamp"))
+            .append("\n\nÉCARTS DES MÉDIANES HTTPS\n")
+        var compared = 0
+
+        for (index in 0 until latestTargets.length()) {
+            val current = latestTargets.optJSONObject(index) ?: continue
+            val old = previousByName[current.optString("name")] ?: continue
+            val oldMedian = if (old.isNull("medianMs")) null else old.optLong("medianMs")
+            val newMedian = if (current.isNull("medianMs")) null else current.optLong("medianMs")
+            val oldTotal = old.optInt("totalRequests")
+            val newTotal = current.optInt("totalRequests")
+            val oldSuccess = oldTotal - old.optInt("lostRequests")
+            val newSuccess = newTotal - current.optInt("lostRequests")
+
+            if (oldMedian == null || newMedian == null ||
+                oldSuccess < 15 || newSuccess < 15 ||
+                oldTotal != newTotal || oldTotal == 0
+            ) {
+                output.append(current.optString("name"))
+                    .append(" : données insuffisantes ou plans de mesure différents\n")
+                continue
+            }
+
+            val delta = newMedian - oldMedian
+            val direction = when {
+                delta < 0 -> "plus rapide"
+                delta > 0 -> "plus lent"
+                else -> "inchangé"
+            }
+            output.append(current.optString("name"))
+                .append("\n  Avant : ").append(oldMedian).append(" ms")
+                .append("\n  Maintenant : ").append(newMedian).append(" ms")
+                .append("\n  Écart : ").append(if (delta > 0) "+" else "").append(delta)
+                .append(" ms (").append(direction).append(")")
+                .append("\n  Réponses réussies : ").append(oldSuccess).append("/")
+                .append(oldTotal).append(" → ").append(newSuccess).append("/")
+                .append(newTotal).append("\n\n")
+            compared++
+        }
+
+        if (compared == 0) {
+            output.append("\nAucune destination ne possède assez de mesures valides dans les deux sessions.")
+        }
+        output.append("\nINTERPRÉTATION : cette comparaison décrit uniquement les points de contrôle HTTPS. Elle ne prouve pas une amélioration du ping ni de la route d'un serveur de jeu. L'heure, la charge du réseau et du serveur distant peuvent influencer les résultats.")
+        showMeasurementDialog("Comparaison de sessions", output.toString())
     }
 
     private fun saveRouteDetails(
