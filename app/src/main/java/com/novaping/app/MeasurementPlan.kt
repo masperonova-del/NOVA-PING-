@@ -1,7 +1,7 @@
 package com.novaping.app
 
 /**
- * Central measurement policy for NOVA PING 1.8.
+ * Central measurement policy for the current NOVA PING development line.
  * The HTTPS batch uses 25 attempts per destination so nearest-rank P95
  * is the 24th ordered sample rather than the maximum of a tiny sample.
  */
