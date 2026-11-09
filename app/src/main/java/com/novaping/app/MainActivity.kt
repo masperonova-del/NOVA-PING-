@@ -1196,9 +1196,13 @@ class MainActivity : Activity() {
 
         val output = StringBuilder()
         output.append("Session : ").append(session.optString("timestamp", "Date inconnue"))
+            .append("\nFin : ").append(session.optString("completedAt", "Non disponible"))
             .append("\nRéseau : ").append(session.optString("network", "Inconnu"))
             .append("\nProfil : ").append(session.optString("game", "Inconnu"))
-            .append("\n\n")
+        if (session.optBoolean("networkChanged", false)) {
+            output.append("\nATTENTION : ").append(session.optString("networkIssue", "Réseau modifié pendant la session"))
+        }
+        output.append("\n\n")
         val targetsArray = session.optJSONArray("targets") ?: JSONArray()
         for (targetIndex in 0 until targetsArray.length()) {
             val target = targetsArray.optJSONObject(targetIndex) ?: continue
@@ -1217,7 +1221,17 @@ class MainActivity : Activity() {
                     if (attempt.optInt("cycle") != cycle) continue
                     found = true
                     val number = attempt.optInt("attempt")
-                    output.append("  Essai ").append(number).append(" : ")
+                    output.append("  Essai ").append(number)
+                    val attemptStartedAt = attempt.optLong("startedAtEpochMs", 0L)
+                    if (attemptStartedAt > 0L) {
+                        output.append(" — ").append(
+                            SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault()).format(Date(attemptStartedAt))
+                        )
+                    }
+                    if (!attempt.isNull("networkBefore")) {
+                        output.append(" · réseau : ").append(attempt.optString("networkBefore"))
+                    }
+                    output.append(" : ")
                     if (attempt.isNull("elapsedMs")) {
                         output.append("ÉCHEC — ").append(attempt.optString("failure", "Cause inconnue"))
                     } else {
@@ -1225,6 +1239,11 @@ class MainActivity : Activity() {
                         if (!attempt.isNull("httpCode")) {
                             output.append(" · HTTP ").append(attempt.optInt("httpCode"))
                         }
+                    }
+                    if (attempt.has("networkStable") && !attempt.isNull("networkStable") &&
+                        !attempt.optBoolean("networkStable", true)
+                    ) {
+                        output.append(" · réseau modifié pendant la requête")
                     }
                     output.append("\n")
                 }
@@ -1247,8 +1266,17 @@ class MainActivity : Activity() {
             Toast.makeText(this, "Aucune analyse de phases enregistrée. Lance d'abord « Analyser les phases ».", Toast.LENGTH_LONG).show()
             return
         }
-        val stamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(timestamp))
-        val output = StringBuilder("Analyse : ").append(stamp).append("\n")
+        val stampFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+        val stamp = stampFormat.format(Date(timestamp))
+        val completedAt = details.optLong("completedAtEpochMs", 0L)
+        val output = StringBuilder("Analyse : ").append(stamp)
+        if (completedAt > 0L) output.append(" → ").append(stampFormat.format(Date(completedAt)))
+        output.append("\nRéseau : ").append(details.optString("networkStart", "inconnu"))
+        if (details.optBoolean("networkChanged", false)) {
+            output.append(" → ").append(details.optString("networkEnd", "inconnu"))
+                .append("\nATTENTION : ").append(details.optString("networkIssue", "Réseau modifié pendant l'analyse"))
+        }
+        output.append("\n")
         val phases = listOf(
             "DNS" to "dnsMs",
             "TCP" to "tcpMs",
