@@ -16,6 +16,7 @@ enum class ProbeFailure(val label: String) {
     TLS("Sécurité TLS"),
     CONNECTION("Connexion"),
     HTTP_STATUS("Réponse HTTP"),
+    NETWORK_CHANGED("Réseau modifié pendant la requête"),
     UNKNOWN("Cause indéterminée")
 }
 
@@ -39,6 +40,9 @@ object HttpsProbe {
                 readTimeout = 1800
                 instanceFollowRedirects = false
                 useCaches = false
+                // Force a fresh TCP/TLS exchange for each sample instead of reusing keep-alive.
+                setRequestProperty("Connection", "close")
+                setRequestProperty("Accept-Encoding", "identity")
             }
             val start = SystemClock.elapsedRealtime()
             val code = connection.responseCode

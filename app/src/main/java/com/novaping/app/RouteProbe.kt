@@ -4,6 +4,7 @@ import android.os.SystemClock
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStream
+import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -13,9 +14,15 @@ import javax.net.ssl.SSLException
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.SSLSocketFactory
 
-enum class RouteProbeFailure {
-    DNS, TCP_CONNECT, TLS_HANDSHAKE, HTTP_RESPONSE, TIMEOUT, UNKNOWN
-}
+enum class RouteProbeFailure { DNS, TCP_CONNECT, TLS_HANDSHAKE, HTTP_RESPONSE, TIMEOUT, UNKNOWN }
+
+data class TcpAddressAttempt(
+    val address: String,
+    val addressFamily: String,
+    val elapsedMs: Long,
+    val errorType: String? = null,
+    val errorMessage: String? = null
+)
 
 data class RouteProbeOutcome(
     val host: String,
@@ -25,18 +32,19 @@ data class RouteProbeOutcome(
     val httpStatusLineMs: Long? = null,
     val httpStatus: Int? = null,
     val failure: RouteProbeFailure? = null,
-    val totalMs: Long
+    val totalMs: Long,
+    val resolvedAddresses: List<String> = emptyList(),
+    val connectedAddress: String? = null,
+    val tcpAttempts: List<TcpAddressAttempt> = emptyList(),
+    val errorType: String? = null,
+    val errorMessage: String? = null
 ) {
     val completed: Boolean
         get() = dnsMs != null && tcpConnectMs != null && tlsHandshakeMs != null &&
             httpStatusLineMs != null && httpStatus != null
 }
 
-/**
- * Measures sequential phases of HTTPS connections to public control endpoints.
- * DNS resolution uses Android's resolver; TCP tries each returned address until one connects.
- * It does not discover router hops or measure a game's match server.
- */
+/** Measures fresh HTTPS connections to public control endpoints, not game servers. */
 object RouteProbe {
     fun measure(endpoint: String, timeoutMs: Int = 1800): RouteProbeOutcome {
         require(timeoutMs > 0) { "timeoutMs must be positive" }
@@ -50,6 +58,11 @@ object RouteProbe {
         var rawSocket: Socket? = null
         var tlsSocket: SSLSocket? = null
         var host = "destination inconnue"
+        var resolvedAddresses = emptyList<String>()
+        var connectedAddress: String? = null
+        val tcpAttempts = mutableListOf<TcpAddressAttempt>()
+        var errorType: String? = null
+        var errorMessage: String? = null
 
         try {
             val url = URL(endpoint)
@@ -62,19 +75,32 @@ object RouteProbe {
             val dnsStart = SystemClock.elapsedRealtime()
             val addresses = InetAddress.getAllByName(host)
             dnsMs = SystemClock.elapsedRealtime() - dnsStart
+            resolvedAddresses = addresses.map { it.hostAddress ?: it.toString() }
             if (addresses.isEmpty()) throw java.net.UnknownHostException(host)
 
             var lastConnectError: java.io.IOException? = null
             for (address in addresses) {
                 val candidate = Socket()
                 val connectStart = SystemClock.elapsedRealtime()
+                val family = if (address is Inet6Address) "IPv6" else "IPv4"
                 try {
                     candidate.connect(InetSocketAddress(address, port), timeoutMs)
-                    tcpMs = SystemClock.elapsedRealtime() - connectStart
+                    val elapsed = SystemClock.elapsedRealtime() - connectStart
+                    tcpMs = elapsed
+                    connectedAddress = address.hostAddress
+                    tcpAttempts += TcpAddressAttempt(address.hostAddress ?: address.toString(), family, elapsed)
                     rawSocket = candidate
                     break
                 } catch (error: java.io.IOException) {
+                    val elapsed = SystemClock.elapsedRealtime() - connectStart
                     lastConnectError = error
+                    tcpAttempts += TcpAddressAttempt(
+                        address = address.hostAddress ?: address.toString(),
+                        addressFamily = family,
+                        elapsedMs = elapsed,
+                        errorType = error.javaClass.simpleName,
+                        errorMessage = error.message?.take(180)
+                    )
                     try { candidate.close() } catch (_: Exception) { }
                 }
             }
@@ -92,7 +118,7 @@ object RouteProbe {
             tlsMs = SystemClock.elapsedRealtime() - tlsStart
 
             val path = (url.path.ifEmpty { "/" }) + (url.query?.let { "?$it" } ?: "")
-            val request = "GET $path HTTP/1.1\r\nHost: $host\r\nConnection: close\r\nUser-Agent: NOVA-PING/1.4\r\n\r\n"
+            val request = "GET $path HTTP/1.1\r\nHost: $host\r\nConnection: close\r\nUser-Agent: NOVA-PING/1.10\r\n\r\n"
             val output: OutputStream = tlsSocket.outputStream
             val responseStart = SystemClock.elapsedRealtime()
             output.write(request.toByteArray(Charsets.US_ASCII))
@@ -104,34 +130,51 @@ object RouteProbe {
             status = Regex("^HTTP/\\d(?:\\.\\d)?\\s+(\\d{3})")
                 .find(statusLine)?.groupValues?.getOrNull(1)?.toIntOrNull()
             if (status == null) failure = RouteProbeFailure.HTTP_RESPONSE
-        } catch (_: java.net.UnknownHostException) {
+        } catch (error: java.net.UnknownHostException) {
             failure = RouteProbeFailure.DNS
-        } catch (_: SocketTimeoutException) {
+            errorType = error.javaClass.simpleName
+            errorMessage = error.message?.take(180)
+        } catch (error: SocketTimeoutException) {
             failure = when {
                 dnsMs == null -> RouteProbeFailure.DNS
                 tcpMs == null -> RouteProbeFailure.TCP_CONNECT
                 tlsMs == null -> RouteProbeFailure.TLS_HANDSHAKE
                 else -> RouteProbeFailure.TIMEOUT
             }
-        } catch (_: SSLException) {
+            errorType = error.javaClass.simpleName
+            errorMessage = error.message?.take(180)
+        } catch (error: SSLException) {
             failure = RouteProbeFailure.TLS_HANDSHAKE
-        } catch (_: java.io.IOException) {
+            errorType = error.javaClass.simpleName
+            errorMessage = error.message?.take(180)
+        } catch (error: java.io.IOException) {
             failure = when {
                 dnsMs == null -> RouteProbeFailure.DNS
                 tcpMs == null -> RouteProbeFailure.TCP_CONNECT
                 tlsMs == null -> RouteProbeFailure.TLS_HANDSHAKE
                 else -> RouteProbeFailure.HTTP_RESPONSE
             }
-        } catch (_: Exception) {
+            errorType = error.javaClass.simpleName
+            errorMessage = error.message?.take(180)
+        } catch (error: Exception) {
             failure = RouteProbeFailure.UNKNOWN
+            errorType = error.javaClass.simpleName
+            errorMessage = error.message?.take(180)
         } finally {
             try { tlsSocket?.close() } catch (_: Exception) { }
             try { rawSocket?.close() } catch (_: Exception) { }
         }
 
         return RouteProbeOutcome(
-            host, dnsMs, tcpMs, tlsMs, statusLineMs, status, failure,
-            SystemClock.elapsedRealtime() - totalStart
+            host = host, dnsMs = dnsMs, tcpConnectMs = tcpMs,
+            tlsHandshakeMs = tlsMs, httpStatusLineMs = statusLineMs,
+            httpStatus = status, failure = failure,
+            totalMs = SystemClock.elapsedRealtime() - totalStart,
+            resolvedAddresses = resolvedAddresses,
+            connectedAddress = connectedAddress,
+            tcpAttempts = tcpAttempts.toList(),
+            errorType = errorType,
+            errorMessage = errorMessage
         )
     }
 }
