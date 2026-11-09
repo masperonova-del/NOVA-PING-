@@ -742,6 +742,7 @@ class MainActivity : Activity() {
             var failure: String? = null
             var networkIssue: NetworkSessionIssue? = null
             val samplesByTarget = targets.associateWith { mutableListOf<Long>() }
+            val orderedAttemptsByTarget = targets.associateWith { mutableListOf<Long?>() }
             val roundMediansByTarget = targets.associateWith { mutableListOf<Long>() }
             val cycleOutcomesByTarget = targets.associateWith { mutableListOf<List<ProbeOutcome>>() }
             val attemptTracesByTarget = targets.associateWith { mutableListOf<List<ProbeAttemptTrace>>() }
@@ -804,11 +805,16 @@ class MainActivity : Activity() {
                             val failures = failuresByTarget.getValue(target)
                             when {
                                 !trace.networkStable -> {
+                                    orderedAttemptsByTarget.getValue(target).add(null)
                                     failures[ProbeFailure.NETWORK_CHANGED] =
                                         (failures[ProbeFailure.NETWORK_CHANGED] ?: 0) + 1
                                 }
-                                probe.elapsedMs != null -> roundSamples.add(probe.elapsedMs)
+                                probe.elapsedMs != null -> {
+                                    orderedAttemptsByTarget.getValue(target).add(probe.elapsedMs)
+                                    roundSamples.add(probe.elapsedMs)
+                                }
                                 else -> {
+                                    orderedAttemptsByTarget.getValue(target).add(null)
                                     val category = probe.failure ?: ProbeFailure.UNKNOWN
                                     failures[category] = (failures[category] ?: 0) + 1
                                 }
@@ -847,7 +853,7 @@ class MainActivity : Activity() {
                 val samples = samplesByTarget.getValue(target)
                 TargetResult(
                     target = target,
-                    metrics = if (samples.isNotEmpty()) PingMetrics.from(samples, attemptsByTarget.getValue(target)) else null,
+                    metrics = if (samples.isNotEmpty()) PingMetrics.fromAttempts(orderedAttemptsByTarget.getValue(target), attemptsByTarget.getValue(target)) else null,
                     attemptedRequests = attemptsByTarget.getValue(target),
                     roundMedians = roundMediansByTarget.getValue(target),
                     failures = failuresByTarget.getValue(target).toMap(),
