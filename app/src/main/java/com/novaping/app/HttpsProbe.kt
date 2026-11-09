@@ -50,7 +50,9 @@ object HttpsProbe {
             if (code in 200..299) {
                 ProbeOutcome(elapsedMs = elapsed, httpCode = code)
             } else {
-                ProbeOutcome(failure = ProbeFailure.HTTP_STATUS, httpCode = code)
+                // The server responded: preserve the measured round-trip time.
+                // HTTP status is an application-level response, not a transport failure.
+                ProbeOutcome(elapsedMs = elapsed, failure = ProbeFailure.HTTP_STATUS, httpCode = code)
             }
         } catch (_: UnknownHostException) {
             ProbeOutcome(failure = ProbeFailure.DNS)
