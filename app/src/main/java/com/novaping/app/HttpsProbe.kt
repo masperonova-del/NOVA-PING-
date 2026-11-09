@@ -16,6 +16,7 @@ enum class ProbeFailure(val label: String) {
     TLS("Sécurité TLS"),
     CONNECTION("Connexion"),
     HTTP_STATUS("Réponse HTTP"),
+    NETWORK_CHANGED("Réseau modifié pendant la requête"),
     UNKNOWN("Cause indéterminée")
 }
 
