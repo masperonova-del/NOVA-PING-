@@ -25,8 +25,27 @@ class SampleStatisticsTest {
         assertEquals(Long.MAX_VALUE, result.p95ObservedMs)
     }
 
+    @Test
+    fun failedAttemptBreaksJitterAdjacency() {
+        val result = SampleStatistics.summarizeAttempts(listOf(30L, null, 180L, 190L))
+        assertEquals(180L, result.medianMs)
+        assertEquals(190L, result.p95ObservedMs)
+        assertEquals(10L, result.meanAbsoluteVariationMs)
+    }
+
+    @Test
+    fun allAdjacentSuccessfulAttemptsContributeToJitter() {
+        val result = SampleStatistics.summarizeAttempts(listOf(20L, 30L, 50L, 40L))
+        assertEquals(13L, result.meanAbsoluteVariationMs)
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun rejectsNegativeLatencySamples() {
         SampleStatistics.summarize(listOf(10L, -1L))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsAttemptSequenceWithoutSuccesses() {
+        SampleStatistics.summarizeAttempts(listOf(null, null))
     }
 }
