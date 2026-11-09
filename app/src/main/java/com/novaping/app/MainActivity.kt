@@ -1245,7 +1245,7 @@ class MainActivity : Activity() {
                     "données brutes incomplètes ou échantillons non comparables"
                 }
                 output.append(current.optString("name"))
-                    .append(" : ").append(reason).append("\\n")
+                    .append(" : ").append(reason).append("\n")
                 continue
             }
 
