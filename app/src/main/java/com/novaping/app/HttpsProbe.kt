@@ -40,6 +40,9 @@ object HttpsProbe {
                 readTimeout = 1800
                 instanceFollowRedirects = false
                 useCaches = false
+                // Force a fresh TCP/TLS exchange for each sample instead of reusing keep-alive.
+                setRequestProperty("Connection", "close")
+                setRequestProperty("Accept-Encoding", "identity")
             }
             val start = SystemClock.elapsedRealtime()
             val code = connection.responseCode
