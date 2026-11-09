@@ -144,6 +144,5 @@ Une réponse HTTPS vers un service cloud n'est pas le ping du serveur de jeu. Un
 - [x] Vérifier les 25 positions d'essai brutes et comparer exactement les positions réussies, pas seulement leur nombre.
 - [x] Refuser les sessions anciennes ou incomplètes qui ne contiennent pas les 25 essais bruts nécessaires.
 - [ ] Vérifier sur appareil réel l'affichage, les anciennes sessions et les cas de données insuffisantes.
-- [ ] Vérifier sur appareil réel l'affichage, les anciennes sessions et les cas de données insuffisantes.
 
 **Limite :** la comparaison porte sur les points de contrôle HTTPS publics. Elle ne mesure pas l'évolution du ping en jeu et ne démontre pas une amélioration de la route vers un serveur de match. Les résultats restent sensibles à l'heure, à la charge locale et au comportement des services distants.
