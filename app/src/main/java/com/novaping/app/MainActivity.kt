@@ -1160,6 +1160,21 @@ class MainActivity : Activity() {
                                     put("httpStatus", outcome.httpStatus ?: JSONObject.NULL)
                                     put("failure", outcome.failure?.name ?: JSONObject.NULL)
                                     put("totalMs", outcome.totalMs)
+                                    put("resolvedAddresses", JSONArray(outcome.resolvedAddresses))
+                                    put("connectedAddress", outcome.connectedAddress ?: JSONObject.NULL)
+                                    put("tcpAttempts", JSONArray().apply {
+                                        outcome.tcpAttempts.forEach { attempt ->
+                                            put(JSONObject().apply {
+                                                put("address", attempt.address)
+                                                put("addressFamily", attempt.addressFamily)
+                                                put("elapsedMs", attempt.elapsedMs)
+                                                put("errorType", attempt.errorType ?: JSONObject.NULL)
+                                                put("errorMessage", attempt.errorMessage ?: JSONObject.NULL)
+                                            })
+                                        }
+                                    })
+                                    put("errorType", outcome.errorType ?: JSONObject.NULL)
+                                    put("errorMessage", outcome.errorMessage ?: JSONObject.NULL)
                                 })
                             }
                         })
@@ -1314,6 +1329,33 @@ class MainActivity : Activity() {
                 }
                 if (!sample.isNull("failure")) {
                     output.append("  Échec : ").append(sample.optString("failure")).append("\n")
+                }
+                val resolved = sample.optJSONArray("resolvedAddresses")
+                if (resolved != null && resolved.length() > 0) {
+                    output.append("  IP résolues : ")
+                    output.append((0 until resolved.length()).joinToString(" · ") { resolved.optString(it) })
+                    output.append("\n")
+                }
+                if (!sample.isNull("connectedAddress")) {
+                    output.append("  IP connectée : ").append(sample.optString("connectedAddress")).append("\n")
+                }
+                val tcpAttempts = sample.optJSONArray("tcpAttempts")
+                if (tcpAttempts != null && tcpAttempts.length() > 0) {
+                    for (attemptIndex in 0 until tcpAttempts.length()) {
+                        val attempt = tcpAttempts.optJSONObject(attemptIndex) ?: continue
+                        output.append("  TCP ").append(attempt.optString("addressFamily"))
+                            .append(" ").append(attempt.optString("address"))
+                            .append(" : ").append(attempt.optLong("elapsedMs")).append(" ms")
+                        if (!attempt.isNull("errorType")) output.append(" — ").append(attempt.optString("errorType"))
+                        else output.append(" — connecté")
+                        if (!attempt.isNull("errorMessage")) output.append(" (").append(attempt.optString("errorMessage")).append(")")
+                        output.append("\n")
+                    }
+                }
+                if (!sample.isNull("errorType")) {
+                    output.append("  Exception : ").append(sample.optString("errorType"))
+                    if (!sample.isNull("errorMessage")) output.append(" — ").append(sample.optString("errorMessage"))
+                    output.append("\n")
                 }
                 output.append("  Total : ").append(sample.optLong("totalMs")).append(" ms\n")
             }
