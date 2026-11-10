@@ -166,7 +166,7 @@ class MainActivity : Activity() {
         stabilityToggleButton = Button(this).apply {
             isAllCaps = false
             setTextColor(Color.WHITE)
-            setBackgroundTintList(android.content.res.ColorStateList.valueOf(accentColor))
+            background = actionButtonBackground()
             setOnClickListener {
                 if (preferences.getBoolean("stability_monitor_running", false)) {
                     stopNetworkMonitor()
@@ -213,7 +213,7 @@ class MainActivity : Activity() {
             text = "LANCER LES 5 CYCLES"
             isAllCaps = false
             setTextColor(Color.WHITE)
-            setBackgroundTintList(android.content.res.ColorStateList.valueOf(accentColor))
+            background = actionButtonBackground()
             setOnClickListener { NovaMotion.pulse(it); runNetworkTest() }
         }
         testCard.addView(testButton)
@@ -236,7 +236,7 @@ class MainActivity : Activity() {
             text = "ANALYSER LES PHASES"
             isAllCaps = false
             setTextColor(Color.WHITE)
-            setBackgroundTintList(android.content.res.ColorStateList.valueOf(accentColor))
+            background = actionButtonBackground()
             setOnClickListener { NovaMotion.pulse(it); runRouteAnalysis() }
         }
         routeCard.addView(routeButton)
@@ -293,7 +293,7 @@ class MainActivity : Activity() {
             text = "COMPARER LES 2 DERNIÈRES SESSIONS COMPARABLES"
             isAllCaps = false
             setTextColor(Color.WHITE)
-            setBackgroundTintList(android.content.res.ColorStateList.valueOf(accentColor))
+            background = actionButtonBackground()
             setOnClickListener { compareRecentSessions() }
         }.apply { setPadding(0, dp(8), 0, 0) })
         root.addView(historyCard)
@@ -309,21 +309,21 @@ class MainActivity : Activity() {
             text = "VOIR LES MESURES HTTPS"
             isAllCaps = false
             setTextColor(Color.WHITE)
-            setBackgroundTintList(android.content.res.ColorStateList.valueOf(accentColor))
+            background = actionButtonBackground()
             setOnClickListener { showLatestMeasurementDetails() }
         })
         measurementDetailCard.addView(Button(this).apply {
             text = "VOIR LES PHASES DNS / TCP / TLS / HTTP"
             isAllCaps = false
             setTextColor(Color.WHITE)
-            setBackgroundTintList(android.content.res.ColorStateList.valueOf(accentColor))
+            background = actionButtonBackground()
             setOnClickListener { showLatestRouteDetails() }
         })
         measurementDetailCard.addView(Button(this).apply {
             text = "EXPORTER LES DONNÉES CSV"
             isAllCaps = false
             setTextColor(Color.WHITE)
-            setBackgroundTintList(android.content.res.ColorStateList.valueOf(accentColor))
+            background = actionButtonBackground()
             setOnClickListener { exportLatestMeasurements() }
         })
         root.addView(measurementDetailCard)
@@ -1717,6 +1717,13 @@ class MainActivity : Activity() {
         tile.addView(value)
         return tile to value
     }
+
+    private fun actionButtonBackground(): GradientDrawable =
+        GradientDrawable().apply {
+            setColor(accentColor)
+            cornerRadius = dp(12).toFloat()
+            setStroke(dp(1), Color.rgb(94, 157, 255))
+        }
 
     private fun sectionTitle(value: String): TextView =
         label(value, 11f, accentColor, true, Gravity.START).apply {
