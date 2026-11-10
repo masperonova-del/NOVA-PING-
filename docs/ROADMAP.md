@@ -157,3 +157,17 @@ Une réponse HTTPS vers un service cloud n'est pas le ping du serveur de jeu. Un
 - [ ] Vérifier sur appareil réel la classification du problème de certificat Microsoft et les cas de délai TLS.
 
 **Limite :** la classification décrit l'exception observée sur un point de contrôle. Elle ne prouve pas une panne générale du réseau et ne désactive jamais la validation des certificats.
+
+
+## Version 1.13.0-dev — Interface animée et pont d'optimisation
+
+- [x] Ajouter une entrée progressive des sections de l'interface.
+- [x] Ajouter un retour visuel léger sur les actions de diagnostic.
+- [x] Isoler les animations dans un composant de présentation sans lien avec les sondes réseau.
+- [ ] Ajouter les animations d'état pendant les cycles de mesure, en gardant les horodatages et tâches réseau indépendants de l'interface.
+- [ ] Valider la fluidité sur appareil Android réel et vérifier l'impact sur la consommation.
+- [x] Définir le contrat de données pour comparer une session directe et une session optimisée.
+- [ ] Connecter le moteur d'optimisation réel après réception de son API, de ses formats de résultats et de ses règles de sécurité.
+- [ ] Réaliser des essais A/B comparables avant toute affirmation de gain.
+
+**Limite :** cette version prépare l'interface et le contrat d'intégration. Aucun moteur de routage n'est activé par ce travail et aucun trafic n'est redirigé.
