@@ -70,7 +70,7 @@ internal class NovaBrandMark(context: Context) : View(context) {
         paint.color = blue
         canvas.drawArc(-34f, -34f, 34f, 34f, phase * 360f, 72f, false, paint)
 
-        val pulse = 1f + 0.08f * (0.5f + 0.5f * kotlin.math.sin((phase * 6.28318f).toDouble()))
+        val pulse = 1f + 0.08f * (0.5f + 0.5f * kotlin.math.sin((phase * 6.28318f).toDouble()).toFloat())
         paint.color = Color.argb(35, 64, 160, 255)
         paint.style = Paint.Style.FILL
         canvas.drawCircle(0f, 0f, 26f * pulse, paint)
