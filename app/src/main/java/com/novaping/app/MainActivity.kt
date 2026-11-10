@@ -101,7 +101,8 @@ class MainActivity : Activity() {
             )
         }
 
-        root.addView(label("NOVA PING", 30f, Color.WHITE, true, Gravity.START))
+        root.addView(NovaBrandMark(this), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(104)))
+        root.addView(label("NOVA PING", 30f, Color.WHITE, true, Gravity.CENTER))
         val installedVersion = packageManager.getPackageInfo(packageName, 0).versionName ?: "inconnue"
         root.addView(label("VERSION $installedVersion", 10f, mutedColor, true, Gravity.START))
         root.addView(label("COMPRENDRE. MESURER. OPTIMISER.", 11f, accentColor, true, Gravity.START).apply {
