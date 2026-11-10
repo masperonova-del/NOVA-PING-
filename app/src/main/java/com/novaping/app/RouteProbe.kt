@@ -16,6 +16,35 @@ import javax.net.ssl.SSLSocketFactory
 
 enum class RouteProbeFailure { DNS, TCP_CONNECT, TLS_HANDSHAKE, HTTP_RESPONSE, TIMEOUT, UNKNOWN }
 
+enum class TlsFailureCategory(val label: String) {
+    HOSTNAME_MISMATCH("Nom d’hôte du certificat incorrect"),
+    CERTIFICATE_EXPIRED("Certificat expiré"),
+    CERTIFICATE_UNTRUSTED("Certificat non approuvé"),
+    TLS_PROTOCOL_ERROR("Erreur de protocole TLS"),
+    TLS_TIMEOUT("Délai dépassé pendant TLS"),
+    TLS_UNKNOWN("Erreur TLS non identifiée")
+}
+
+object TlsFailureClassifier {
+    fun classify(errorType: String?, errorMessage: String?): TlsFailureCategory {
+        val details = "${errorType.orEmpty()} ${errorMessage.orEmpty()}".lowercase()
+        return when {
+            listOf("subjectaltnames", "hostname", "host name", "subject alternative",
+                "no name matching", "doesn't match", "does not match").any(details::contains) ->
+                TlsFailureCategory.HOSTNAME_MISMATCH
+            listOf("expired", "notafter", "certificate_expired").any(details::contains) ->
+                TlsFailureCategory.CERTIFICATE_EXPIRED
+            listOf("trust anchor", "certification path", "certpath", "not trusted",
+                "unable to find valid certification path", "certificate_unknown").any(details::contains) ->
+                TlsFailureCategory.CERTIFICATE_UNTRUSTED
+            listOf("protocol_version", "handshake_failure", "no appropriate protocol",
+                "unsupported protocol", "no cipher", "cipher suite").any(details::contains) ->
+                TlsFailureCategory.TLS_PROTOCOL_ERROR
+            else -> TlsFailureCategory.TLS_UNKNOWN
+        }
+    }
+}
+
 data class TcpAddressAttempt(
     val address: String,
     val addressFamily: String,
@@ -37,7 +66,8 @@ data class RouteProbeOutcome(
     val connectedAddress: String? = null,
     val tcpAttempts: List<TcpAddressAttempt> = emptyList(),
     val errorType: String? = null,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val tlsFailureCategory: TlsFailureCategory? = null
 ) {
     /** Sum of sequential TCP address attempts; null when no address was attempted. */
     val tcpAttemptTotalMs: Long?
@@ -67,6 +97,7 @@ object RouteProbe {
         val tcpAttempts = mutableListOf<TcpAddressAttempt>()
         var errorType: String? = null
         var errorMessage: String? = null
+        var tlsFailureCategory: TlsFailureCategory? = null
 
         try {
             val url = URL(endpoint)
@@ -147,10 +178,12 @@ object RouteProbe {
             }
             errorType = error.javaClass.simpleName
             errorMessage = error.message?.take(180)
+            if (failure == RouteProbeFailure.TLS_HANDSHAKE) tlsFailureCategory = TlsFailureCategory.TLS_TIMEOUT
         } catch (error: SSLException) {
             failure = RouteProbeFailure.TLS_HANDSHAKE
             errorType = error.javaClass.simpleName
             errorMessage = error.message?.take(180)
+            tlsFailureCategory = TlsFailureClassifier.classify(errorType, errorMessage)
         } catch (error: java.io.IOException) {
             failure = when {
                 dnsMs == null -> RouteProbeFailure.DNS
@@ -160,10 +193,16 @@ object RouteProbe {
             }
             errorType = error.javaClass.simpleName
             errorMessage = error.message?.take(180)
+            if (failure == RouteProbeFailure.TLS_HANDSHAKE) {
+                tlsFailureCategory = TlsFailureClassifier.classify(errorType, errorMessage)
+            }
         } catch (error: Exception) {
             failure = RouteProbeFailure.UNKNOWN
             errorType = error.javaClass.simpleName
             errorMessage = error.message?.take(180)
+            if (failure == RouteProbeFailure.TLS_HANDSHAKE) {
+                tlsFailureCategory = TlsFailureClassifier.classify(errorType, errorMessage)
+            }
         } finally {
             try { tlsSocket?.close() } catch (_: Exception) { }
             try { rawSocket?.close() } catch (_: Exception) { }
@@ -178,7 +217,8 @@ object RouteProbe {
             connectedAddress = connectedAddress,
             tcpAttempts = tcpAttempts.toList(),
             errorType = errorType,
-            errorMessage = errorMessage
+            errorMessage = errorMessage,
+            tlsFailureCategory = tlsFailureCategory
         )
     }
 }
