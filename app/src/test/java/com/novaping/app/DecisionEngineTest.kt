@@ -146,4 +146,24 @@ class DecisionEngineTest {
         assertFalse(result.any { it.title == "Phases cumulées les plus courtes (indicatif)" })
     }
 
+    @Test fun classifiesMicrosoftCertificateHostnameMismatch() {
+        assertTrue(
+            TlsFailureClassifier.classify(
+                "SSLHandshakeException",
+                "No subjectAltNames on the certificate match"
+            ) == TlsFailureCategory.HOSTNAME_MISMATCH
+        )
+    }
+
+    @Test fun classifiesExpiredAndUntrustedCertificatesSeparately() {
+        assertTrue(TlsFailureClassifier.classify("CertificateException", "Certificate expired") ==
+            TlsFailureCategory.CERTIFICATE_EXPIRED)
+        assertTrue(TlsFailureClassifier.classify("CertPathValidatorException", "Trust anchor for certification path not found") ==
+            TlsFailureCategory.CERTIFICATE_UNTRUSTED)
+    }
+
+    @Test fun unknownTlsErrorsRemainUnknown() {
+        assertTrue(TlsFailureClassifier.classify("SSLException", "Unexpected TLS alert") ==
+            TlsFailureCategory.TLS_UNKNOWN)
+    }
 }
