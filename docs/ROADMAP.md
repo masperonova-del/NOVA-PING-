@@ -146,3 +146,14 @@ Une réponse HTTPS vers un service cloud n'est pas le ping du serveur de jeu. Un
 - [ ] Vérifier sur appareil réel l'affichage, les anciennes sessions et les cas de données insuffisantes.
 
 **Limite :** la comparaison porte sur les points de contrôle HTTPS publics. Elle ne mesure pas l'évolution du ping en jeu et ne démontre pas une amélioration de la route vers un serveur de match. Les résultats restent sensibles à l'heure, à la charge locale et au comportement des services distants.
+
+
+## Version 1.12.0-dev — Fiabilité du diagnostic TLS
+
+- [x] Distinguer les délais dépassés pendant la négociation TLS des autres erreurs TLS.
+- [x] Distinguer les erreurs de protocole TLS des erreurs de certificat.
+- [x] Ajouter des tests unitaires pour les catégories de délais et de protocole.
+- [x] Mettre à jour l'identifiant User-Agent des requêtes.
+- [ ] Vérifier sur appareil réel la classification du problème de certificat Microsoft et les cas de délai TLS.
+
+**Limite :** la classification décrit l'exception observée sur un point de contrôle. Elle ne prouve pas une panne générale du réseau et ne désactive jamais la validation des certificats.
