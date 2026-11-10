@@ -59,9 +59,9 @@ Identifies relevant conditions such as network type changes, weak or unstable co
 
 ### WI-FI STABILITY MONITOR
 
-Uses `ConnectivityManager` callbacks while the activity is in the foreground. A Wi-Fi transport callback tracks when Android reports a Wi-Fi network becoming available or lost; its capabilities indicate whether Android currently validates Internet access over that Wi-Fi network. A default-network callback records transport changes such as Wi-Fi, cellular data or VPN.
+Runs in a user-started Android foreground service with a persistent notification and an explicit stop action. `ConnectivityManager` callbacks observe Wi-Fi availability, cellular availability, validation state and changes to the default transport (Wi-Fi, cellular data, VPN or other). A periodic snapshot is also recorded approximately once per minute.
 
-The state tracker timestamps transitions and calculates observed recovery duration after Wi-Fi loss or loss of Internet validation. It does not infer the physical cause of a disconnect, inspect packet payloads, or measure a game's server ping. Monitoring is unregistered when the activity moves to the background. Events are displayed locally for the current activity session.
+Events are stored locally in shared preferences, with the displayed history capped at 15 entries. The service unregisters callbacks and stops its sampling loop when stopped or destroyed. Android may still restrict or terminate background work according to device and OS policy; the app does not promise uninterrupted monitoring. The tracker does not infer the physical cause of a disconnect, inspect packet payloads, or measure a game's server ping.
 
 ### DECISION ENGINE
 Generates explainable recommendations from the active network context and repeated DNS/TCP/TLS/HTTP phase summaries. Thresholds require repeated samples and remain indicative; confidence is deliberately limited. Calibration across real devices and operator networks remains future work.
@@ -107,3 +107,8 @@ Every test result should include:
 The UI motion helper is presentation-only. It must never schedule, delay, cancel or alter a network probe. Diagnostic timestamps are captured by the measurement layer, not by animation callbacks.
 
 The future optimizer integration is specified in docs/OPTIMIZATION-BRIDGE.md. It remains disconnected until the optimizer implementation and its exact API are reviewed.
+
+
+## 1.14 dashboard experience
+
+The dashboard surfaces the active Android transport, Internet validation state and Android's metered-network flag. Bandwidth values, when available, are estimates advertised by Android and are not throughput measurements. Returning to the activity refreshes the network summary. These indicators do not alter the diagnostic engine or prove game-server latency.
