@@ -100,3 +100,10 @@ Every test result should include:
 - No credentials or game-account access.
 - Keep diagnostics local by default.
 - Clearly disclose any future telemetry and obtain consent.
+
+
+## 1.13 presentation and optimizer boundary
+
+The UI motion helper is presentation-only. It must never schedule, delay, cancel or alter a network probe. Diagnostic timestamps are captured by the measurement layer, not by animation callbacks.
+
+The future optimizer integration is specified in docs/OPTIMIZATION-BRIDGE.md. It remains disconnected until the optimizer implementation and its exact API are reviewed.
