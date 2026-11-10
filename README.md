@@ -169,3 +169,13 @@ La prochaine version de développement ajoute un comparateur local qui met en re
 - Les résultats restent des mesures vers des points de contrôle HTTPS publics ; ils ne représentent pas le ping du serveur CODM et ne modifient pas le routage.
 
 Version Android de développement : **1.11.1-dev** (versionCode **26**).
+
+
+## Version 1.12.0-dev — Fiabilité du diagnostic TLS
+
+- La classification TLS distingue explicitement les délais dépassés pendant TLS des erreurs de protocole et des erreurs de certificat.
+- Ajout de tests unitaires pour les délais TLS et les erreurs de protocole.
+- Mise à jour de l'identifiant User-Agent des requêtes de mesure.
+- Version Android de développement : **1.12.0-dev** (versionCode **27**).
+
+**Limite :** une erreur TLS sur un point de contrôle ne prouve pas une panne générale du réseau. NOVA PING conserve la vérification stricte des certificats et ne contourne jamais la validation du nom d'hôte.
