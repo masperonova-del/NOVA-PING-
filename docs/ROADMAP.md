@@ -164,6 +164,8 @@ Une réponse HTTPS vers un service cloud n'est pas le ping du serveur de jeu. Un
 - [x] Ajouter une entrée progressive des sections de l'interface.
 - [x] Ajouter un retour visuel léger sur les actions de diagnostic.
 - [x] Isoler les animations dans un composant de présentation sans lien avec les sondes réseau.
+- [x] Ajouter un emblème NOVA animé à l'en-tête du tableau de bord.
+- [x] Ajouter l'icône vectorielle NOVA PING et la déclarer dans le manifeste Android.
 - [ ] Ajouter les animations d'état pendant les cycles de mesure, en gardant les horodatages et tâches réseau indépendants de l'interface.
 - [ ] Valider la fluidité sur appareil Android réel et vérifier l'impact sur la consommation.
 - [x] Définir le contrat de données pour comparer une session directe et une session optimisée.
