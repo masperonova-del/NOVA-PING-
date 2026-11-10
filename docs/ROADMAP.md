@@ -173,3 +173,14 @@ Une réponse HTTPS vers un service cloud n'est pas le ping du serveur de jeu. Un
 - [ ] Réaliser des essais A/B comparables avant toute affirmation de gain.
 
 **Limite :** cette version prépare l'interface et le contrat d'intégration. Aucun moteur de routage n'est activé par ce travail et aucun trafic n'est redirigé.
+
+## Version 1.14.0-dev — Tableau de bord réseau
+
+- [x] Présenter séparément le transport actif, la validation Internet Android et le statut de réseau mesuré.
+- [x] Rafraîchir les indicateurs au retour de l'application au premier plan.
+- [x] Clarifier que la bande passante affichée provient d'une estimation Android et n'est pas mesurée par NOVA.
+- [x] Conserver les composants de diagnostic, les historiques et l'export CSV inchangés.
+- [ ] Vérifier sur appareil réel l'affichage en Wi-Fi, en données mobiles et hors connexion.
+- [ ] Contrôler la lisibilité sur plusieurs tailles d'écran et la fluidité des animations.
+
+**Limite :** le tableau de bord actualise l'état réseau à l'ouverture et au retour au premier plan. Il ne réalise pas encore de rafraîchissement continu à chaque changement réseau et ne mesure pas le débit réel.
