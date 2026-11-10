@@ -37,6 +37,24 @@ class RouteProbeModelTest {
         assertTrue(aggregate.dns.p95ObservedMs!! >= aggregate.dns.medianMs!!)
     }
 
+    @Test fun sumsSequentialTcpAddressAttemptsSeparatelyFromWinningAddress() {
+        val outcome = RouteProbeOutcome(
+            host = "example.com",
+            tcpConnectMs = 12,
+            tcpAttempts = listOf(
+                TcpAddressAttempt("2001:db8::1", "IPv6", 900, "SocketTimeoutException"),
+                TcpAddressAttempt("192.0.2.1", "IPv4", 12)
+            ),
+            totalMs = 950
+        )
+        assertEquals(12L, outcome.tcpConnectMs)
+        assertEquals(912L, outcome.tcpAttemptTotalMs)
+
+        val aggregate = RouteStatistics.aggregate(listOf(outcome))
+        assertEquals(12L, aggregate.tcp.medianMs)
+        assertEquals(912L, aggregate.tcpAttemptTotal.medianMs)
+    }
+
     @Test fun missingPhaseHasNoInventedLatency() {
         val aggregate = RouteStatistics.aggregate(listOf(
             RouteProbeOutcome("example.com", failure = RouteProbeFailure.DNS, totalMs = 2)

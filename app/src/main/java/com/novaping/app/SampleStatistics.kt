@@ -15,11 +15,18 @@ data class SampleSummary(
 )
 
 object SampleStatistics {
-    fun summarize(samplesMs: List<Long>): SampleSummary {
-        require(samplesMs.isNotEmpty()) { "At least one successful sample is required" }
-        require(samplesMs.all { it >= 0L }) { "Latency samples cannot be negative" }
+    /**
+     * Summarizes an ordered attempt sequence. A null represents a failed attempt.
+     * Variation is calculated only when two adjacent attempts both succeeded;
+     * a failure is never silently removed to make its neighbours appear adjacent.
+     */
+    fun summarizeAttempts(attemptsMs: List<Long?>): SampleSummary {
+        require(attemptsMs.isNotEmpty()) { "At least one attempt is required" }
+        val successfulSamples = attemptsMs.filterNotNull()
+        require(successfulSamples.isNotEmpty()) { "At least one successful sample is required" }
+        require(successfulSamples.all { it >= 0L }) { "Latency samples cannot be negative" }
 
-        val sorted = samplesMs.sorted()
+        val sorted = successfulSamples.sorted()
         val middle = sorted.size / 2
         val median = if (sorted.size % 2 == 0) {
             val lower = sorted[middle - 1]
@@ -33,11 +40,10 @@ object SampleStatistics {
         val nearestRank = (95L * sorted.size + 99L) / 100L
         val p95Index = (nearestRank - 1L).toInt()
 
-        val variation = if (samplesMs.size < 2) null else {
-            samplesMs.zipWithNext { first, second ->
-                abs(first - second)
-            }.average().toLong()
+        val adjacentDifferences = attemptsMs.zipWithNext().mapNotNull { (first, second) ->
+            if (first != null && second != null) abs(first - second) else null
         }
+        val variation = adjacentDifferences.takeIf { it.isNotEmpty() }?.average()?.toLong()
 
         return SampleSummary(
             medianMs = median,
@@ -45,4 +51,8 @@ object SampleStatistics {
             meanAbsoluteVariationMs = variation
         )
     }
+
+    /** All supplied samples are treated as consecutive successful attempts. */
+    fun summarize(samplesMs: List<Long>): SampleSummary =
+        summarizeAttempts(samplesMs.map { it })
 }

@@ -254,6 +254,13 @@ class MainActivity : Activity() {
             setPadding(0, dp(8), 0, 0)
         }
         historyCard.addView(historyText)
+        historyCard.addView(Button(this).apply {
+            text = "COMPARER LES 2 DERNIÈRES SESSIONS COMPARABLES"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            setBackgroundTintList(android.content.res.ColorStateList.valueOf(accentColor))
+            setOnClickListener { compareRecentSessions() }
+        }.apply { setPadding(0, dp(8), 0, 0) })
         root.addView(historyCard)
         renderHistory()
 
@@ -621,7 +628,8 @@ class MainActivity : Activity() {
                     }
                     val details = listOf(
                         phaseLine("DNS", aggregate.dns),
-                        phaseLine("TCP", aggregate.tcp),
+                        phaseLine("TCP — adresse connectée", aggregate.tcp),
+                        phaseLine("TCP — total des tentatives d’adresses", aggregate.tcpAttemptTotal),
                         phaseLine("TLS", aggregate.tls),
                         phaseLine("Ligne de statut HTTP", aggregate.httpStatusLine),
                         "Connexions HTTPS complètes : ${aggregate.completeSamples}/${aggregate.sampleCount}",
@@ -735,6 +743,7 @@ class MainActivity : Activity() {
             var failure: String? = null
             var networkIssue: NetworkSessionIssue? = null
             val samplesByTarget = targets.associateWith { mutableListOf<Long>() }
+            val orderedAttemptsByTarget = targets.associateWith { mutableListOf<Long?>() }
             val roundMediansByTarget = targets.associateWith { mutableListOf<Long>() }
             val cycleOutcomesByTarget = targets.associateWith { mutableListOf<List<ProbeOutcome>>() }
             val attemptTracesByTarget = targets.associateWith { mutableListOf<List<ProbeAttemptTrace>>() }
@@ -797,11 +806,19 @@ class MainActivity : Activity() {
                             val failures = failuresByTarget.getValue(target)
                             when {
                                 !trace.networkStable -> {
+                                    orderedAttemptsByTarget.getValue(target).add(null)
                                     failures[ProbeFailure.NETWORK_CHANGED] =
                                         (failures[ProbeFailure.NETWORK_CHANGED] ?: 0) + 1
                                 }
-                                probe.elapsedMs != null -> roundSamples.add(probe.elapsedMs)
+                                probe.elapsedMs != null -> {
+                                    orderedAttemptsByTarget.getValue(target).add(probe.elapsedMs)
+                                    roundSamples.add(probe.elapsedMs)
+                                    probe.failure?.let { category ->
+                                        failures[category] = (failures[category] ?: 0) + 1
+                                    }
+                                }
                                 else -> {
+                                    orderedAttemptsByTarget.getValue(target).add(null)
                                     val category = probe.failure ?: ProbeFailure.UNKNOWN
                                     failures[category] = (failures[category] ?: 0) + 1
                                 }
@@ -840,7 +857,7 @@ class MainActivity : Activity() {
                 val samples = samplesByTarget.getValue(target)
                 TargetResult(
                     target = target,
-                    metrics = if (samples.isNotEmpty()) PingMetrics.from(samples, attemptsByTarget.getValue(target)) else null,
+                    metrics = if (samples.isNotEmpty()) PingMetrics.fromAttempts(orderedAttemptsByTarget.getValue(target), attemptsByTarget.getValue(target)) else null,
                     attemptedRequests = attemptsByTarget.getValue(target),
                     roundMedians = roundMediansByTarget.getValue(target),
                     failures = failuresByTarget.getValue(target).toMap(),
@@ -1128,6 +1145,135 @@ class MainActivity : Activity() {
             sessionLines.joinToString("\n\n")
     }
 
+    private fun successfulAttemptSlots(target: JSONObject): Set<String>? {
+        val attempts = target.optJSONArray("attempts") ?: return null
+        if (attempts.length() != MeasurementPlan.HTTPS_TOTAL_REQUESTS) return null
+        val seen = mutableSetOf<String>()
+        val successful = mutableSetOf<String>()
+        for (index in 0 until attempts.length()) {
+            val attempt = attempts.optJSONObject(index) ?: return null
+            val cycle = attempt.optInt("cycle", -1)
+            val number = attempt.optInt("attempt", -1)
+            if (cycle !in 1..MeasurementPlan.HTTPS_CYCLES ||
+                number !in 1..MeasurementPlan.HTTPS_REQUESTS_PER_CYCLE
+            ) return null
+            val slot = "$cycle:$number"
+            if (!seen.add(slot)) return null
+            if (!attempt.isNull("elapsedMs") &&
+                attempt.optString("failure") != ProbeFailure.NETWORK_CHANGED.name
+            ) successful.add(slot)
+        }
+        return successful
+    }
+
+    private fun compareRecentSessions() {
+        val history = try {
+            JSONArray(preferences.getString("sessions", "[]"))
+        } catch (_: Exception) {
+            JSONArray()
+        }
+        val eligible = (0 until history.length()).mapNotNull { history.optJSONObject(it) }
+            .filter { session ->
+                !session.optBoolean("networkChanged", false) &&
+                    session.optString("networkStart", session.optString("network")) ==
+                        session.optString("networkEnd", session.optString("network")) &&
+                    session.optString("network").isNotBlank() &&
+                    session.optString("game").isNotBlank()
+            }
+
+        if (eligible.size < 2) {
+            showMeasurementDialog(
+                "Comparaison indisponible",
+                "Il faut au moins deux sessions terminées sans changement de réseau pendant les tests. Les sessions doivent utiliser le même type de connexion et le même profil de jeu."
+            )
+            return
+        }
+
+        val latest = eligible[0]
+        val previous = eligible.drop(1).firstOrNull {
+            it.optString("network") == latest.optString("network") &&
+                it.optString("game") == latest.optString("game")
+        }
+        if (previous == null) {
+            showMeasurementDialog(
+                "Aucune paire comparable",
+                "Les deux sessions les plus récentes ne partagent pas le même type de connexion et le même profil de jeu. Relance deux diagnostics dans des conditions comparables."
+            )
+            return
+        }
+
+        val previousTargets = previous.optJSONArray("targets") ?: JSONArray()
+        val latestTargets = latest.optJSONArray("targets") ?: JSONArray()
+        val previousByName = (0 until previousTargets.length()).mapNotNull {
+            previousTargets.optJSONObject(it)
+        }.associateBy { it.optString("name") }
+
+        val output = StringBuilder()
+        output.append("PROFIL : ").append(latest.optString("game"))
+            .append("\nRÉSEAU : ").append(latest.optString("network"))
+            .append("\nSESSION PRÉCÉDENTE : ").append(previous.optString("timestamp"))
+            .append("\nSESSION RÉCENTE : ").append(latest.optString("timestamp"))
+            .append("\n\nÉCARTS DES MÉDIANES HTTPS\n")
+        var compared = 0
+
+        for (index in 0 until latestTargets.length()) {
+            val current = latestTargets.optJSONObject(index) ?: continue
+            val old = previousByName[current.optString("name")] ?: continue
+            val oldMedian = if (old.isNull("medianMs")) null else old.optLong("medianMs")
+            val newMedian = if (current.isNull("medianMs")) null else current.optLong("medianMs")
+            val oldTotal = old.optInt("totalRequests")
+            val newTotal = current.optInt("totalRequests")
+            val oldSuccess = oldTotal - old.optInt("lostRequests")
+            val newSuccess = newTotal - current.optInt("lostRequests")
+            val oldSuccessfulSlots = successfulAttemptSlots(old)
+            val newSuccessfulSlots = successfulAttemptSlots(current)
+            val sameAttemptPattern = oldSuccessfulSlots != null &&
+                newSuccessfulSlots != null && oldSuccessfulSlots == newSuccessfulSlots
+
+            if (oldMedian == null || newMedian == null ||
+                oldTotal != MeasurementPlan.HTTPS_TOTAL_REQUESTS ||
+                newTotal != MeasurementPlan.HTTPS_TOTAL_REQUESTS ||
+                oldSuccess < MeasurementPlan.MIN_SUCCESSFUL_HTTPS_FOR_ASSESSMENT ||
+                newSuccess < MeasurementPlan.MIN_SUCCESSFUL_HTTPS_FOR_ASSESSMENT ||
+                oldSuccessfulSlots == null || newSuccessfulSlots == null ||
+                oldSuccessfulSlots.size != oldSuccess || newSuccessfulSlots.size != newSuccess ||
+                !sameAttemptPattern
+            ) {
+                val reason = if (oldSuccessfulSlots != null && newSuccessfulSlots != null) {
+                    "positions des réponses réussies différentes"
+                } else {
+                    "données brutes incomplètes ou échantillons non comparables"
+                }
+                output.append(current.optString("name"))
+                    .append(" : ").append(reason).append("\n")
+                continue
+            }
+
+            val delta = newMedian - oldMedian
+            val direction = when {
+                delta < 0 -> "plus rapide"
+                delta > 0 -> "plus lent"
+                else -> "inchangé"
+            }
+            output.append(current.optString("name"))
+                .append("\n  Avant : ").append(oldMedian).append(" ms")
+                .append("\n  Maintenant : ").append(newMedian).append(" ms")
+                .append("\n  Écart : ").append(if (delta > 0) "+" else "").append(delta)
+                .append(" ms (").append(direction).append(")")
+                .append("\n  Réponses réussies : ").append(oldSuccess).append("/")
+                .append(oldTotal).append(" → ").append(newSuccess).append("/")
+                .append(newTotal).append("\n  Échantillon : 25 tentatives planifiées dans chaque session")
+                .append("\n\n")
+            compared++
+        }
+
+        if (compared == 0) {
+            output.append("\nAucune destination ne possède assez de mesures valides dans les deux sessions.")
+        }
+        output.append("\nINTERPRÉTATION : cette comparaison décrit uniquement les points de contrôle HTTPS. Elle ne prouve pas une amélioration du ping ni de la route d'un serveur de jeu. L'heure, la charge du réseau et du serveur distant peuvent influencer les résultats.")
+        showMeasurementDialog("Comparaison de sessions", output.toString())
+    }
+
     private fun saveRouteDetails(
         samplesByTarget: Map<ProbeTarget, List<RouteProbeOutcome>>,
         startedAtEpochMs: Long,
@@ -1155,6 +1301,7 @@ class MainActivity : Activity() {
                                     put("host", outcome.host)
                                     put("dnsMs", outcome.dnsMs ?: JSONObject.NULL)
                                     put("tcpMs", outcome.tcpConnectMs ?: JSONObject.NULL)
+                                    put("tcpAttemptTotalMs", outcome.tcpAttemptTotalMs ?: JSONObject.NULL)
                                     put("tlsMs", outcome.tlsHandshakeMs ?: JSONObject.NULL)
                                     put("httpStatusLineMs", outcome.httpStatusLineMs ?: JSONObject.NULL)
                                     put("httpStatus", outcome.httpStatus ?: JSONObject.NULL)
@@ -1175,6 +1322,7 @@ class MainActivity : Activity() {
                                     })
                                     put("errorType", outcome.errorType ?: JSONObject.NULL)
                                     put("errorMessage", outcome.errorMessage ?: JSONObject.NULL)
+                                    put("tlsFailureCategory", outcome.tlsFailureCategory?.name ?: JSONObject.NULL)
                                 })
                             }
                         })
@@ -1306,7 +1454,8 @@ class MainActivity : Activity() {
         output.append("\n")
         val phases = listOf(
             "DNS" to "dnsMs",
-            "TCP" to "tcpMs",
+            "TCP — adresse connectée" to "tcpMs",
+            "TCP — total des tentatives d’adresses" to "tcpAttemptTotalMs",
             "TLS" to "tlsMs",
             "HTTP (ligne de statut)" to "httpStatusLineMs"
         )
@@ -1351,6 +1500,11 @@ class MainActivity : Activity() {
                         if (!attempt.isNull("errorMessage")) output.append(" (").append(attempt.optString("errorMessage")).append(")")
                         output.append("\n")
                     }
+                }
+                if (!sample.isNull("tlsFailureCategory")) {
+                    val category = runCatching { TlsFailureCategory.valueOf(sample.optString("tlsFailureCategory")) }.getOrNull()
+                    if (category != null) output.append("  Diagnostic TLS : ").append(category.label)
+                        .append(" (").append(category.name).append(")\n")
                 }
                 if (!sample.isNull("errorType")) {
                     output.append("  Exception : ").append(sample.optString("errorType"))
@@ -1417,7 +1571,8 @@ class MainActivity : Activity() {
         val routeTargets = route.optJSONArray("targets") ?: JSONArray()
         val routePhases = listOf(
             "DNS" to "dnsMs",
-            "TCP" to "tcpMs",
+            "TCP_CONNECTED_ADDRESS" to "tcpMs",
+            "TCP_ADDRESS_ATTEMPTS_TOTAL" to "tcpAttemptTotalMs",
             "TLS" to "tlsMs",
             "HTTP_STATUS_LINE" to "httpStatusLineMs"
         )

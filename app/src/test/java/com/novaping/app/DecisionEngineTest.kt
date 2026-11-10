@@ -88,6 +88,8 @@ class DecisionEngineTest {
         val reliability = result.first { it.title == "Point de contrôle le plus fiable dans cet échantillon" }
         assertTrue(reliability.explanation.contains("cloudflare.example"))
         assertTrue(reliability.explanation.contains("3/5"))
+        assertTrue(reliability.explanation.contains("Route Engine"))
+        assertTrue(reliability.explanation.contains("25 requêtes planifiées"))
         assertTrue(reliability.action.contains("ne désigne pas le meilleur serveur CODM"))
     }
 
@@ -103,15 +105,31 @@ class DecisionEngineTest {
     @Test fun comparesPhaseMedianSumsOnlyWhenEveryPhaseHasEnoughSamples() {
         val result = DecisionEngine.recommend(readyWifi, listOf(
             aggregate(List(5) { i ->
-                RouteProbeOutcome("cloudflare.example", 5L + i, 100L + i, 200L + i, 300L + i, 204, null, 700L + i)
+                RouteProbeOutcome(
+                    host = "cloudflare.example", dnsMs = 5L + i, tcpConnectMs = 10L + i,
+                    tlsHandshakeMs = 200L + i, httpStatusLineMs = 300L + i,
+                    httpStatus = 204, totalMs = 700L + i,
+                    tcpAttempts = listOf(
+                        TcpAddressAttempt("2001:db8::1", "IPv6", 800L),
+                        TcpAddressAttempt("192.0.2.1", "IPv4", 10L + i)
+                    )
+                )
             }),
             aggregate(List(5) { i ->
-                RouteProbeOutcome("google.example", 10L + i, 200L + i, 400L + i, 500L + i, 204, null, 1100L + i)
+                RouteProbeOutcome(
+                    host = "google.example", dnsMs = 10L + i, tcpConnectMs = 200L + i,
+                    tlsHandshakeMs = 400L + i, httpStatusLineMs = 500L + i,
+                    httpStatus = 204, totalMs = 1100L + i,
+                    tcpAttempts = listOf(TcpAddressAttempt("192.0.2.2", "IPv4", 200L + i))
+                )
             })
         ))
         val latency = result.first { it.title == "Phases cumulées les plus courtes (indicatif)" }
-        assertTrue(latency.explanation.contains("cloudflare.example"))
+        assertTrue(latency.explanation.contains("google.example"))
         assertTrue(latency.explanation.contains("somme des médianes"))
+        assertTrue(latency.explanation.contains("Route Engine"))
+        assertTrue(latency.explanation.contains("diagnostic HTTPS global"))
+        assertTrue(latency.explanation.contains("total des tentatives TCP"))
         assertTrue(latency.action.contains("ne mesure pas la latence d'un serveur de jeu"))
     }
 
@@ -128,4 +146,24 @@ class DecisionEngineTest {
         assertFalse(result.any { it.title == "Phases cumulées les plus courtes (indicatif)" })
     }
 
+    @Test fun classifiesMicrosoftCertificateHostnameMismatch() {
+        assertTrue(
+            TlsFailureClassifier.classify(
+                "SSLHandshakeException",
+                "No subjectAltNames on the certificate match"
+            ) == TlsFailureCategory.HOSTNAME_MISMATCH
+        )
+    }
+
+    @Test fun classifiesExpiredAndUntrustedCertificatesSeparately() {
+        assertTrue(TlsFailureClassifier.classify("CertificateException", "Certificate expired") ==
+            TlsFailureCategory.CERTIFICATE_EXPIRED)
+        assertTrue(TlsFailureClassifier.classify("CertPathValidatorException", "Trust anchor for certification path not found") ==
+            TlsFailureCategory.CERTIFICATE_UNTRUSTED)
+    }
+
+    @Test fun unknownTlsErrorsRemainUnknown() {
+        assertTrue(TlsFailureClassifier.classify("SSLException", "Unexpected TLS alert") ==
+            TlsFailureCategory.TLS_UNKNOWN)
+    }
 }

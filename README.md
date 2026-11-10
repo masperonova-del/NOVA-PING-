@@ -14,7 +14,7 @@ NOVA PING aide à comprendre la qualité de réponses réseau vers des points de
 - Demander un consentement explicite avant toute future fonction de routage VPN.
 - Ne jamais prétendre qu'un changement DNS ou qu'un test vers un service cloud réduit le ping en jeu sans mesure directe qui le démontre.
 
-## État de la base 1.0.0
+## Base historique 1.0.0
 
 La version 1.0.0 consolide la base de diagnostic Android.
 
@@ -153,3 +153,19 @@ Le Decision Engine distingue désormais deux lectures indépendantes :
 - **Délais des phases** : somme indicative des médianes DNS, TCP, TLS et HTTP, calculée uniquement si au moins trois mesures sont disponibles pour chacune des phases et pour au moins deux destinations.
 
 Lorsque les données ne permettent pas un classement, l'application l'indique au lieu de désigner artificiellement un gagnant. Les comparaisons portent exclusivement sur les points de contrôle HTTPS publics. Elles ne déterminent pas le meilleur serveur de match CODM et ne prouvent aucune amélioration du ping en jeu.
+
+
+## Version 1.11.0-dev — Comparaison de sessions
+
+La prochaine version de développement ajoute un comparateur local qui met en regard deux sessions terminées sur le même profil de jeu et le même type de connexion. Il affiche les écarts de médiane HTTPS et les volumes de réponses réussies, tout en excluant les sessions interrompues ou insuffisamment mesurées. Cette comparaison concerne les points de contrôle publics, jamais le ping direct d'un serveur de jeu.
+
+
+## Version 1.11.1-dev — Comparaison stricte des sessions
+
+- Comparaison locale de deux sessions terminées sur le même profil de jeu et le même type de connexion.
+- Comparaison destination par destination des médianes HTTPS et des réponses réussies.
+- Validation des 25 positions d'essai brutes : les sessions ne sont comparées que si les mêmes positions ont fourni une réponse exploitable dans les deux sessions.
+- Les sessions interrompues, les données historiques sans essais bruts et les échantillons incomplets sont écartés.
+- Les résultats restent des mesures vers des points de contrôle HTTPS publics ; ils ne représentent pas le ping du serveur CODM et ne modifient pas le routage.
+
+Version Android de développement : **1.11.1-dev** (versionCode **26**).

@@ -167,7 +167,7 @@ object DecisionEngine {
             best.completeSamples > second.completeSamples -> {
                 recommendations += NetworkRecommendation(
                     "Point de contrôle le plus fiable dans cet échantillon",
-                    "${best.host} a obtenu ${best.completeSamples}/${best.sampleCount} connexions HTTPS complètes, contre ${second.completeSamples}/${second.sampleCount} pour ${second.host}. Ce classement concerne uniquement ces points de contrôle.",
+                    "Dans cette analyse Route Engine (5 essais indépendants par destination), ${best.host} a obtenu ${best.completeSamples}/${best.sampleCount} connexions HTTPS complètes, contre ${second.completeSamples}/${second.sampleCount} pour ${second.host}. Ce classement est distinct du diagnostic HTTPS global (25 requêtes planifiées par destination) et concerne uniquement ces points de contrôle.",
                     "Répéter le test sur plusieurs sessions et réseaux. Cela ne désigne pas le meilleur serveur CODM.",
                     RecommendationConfidence.LOW
                 )
@@ -181,7 +181,14 @@ object DecisionEngine {
         }
 
         fun phaseMedianSum(aggregate: RouteAggregate): Long? {
-            val phases = listOf(aggregate.dns, aggregate.tcp, aggregate.tls, aggregate.httpStatusLine)
+            // Use the total sequential TCP address-attempt cost, not only the
+            // winning address. Missing attempt telemetry must not be guessed.
+            val phases = listOf(
+                aggregate.dns,
+                aggregate.tcpAttemptTotal,
+                aggregate.tls,
+                aggregate.httpStatusLine
+            )
             if (phases.any { it.successfulSamples < 3 || it.medianMs == null }) return null
             return phases.sumOf { it.medianMs!! }
         }
@@ -193,7 +200,7 @@ object DecisionEngine {
         if (latencyCandidates.size < 2) {
             recommendations += NetworkRecommendation(
                 "Comparaison des délais de phase non concluante",
-                "Moins de deux destinations disposent d'au moins trois mesures réussies pour chacune des quatre phases DNS, TCP, TLS et HTTP.",
+                "Moins de deux destinations disposent d'au moins trois mesures réussies pour chacune des phases DNS, total des tentatives TCP, TLS et HTTP.",
                 "Répéter l'analyse. Aucune destination ne peut être déclarée la plus rapide sur la base des phases incomplètes.",
                 RecommendationConfidence.LOW
             )
@@ -203,7 +210,7 @@ object DecisionEngine {
             if (fastest.second < runnerUp.second) {
                 recommendations += NetworkRecommendation(
                     "Phases cumulées les plus courtes (indicatif)",
-                    "${fastest.first.host} présente une somme des médianes DNS + TCP + TLS + HTTP de ${fastest.second} ms, contre ${runnerUp.second} ms pour ${runnerUp.first.host}. Cette somme n'est pas une mesure directe du temps total de connexion.",
+                    "Dans cette analyse Route Engine (5 essais indépendants par destination), ${fastest.first.host} présente une somme des médianes DNS + total des tentatives TCP sur les adresses + TLS + HTTP de ${fastest.second} ms, contre ${runnerUp.second} ms pour ${runnerUp.first.host}. Le coût TCP inclut les adresses essayées avant la connexion réussie, pas seulement l'adresse gagnante. Ces phases sont mesurées séparément du diagnostic HTTPS global ; leur somme n'est pas une mesure directe du temps total de connexion.",
                     "Confirmer sur plusieurs sessions. Ce résultat ne mesure pas la latence d'un serveur de jeu.",
                     RecommendationConfidence.LOW
                 )
