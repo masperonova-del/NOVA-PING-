@@ -184,3 +184,17 @@ Une réponse HTTPS vers un service cloud n'est pas le ping du serveur de jeu. Un
 - [ ] Contrôler la lisibilité sur plusieurs tailles d'écran et la fluidité des animations.
 
 **Limite :** le tableau de bord actualise l'état réseau à l'ouverture et au retour au premier plan. Il ne réalise pas encore de rafraîchissement continu à chaque changement réseau et ne mesure pas le débit réel.
+
+
+## Version 1.14.0-dev — Dashboard réseau
+
+- [x] Afficher le transport réseau actif (Wi-Fi, données mobiles, VPN, Ethernet ou autre).
+- [x] Distinguer la capacité Internet de la validation Internet déclarée par Android.
+- [x] Afficher séparément le statut réseau mesuré (réseau facturé) selon le signal Android.
+- [x] Rafraîchir les indicateurs lorsque l'activité revient au premier plan.
+- [x] Clarifier que les estimations de bande passante Android ne sont pas des mesures de débit.
+- [x] Améliorer la hiérarchie visuelle des cartes, boutons et détails de résultats.
+- [ ] Vérifier les indicateurs sur appareil réel pendant les bascules Wi-Fi / données mobiles / VPN.
+- [ ] Vérifier l'accessibilité, les tailles d'écran et le contraste sur plusieurs appareils.
+
+**Limite :** l'actualisation du tableau de bord relit l'état Android local ; elle ne télécharge pas une nouvelle version de l'application et ne met pas à jour l'APK installé. Les numéros de builds GitHub Actions sont indépendants de `versionName` et `versionCode` Android.
