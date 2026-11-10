@@ -56,6 +56,7 @@ class MainActivity : Activity() {
         }
     }
     private lateinit var status: TextView
+    private lateinit var networkIndicator: NetworkStatusIndicator
     private lateinit var networkInfo: TextView
     private lateinit var testButton: Button
     private lateinit var gameSpinner: Spinner
@@ -112,9 +113,18 @@ class MainActivity : Activity() {
         root.addView(sectionTitle("TABLEAU DE BORD"))
         val networkCard = card()
         networkCard.addView(label("ÉTAT DU RÉSEAU", 12f, mutedColor, true, Gravity.START))
-        status = label("Analyse de la connexion…", 18f, Color.WHITE, true, Gravity.START)
-        status.setPadding(0, dp(8), 0, dp(6))
-        networkCard.addView(status)
+        val networkStatusRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(8), 0, dp(8))
+        }
+        networkIndicator = NetworkStatusIndicator(this)
+        networkStatusRow.addView(networkIndicator, LinearLayout.LayoutParams(dp(42), dp(42)))
+        status = label("Analyse de la connexion…", 18f, Color.WHITE, true, Gravity.START).apply {
+            setPadding(dp(10), 0, 0, 0)
+        }
+        networkStatusRow.addView(status, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        networkCard.addView(networkStatusRow)
         networkInfo = label("", 13f, mutedColor, false, Gravity.START)
         networkCard.addView(networkInfo)
         root.addView(networkCard)
@@ -694,18 +704,20 @@ class MainActivity : Activity() {
         val validated = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
         networkInfo.text = currentNetworkContext().summary() + "\nDiagnostic : ${currentNetworkPreflight().userMessage}"
         if (::status.isInitialized) {
+            val stateColor = when {
+                !hasNetwork -> Color.rgb(255, 115, 105)
+                validated -> Color.rgb(100, 210, 150)
+                transport == "Wi-Fi" -> accentColor
+                else -> Color.rgb(255, 185, 90)
+            }
             status.text = when {
                 !hasNetwork -> "Aucun réseau détecté"
                 validated -> "Internet confirmé par Android"
                 hasInternet -> "Réseau connecté — Internet à vérifier"
                 else -> "Connexion à vérifier"
             }
-            status.setTextColor(when {
-                !hasNetwork -> Color.rgb(255, 115, 105)
-                validated -> Color.rgb(100, 210, 150)
-                transport == "Wi-Fi" -> accentColor
-                else -> Color.rgb(255, 185, 90)
-            })
+            status.setTextColor(stateColor)
+            if (::networkIndicator.isInitialized) networkIndicator.setState(stateColor)
         }
         return transport
     }
