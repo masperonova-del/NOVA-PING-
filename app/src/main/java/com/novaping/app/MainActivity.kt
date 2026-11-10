@@ -676,7 +676,11 @@ class MainActivity : Activity() {
                             aggregate.failures.entries.sortedByDescending { it.value }.joinToString(" · ") { "${it.key} : ${it.value}" }
                     ).joinToString("\n")
                     detail.addView(label(details, 12f, mutedColor, false, Gravity.START)
-                        .apply { setPadding(0, dp(6), 0, 0) })
+                        .apply {
+                            setPadding(dp(10), dp(10), dp(10), dp(10))
+                            lineSpacingExtra = dp(3).toFloat()
+                            background = resultDetailBackground()
+                        })
                     routeResults.addView(detail)
                 }
 
@@ -1021,7 +1025,11 @@ class MainActivity : Activity() {
                         detail, 13f,
                         if (metrics == null) Color.rgb(255, 150, 130) else mutedColor,
                         false, Gravity.START
-                    ).apply { setPadding(0, dp(6), 0, 0) })
+                    ).apply {
+                        setPadding(dp(10), dp(10), dp(10), dp(10))
+                        lineSpacingExtra = dp(3).toFloat()
+                        background = resultDetailBackground()
+                    })
                     resultsContainer.addView(targetCard)
                 }
 
@@ -1717,6 +1725,13 @@ class MainActivity : Activity() {
         tile.addView(value)
         return tile to value
     }
+
+    private fun resultDetailBackground(): GradientDrawable =
+        GradientDrawable().apply {
+            setColor(Color.rgb(12, 20, 34))
+            cornerRadius = dp(10).toFloat()
+            setStroke(dp(1), Color.rgb(31, 46, 67))
+        }
 
     private fun actionButtonBackground(): GradientDrawable =
         GradientDrawable().apply {
