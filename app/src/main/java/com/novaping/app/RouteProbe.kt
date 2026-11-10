@@ -40,6 +40,9 @@ object TlsFailureClassifier {
             listOf("protocol_version", "handshake_failure", "no appropriate protocol",
                 "unsupported protocol", "no cipher", "cipher suite").any { details.contains(it) } ->
                 TlsFailureCategory.TLS_PROTOCOL_ERROR
+            errorType.orEmpty().contains("SocketTimeoutException", ignoreCase = true) ||
+                listOf("timed out", "timeout").any { details.contains(it) } ->
+                TlsFailureCategory.TLS_TIMEOUT
             else -> TlsFailureCategory.TLS_UNKNOWN
         }
     }
@@ -153,7 +156,7 @@ object RouteProbe {
             tlsMs = SystemClock.elapsedRealtime() - tlsStart
 
             val path = (url.path.ifEmpty { "/" }) + (url.query?.let { "?$it" } ?: "")
-            val request = "GET $path HTTP/1.1\r\nHost: $host\r\nConnection: close\r\nUser-Agent: NOVA-PING/1.11.1\r\n\r\n"
+            val request = "GET $path HTTP/1.1\r\nHost: $host\r\nConnection: close\r\nUser-Agent: NOVA-PING/1.12.0\r\n\r\n"
             val output: OutputStream = tlsSocket.outputStream
             val responseStart = SystemClock.elapsedRealtime()
             output.write(request.toByteArray(Charsets.US_ASCII))
