@@ -8,6 +8,8 @@
     <application
         android:allowBackup="false"
         android:label="NOVA PING"
+        android:icon="@drawable/ic_nova_ping"
+        android:roundIcon="@drawable/ic_nova_ping"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <service
