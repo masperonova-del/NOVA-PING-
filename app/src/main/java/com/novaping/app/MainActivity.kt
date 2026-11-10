@@ -1719,21 +1719,25 @@ class MainActivity : Activity() {
     }
 
     private fun sectionTitle(value: String): TextView =
-        label(value, 12f, accentColor, true, Gravity.START).apply {
-            setPadding(dp(2), dp(20), 0, dp(9))
+        label(value, 11f, accentColor, true, Gravity.START).apply {
+            letterSpacing = 0.10f
+            setPadding(dp(2), dp(22), 0, dp(10))
         }
 
     private fun card(): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(14), dp(14), dp(14), dp(14))
+        setPadding(dp(16), dp(16), dp(16), dp(16))
         background = GradientDrawable().apply {
             setColor(panelColor)
-            cornerRadius = dp(14).toFloat()
+            cornerRadius = dp(16).toFloat()
+            setStroke(dp(1), Color.rgb(37, 53, 76))
         }
+        elevation = dp(2).toFloat()
+        clipToOutline = true
         layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { bottomMargin = dp(8) }
+        ).apply { bottomMargin = dp(10) }
     }
 
     private fun label(value: String, size: Float, color: Int, bold: Boolean, gravityValue: Int): TextView =
