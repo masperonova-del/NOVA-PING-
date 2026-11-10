@@ -179,3 +179,12 @@ Version Android de développement : **1.11.1-dev** (versionCode **26**).
 - Version Android de développement : **1.12.0-dev** (versionCode **27**).
 
 **Limite :** une erreur TLS sur un point de contrôle ne prouve pas une panne générale du réseau. NOVA PING conserve la vérification stricte des certificats et ne contourne jamais la validation du nom d'hôte.
+
+
+## Version 1.14.0-dev — Tableau de bord réseau
+
+Le tableau de bord présente le transport réseau actif, l'état de validation Internet Android et le statut de réseau mesuré (facturé) fourni par Android. Il se rafraîchit lorsque l'activité revient au premier plan. Les estimations de bande passante sont celles annoncées par Android, pas des mesures de débit effectuées par NOVA PING.
+
+La surveillance de stabilité est exécutée par un service Android démarré explicitement par l'utilisateur, avec une notification persistante et une commande d'arrêt. Les événements sont conservés localement ; Android et les constructeurs peuvent néanmoins limiter l'exécution en arrière-plan.
+
+**Mise à jour :** le rafraîchissement du tableau de bord ne met pas à jour l'application. L'APK doit être généré par GitHub Actions puis installé séparément. Le numéro `#` d'un workflow GitHub Actions est distinct de la version Android affichée dans l'application.
