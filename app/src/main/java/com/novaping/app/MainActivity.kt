@@ -315,6 +315,7 @@ class MainActivity : Activity() {
 
         scroll.addView(root)
         setContentView(scroll)
+        NovaMotion.animateEntrance(root)
     }
 
     private fun transportName(capabilities: NetworkCapabilities?): String = when {
