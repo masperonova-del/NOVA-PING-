@@ -729,9 +729,9 @@ class MainActivity : Activity() {
         val hasInternet = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
         val validated = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
         val metered = hasNetwork && manager.isActiveNetworkMetered
-        networkInfo.text = "DÉTAILS TECHNIQUES\\n" + currentNetworkContext().summary() +
-            "\\nLa bande passante est une estimation fournie par Android, pas une mesure de débit NOVA." +
-            "\\nDiagnostic : ${currentNetworkPreflight().userMessage}"
+        networkInfo.text = "DÉTAILS TECHNIQUES\n" + currentNetworkContext().summary() +
+            "\nLa bande passante est une estimation fournie par Android, pas une mesure de débit NOVA." +
+            "\nDiagnostic : ${currentNetworkPreflight().userMessage}"
         if (::status.isInitialized) {
             val stateColor = when {
                 !hasNetwork -> Color.rgb(255, 115, 105)
