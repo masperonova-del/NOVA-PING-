@@ -1322,6 +1322,7 @@ class MainActivity : Activity() {
                                     })
                                     put("errorType", outcome.errorType ?: JSONObject.NULL)
                                     put("errorMessage", outcome.errorMessage ?: JSONObject.NULL)
+                                    put("tlsFailureCategory", outcome.tlsFailureCategory?.name ?: JSONObject.NULL)
                                 })
                             }
                         })
@@ -1499,6 +1500,11 @@ class MainActivity : Activity() {
                         if (!attempt.isNull("errorMessage")) output.append(" (").append(attempt.optString("errorMessage")).append(")")
                         output.append("\n")
                     }
+                }
+                if (!sample.isNull("tlsFailureCategory")) {
+                    val category = runCatching { TlsFailureCategory.valueOf(sample.optString("tlsFailureCategory")) }.getOrNull()
+                    if (category != null) output.append("  Diagnostic TLS : ").append(category.label)
+                        .append(" (").append(category.name).append(")\\n")
                 }
                 if (!sample.isNull("errorType")) {
                     output.append("  Exception : ").append(sample.optString("errorType"))
