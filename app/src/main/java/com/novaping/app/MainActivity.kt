@@ -179,7 +179,7 @@ class MainActivity : Activity() {
             isAllCaps = false
             setTextColor(Color.WHITE)
             setBackgroundTintList(android.content.res.ColorStateList.valueOf(accentColor))
-            setOnClickListener { runNetworkTest() }
+            setOnClickListener { NovaMotion.pulse(it); runNetworkTest() }
         }
         testCard.addView(testButton)
         resultsContainer = LinearLayout(this).apply {
@@ -202,7 +202,7 @@ class MainActivity : Activity() {
             isAllCaps = false
             setTextColor(Color.WHITE)
             setBackgroundTintList(android.content.res.ColorStateList.valueOf(accentColor))
-            setOnClickListener { runRouteAnalysis() }
+            setOnClickListener { NovaMotion.pulse(it); runRouteAnalysis() }
         }
         routeCard.addView(routeButton)
         routeResults = LinearLayout(this).apply {
