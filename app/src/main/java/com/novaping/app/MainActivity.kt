@@ -58,6 +58,9 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var networkIndicator: NetworkStatusIndicator
     private lateinit var networkInfo: TextView
+    private lateinit var networkTransportValue: TextView
+    private lateinit var networkInternetValue: TextView
+    private lateinit var networkMeteredValue: TextView
     private lateinit var testButton: Button
     private lateinit var gameSpinner: Spinner
     private lateinit var resultsContainer: LinearLayout
@@ -125,7 +128,28 @@ class MainActivity : Activity() {
         }
         networkStatusRow.addView(status, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         networkCard.addView(networkStatusRow)
-        networkInfo = label("", 13f, mutedColor, false, Gravity.START)
+
+        val networkMetricsRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(4), 0, dp(10))
+        }
+        val (transportTile, transportValue) = dashboardMetric("TRANSPORT", "—")
+        val (internetTile, internetValue) = dashboardMetric("INTERNET", "—")
+        val (meteredTile, meteredValue) = dashboardMetric("RÉSEAU MESURÉ", "—")
+        networkTransportValue = transportValue
+        networkInternetValue = internetValue
+        networkMeteredValue = meteredValue
+        listOf(transportTile, internetTile, meteredTile).forEachIndexed { index, tile ->
+            val tileParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            if (index < 2) tileParams.marginEnd = dp(6)
+            networkMetricsRow.addView(tile, tileParams)
+        }
+        networkCard.addView(networkMetricsRow)
+
+        networkInfo = label("", 12f, mutedColor, false, Gravity.START).apply {
+            setPadding(0, dp(2), 0, 0)
+        }
         networkCard.addView(networkInfo)
         root.addView(networkCard)
         refreshNetworkInfo()
@@ -472,6 +496,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        if (::status.isInitialized) refreshNetworkInfo()
         if (!stabilityReceiverRegistered) {
             val filter = IntentFilter(ACTION_STABILITY_HISTORY_UPDATED)
             if (Build.VERSION.SDK_INT >= 33) {
@@ -694,6 +719,7 @@ class MainActivity : Activity() {
         val caps = network?.let { manager.getNetworkCapabilities(it) }
         val transport = when {
             caps == null -> "Aucune connexion"
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> "VPN"
             caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
             caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "Données mobiles"
             caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet"
@@ -702,7 +728,10 @@ class MainActivity : Activity() {
         val hasNetwork = network != null && caps != null
         val hasInternet = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
         val validated = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
-        networkInfo.text = currentNetworkContext().summary() + "\nDiagnostic : ${currentNetworkPreflight().userMessage}"
+        val metered = hasNetwork && manager.isActiveNetworkMetered
+        networkInfo.text = "DÉTAILS TECHNIQUES\\n" + currentNetworkContext().summary() +
+            "\\nLa bande passante est une estimation fournie par Android, pas une mesure de débit NOVA." +
+            "\\nDiagnostic : ${currentNetworkPreflight().userMessage}"
         if (::status.isInitialized) {
             val stateColor = when {
                 !hasNetwork -> Color.rgb(255, 115, 105)
@@ -718,6 +747,27 @@ class MainActivity : Activity() {
             }
             status.setTextColor(stateColor)
             if (::networkIndicator.isInitialized) networkIndicator.setState(stateColor)
+            if (::networkTransportValue.isInitialized) {
+                networkTransportValue.text = transport
+                networkTransportValue.setTextColor(Color.WHITE)
+            }
+            if (::networkInternetValue.isInitialized) {
+                networkInternetValue.text = when {
+                    !hasNetwork -> "HORS LIGNE"
+                    validated -> "VALIDÉ"
+                    hasInternet -> "À VÉRIFIER"
+                    else -> "INDISPONIBLE"
+                }
+                networkInternetValue.setTextColor(stateColor)
+            }
+            if (::networkMeteredValue.isInitialized) {
+                networkMeteredValue.text = if (!hasNetwork) "—" else if (metered) "OUI" else "NON"
+                networkMeteredValue.setTextColor(
+                    if (!hasNetwork) mutedColor
+                    else if (metered) Color.rgb(255, 185, 90)
+                    else Color.rgb(100, 210, 150)
+                )
+            }
         }
         return transport
     }
@@ -1645,6 +1695,27 @@ class MainActivity : Activity() {
         } catch (error: Exception) {
             Toast.makeText(this, "Échec de l'export : ${error.message ?: "erreur inconnue"}", Toast.LENGTH_LONG).show()
         }
+    }
+
+    private fun dashboardMetric(title: String, initialValue: String): Pair<LinearLayout, TextView> {
+        val tile = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            minimumHeight = dp(58)
+            setPadding(dp(10), dp(9), dp(8), dp(9))
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(13, 22, 38))
+                cornerRadius = dp(11).toFloat()
+                setStroke(dp(1), Color.rgb(39, 58, 82))
+            }
+        }
+        tile.addView(label(title, 9f, mutedColor, true, Gravity.START))
+        val value = label(initialValue, 12f, Color.WHITE, true, Gravity.START).apply {
+            setPadding(0, dp(4), 0, 0)
+            maxLines = 2
+        }
+        tile.addView(value)
+        return tile to value
     }
 
     private fun sectionTitle(value: String): TextView =
