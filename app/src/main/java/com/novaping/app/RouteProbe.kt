@@ -30,15 +30,15 @@ object TlsFailureClassifier {
         val details = "${errorType.orEmpty()} ${errorMessage.orEmpty()}".lowercase()
         return when {
             listOf("subjectaltnames", "hostname", "host name", "subject alternative",
-                "no name matching", "doesn't match", "does not match").any(details::contains) ->
+                "no name matching", "doesn't match", "does not match").any { details.contains(it) } ->
                 TlsFailureCategory.HOSTNAME_MISMATCH
-            listOf("expired", "notafter", "certificate_expired").any(details::contains) ->
+            listOf("expired", "notafter", "certificate_expired").any { details.contains(it) } ->
                 TlsFailureCategory.CERTIFICATE_EXPIRED
             listOf("trust anchor", "certification path", "certpath", "not trusted",
-                "unable to find valid certification path", "certificate_unknown").any(details::contains) ->
+                "unable to find valid certification path", "certificate_unknown").any { details.contains(it) } ->
                 TlsFailureCategory.CERTIFICATE_UNTRUSTED
             listOf("protocol_version", "handshake_failure", "no appropriate protocol",
-                "unsupported protocol", "no cipher", "cipher suite").any(details::contains) ->
+                "unsupported protocol", "no cipher", "cipher suite").any { details.contains(it) } ->
                 TlsFailureCategory.TLS_PROTOCOL_ERROR
             else -> TlsFailureCategory.TLS_UNKNOWN
         }
