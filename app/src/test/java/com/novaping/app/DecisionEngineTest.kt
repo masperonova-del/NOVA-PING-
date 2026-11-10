@@ -162,6 +162,16 @@ class DecisionEngineTest {
             TlsFailureCategory.CERTIFICATE_UNTRUSTED)
     }
 
+    @Test fun classifiesTlsTimeoutSeparately() {
+        assertTrue(TlsFailureClassifier.classify("SocketTimeoutException", "Read timed out") ==
+            TlsFailureCategory.TLS_TIMEOUT)
+    }
+
+    @Test fun classifiesTlsProtocolErrorsSeparately() {
+        assertTrue(TlsFailureClassifier.classify("SSLHandshakeException", "protocol_version") ==
+            TlsFailureCategory.TLS_PROTOCOL_ERROR)
+    }
+
     @Test fun unknownTlsErrorsRemainUnknown() {
         assertTrue(TlsFailureClassifier.classify("SSLException", "Unexpected TLS alert") ==
             TlsFailureCategory.TLS_UNKNOWN)
