@@ -1504,7 +1504,7 @@ class MainActivity : Activity() {
                 if (!sample.isNull("tlsFailureCategory")) {
                     val category = runCatching { TlsFailureCategory.valueOf(sample.optString("tlsFailureCategory")) }.getOrNull()
                     if (category != null) output.append("  Diagnostic TLS : ").append(category.label)
-                        .append(" (").append(category.name).append(")\\n")
+                        .append(" (").append(category.name).append(")\n")
                 }
                 if (!sample.isNull("errorType")) {
                     output.append("  Exception : ").append(sample.optString("errorType"))
