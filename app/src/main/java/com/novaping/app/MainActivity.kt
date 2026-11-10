@@ -678,7 +678,7 @@ class MainActivity : Activity() {
                     detail.addView(label(details, 12f, mutedColor, false, Gravity.START)
                         .apply {
                             setPadding(dp(10), dp(10), dp(10), dp(10))
-                            lineSpacingExtra = dp(3).toFloat()
+                            setLineSpacing(dp(3).toFloat(), 1f)
                             background = resultDetailBackground()
                         })
                     routeResults.addView(detail)
@@ -1027,7 +1027,7 @@ class MainActivity : Activity() {
                         false, Gravity.START
                     ).apply {
                         setPadding(dp(10), dp(10), dp(10), dp(10))
-                        lineSpacingExtra = dp(3).toFloat()
+                        setLineSpacing(dp(3).toFloat(), 1f)
                         background = resultDetailBackground()
                     })
                     resultsContainer.addView(targetCard)
