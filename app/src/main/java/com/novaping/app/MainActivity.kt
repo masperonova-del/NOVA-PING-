@@ -669,7 +669,8 @@ class MainActivity : Activity() {
                         phaseLine("TCP — total des tentatives d’adresses", aggregate.tcpAttemptTotal),
                         phaseLine("TLS", aggregate.tls),
                         phaseLine("Ligne de statut HTTP", aggregate.httpStatusLine),
-                        "Connexions HTTPS complètes : ${aggregate.completeSamples}/${aggregate.sampleCount}",
+                        "Échanges HTTPS complets : ${aggregate.completeSamples}/${aggregate.sampleCount}",
+                        "Réponses HTTP réussies (2xx) : ${aggregate.httpSuccessfulSamples}/${aggregate.sampleCount}",
                         "Codes HTTP : " + if (aggregate.httpStatuses.isEmpty()) "aucun" else
                             aggregate.httpStatuses.entries.sortedBy { it.key }.joinToString(" · ") { "${it.key} : ${it.value}" },
                         "Échecs par phase : " + if (aggregate.failures.isEmpty()) "aucun" else
