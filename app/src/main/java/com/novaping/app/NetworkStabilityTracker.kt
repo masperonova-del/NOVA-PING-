@@ -30,8 +30,8 @@ class NetworkStabilityTracker {
     private var defaultTransport: String? = null
     private var mobileAvailable: Boolean? = null
     private var mobileInternetValidated: Boolean? = null
-    private var wifiDisconnectedAt: Long? = null
-    private var internetLostAt: Long? = null
+    private var wifiDisconnectedAtElapsedMs: Long? = null
+    private var internetLostAtElapsedMs: Long? = null
 
     @Synchronized
     fun reset() {
@@ -40,8 +40,8 @@ class NetworkStabilityTracker {
         defaultTransport = null
         mobileAvailable = null
         mobileInternetValidated = null
-        wifiDisconnectedAt = null
-        internetLostAt = null
+        wifiDisconnectedAtElapsedMs = null
+        internetLostAtElapsedMs = null
     }
 
     /**
@@ -60,8 +60,8 @@ class NetworkStabilityTracker {
         val previousValidated = wifiInternetValidated
         wifiAvailable = available
         wifiInternetValidated = if (available) internetValidated else null
-        wifiDisconnectedAt = null
-        internetLostAt = null
+        wifiDisconnectedAtElapsedMs = null
+        internetLostAtElapsedMs = null
 
         val events = mutableListOf<NetworkStabilityEvent>()
         if (previousAvailable == null || previousAvailable != available) {
@@ -203,22 +203,24 @@ class NetworkStabilityTracker {
     @Synchronized
     fun onWifiAvailabilityChanged(
         available: Boolean,
-        timestampMillis: Long
+        timestampMillis: Long,
+        elapsedRealtimeMillis: Long = timestampMillis
     ): NetworkStabilityEvent? {
         require(timestampMillis >= 0)
+        require(elapsedRealtimeMillis >= 0)
         if (wifiAvailable == available) return null
         val wasAvailable = wifiAvailable
         wifiAvailable = available
         if (!available) {
-            wifiDisconnectedAt = timestampMillis
+            wifiDisconnectedAtElapsedMs = elapsedRealtimeMillis
             wifiInternetValidated = null
-            internetLostAt = null
+            internetLostAtElapsedMs = null
         }
-        val recoveryStart = wifiDisconnectedAt
+        val recoveryStart = wifiDisconnectedAtElapsedMs
         val recoveryDuration = if (available && wasAvailable == false) {
-            recoveryStart?.takeIf { timestampMillis >= it }?.let { timestampMillis - it }
+            recoveryStart?.takeIf { elapsedRealtimeMillis >= it }?.let { elapsedRealtimeMillis - it }
         } else null
-        if (available) wifiDisconnectedAt = null
+        if (available) wifiDisconnectedAtElapsedMs = null
         return NetworkStabilityEvent(
             type = if (available) NetworkStabilityEventType.WIFI_CONNECTED
                 else NetworkStabilityEventType.WIFI_DISCONNECTED,
@@ -235,9 +237,11 @@ class NetworkStabilityTracker {
     @Synchronized
     fun onWifiInternetValidationChanged(
         validated: Boolean,
-        timestampMillis: Long
+        timestampMillis: Long,
+        elapsedRealtimeMillis: Long = timestampMillis
     ): NetworkStabilityEvent? {
         require(timestampMillis >= 0)
+        require(elapsedRealtimeMillis >= 0)
         if (wifiAvailable != true || wifiInternetValidated == validated) return null
         val previous = wifiInternetValidated
         wifiInternetValidated = validated
@@ -249,11 +253,11 @@ class NetworkStabilityTracker {
                 else "Wi-Fi présent, mais Internet non validé par Android"
             )
         }
-        val recoveryStart = internetLostAt
+        val recoveryStart = internetLostAtElapsedMs
         val recoveryDuration = if (validated && previous == false) {
             recoveryStart?.takeIf { timestampMillis >= it }?.let { timestampMillis - it }
         } else null
-        if (!validated) internetLostAt = timestampMillis else internetLostAt = null
+        if (!validated) internetLostAtElapsedMs = elapsedRealtimeMillis else internetLostAtElapsedMs = null
         if (validated && previous == false && recoveryDuration == null) {
             return NetworkStabilityEvent(
                 NetworkStabilityEventType.INTERNET_STATUS,
