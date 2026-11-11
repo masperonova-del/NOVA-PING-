@@ -21,6 +21,24 @@ class RouteProbeModelTest {
         assertFalse(incomplete.completed)
     }
 
+    @Test fun distinguishesCompletedHttpExchangeFromSuccessfulHttpResponse() {
+        val notFound = RouteProbeOutcome(
+            host = "example.com", dnsMs = 5, tcpConnectMs = 10,
+            tlsHandshakeMs = 20, httpStatusLineMs = 30, httpStatus = 404,
+            totalMs = 65
+        )
+        val serverError = notFound.copy(httpStatus = 503)
+        val success = notFound.copy(httpStatus = 204)
+
+        assertTrue(notFound.completed)
+        assertFalse(notFound.httpResponseSuccessful)
+        assertTrue(serverError.completed)
+        assertFalse(serverError.httpResponseSuccessful)
+        assertTrue(success.completed)
+        assertTrue(success.httpResponseSuccessful)
+        assertFalse(notFound.copy(httpStatus = null).httpResponseSuccessful)
+    }
+
     @Test fun aggregatesPhasesIndependentlyAndCountsFailures() {
         val samples = listOf(
             RouteProbeOutcome("example.com", 10, 20, 30, 40, 204, null, 110),
