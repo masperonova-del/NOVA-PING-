@@ -15,6 +15,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -239,14 +240,19 @@ class NetworkMonitorService : Service() {
         before: NetworkPresenceSnapshot,
         after: NetworkPresenceSnapshot
     ) {
-        val now = System.currentTimeMillis()
+        val nowEpochMillis = System.currentTimeMillis()
+        val nowElapsedMillis = SystemClock.elapsedRealtime()
         if (before.available != after.available) {
-            recordEvent(tracker.onWifiAvailabilityChanged(after.available, now))
+            recordEvent(tracker.onWifiAvailabilityChanged(
+                after.available, nowEpochMillis, nowElapsedMillis
+            ))
         }
         if (after.available && after.internetValidated != null &&
             before.internetValidated != after.internetValidated
         ) {
-            recordEvent(tracker.onWifiInternetValidationChanged(after.internetValidated, now))
+            recordEvent(tracker.onWifiInternetValidationChanged(
+                after.internetValidated, nowEpochMillis, nowElapsedMillis
+            ))
         }
     }
 
