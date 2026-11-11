@@ -136,7 +136,7 @@ class MainActivity : Activity() {
         }
         val (transportTile, transportValue) = dashboardMetric("TRANSPORT", "—")
         val (internetTile, internetValue) = dashboardMetric("INTERNET", "—")
-        val (meteredTile, meteredValue) = dashboardMetric("RÉSEAU MESURÉ", "—")
+        val (meteredTile, meteredValue) = dashboardMetric("RÉSEAU FACTURÉ", "—")
         networkTransportValue = transportValue
         networkInternetValue = internetValue
         networkMeteredValue = meteredValue
@@ -554,7 +554,7 @@ class MainActivity : Activity() {
             transport = transport,
             hasInternet = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true,
             validated = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true,
-            metered = manager.isActiveNetworkMetered,
+            metered = network != null && caps != null && manager.isActiveNetworkMetered,
             roaming = if (transport == NetworkTransport.CELLULAR &&
                 caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_ROAMING) == true) false else null,
             downstreamKbps = caps?.linkDownstreamBandwidthKbps,
