@@ -1,6 +1,7 @@
 package com.novaping.app
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Context
@@ -24,7 +25,6 @@ import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
-import androidx.core.content.ContextCompat
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -500,12 +500,13 @@ class MainActivity : Activity() {
         if (::status.isInitialized) refreshNetworkInfo()
         if (!stabilityReceiverRegistered) {
             val filter = IntentFilter(ACTION_STABILITY_HISTORY_UPDATED)
-            ContextCompat.registerReceiver(
-                this,
-                stabilityHistoryReceiver,
-                filter,
-                ContextCompat.RECEIVER_NOT_EXPORTED
-            )
+            if (Build.VERSION.SDK_INT >= 33) {
+                registerReceiver(stabilityHistoryReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("DEPRECATION")
+                @SuppressLint("UnspecifiedRegisterReceiverFlag")
+                registerReceiver(stabilityHistoryReceiver, filter)
+            }
             stabilityReceiverRegistered = true
         }
         refreshStabilityMonitorUi()
