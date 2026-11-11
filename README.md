@@ -188,3 +188,14 @@ Le tableau de bord présente le transport réseau actif, l'état de validation I
 La surveillance de stabilité est exécutée par un service Android démarré explicitement par l'utilisateur, avec une notification persistante et une commande d'arrêt. Les événements sont conservés localement ; Android et les constructeurs peuvent néanmoins limiter l'exécution en arrière-plan.
 
 **Mise à jour :** le rafraîchissement du tableau de bord ne met pas à jour l'application. L'APK doit être généré par GitHub Actions puis installé séparément. Le numéro `#` d'un workflow GitHub Actions est distinct de la version Android affichée dans l'application.
+
+
+## Version 1.15.0-dev — Fiabilité du suivi réseau
+
+- Le moniteur agrège les réseaux Wi-Fi et cellulaires par identité Android ; la perte d'un réseau parmi plusieurs ne doit plus signaler à tort la disparition de tout le transport.
+- La perte du réseau par défaut est enregistrée uniquement si l'identité perdue correspond encore au réseau actif suivi, afin qu'un ancien callback ne remplace pas le nouveau réseau par « Aucun ».
+- Les durées de récupération utilisent l'horloge monotone Android ; l'heure civile reste réservée à l'affichage des événements.
+- Ajout de tests unitaires sur les réseaux simultanés, les callbacks de perte répétés et les ajustements de l'horloge.
+- Version Android de développement : **1.15.0-dev** (versionCode **30**).
+
+**Validation :** les tests automatisés et la compilation CI valident les modèles et le code compilé. Le comportement des callbacks simultanés, les notifications et la continuité du service doivent encore être confirmés sur un appareil réel. Le service reste soumis aux restrictions Android et des constructeurs.
