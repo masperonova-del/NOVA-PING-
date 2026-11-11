@@ -49,7 +49,7 @@ Measures reachable test endpoints using a documented protocol. It must preserve 
 - test duration and sample count.
 
 ### ROUTE ENGINE
-The current implementation measures DNS resolution, TCP connection establishment, TLS handshake and elapsed time until the HTTP response status line is read, across three cycles per public HTTPS control endpoint. Each phase is summarized independently from successful samples. DNS uses Android's resolver and TCP tries the returned addresses in sequence. It does not yet discover intermediate router hops. A cloud endpoint is a diagnostic target, not automatically the game server.
+The current implementation measures DNS resolution, TCP connection establishment, TLS handshake and elapsed time until the HTTP response status line is read, across five independent samples per public HTTPS control endpoint. Each phase is summarized independently from successful samples. DNS uses Android's resolver and TCP tries the returned addresses in sequence. It does not yet discover intermediate router hops. A cloud endpoint is a diagnostic target, not automatically the game server.
 
 ### GAME INTELLIGENCE
 Maintains structured profiles for supported games and an explicit evidence status for server metadata. The current catalog intentionally marks match-server destinations as unverified. Unknown server locations must remain unknown rather than guessed.
@@ -61,7 +61,7 @@ Identifies relevant conditions such as network type changes, weak or unstable co
 
 Runs in a user-started Android foreground service with a persistent notification and an explicit stop action. `ConnectivityManager` callbacks observe Wi-Fi availability, cellular availability, validation state and changes to the default transport (Wi-Fi, cellular data, VPN or other). A periodic snapshot is also recorded approximately once per minute.
 
-Events are stored locally in shared preferences, with the displayed history capped at 15 entries. The service unregisters callbacks and stops its sampling loop when stopped or destroyed. Android may still restrict or terminate background work according to device and OS policy; the app does not promise uninterrupted monitoring. The tracker does not infer the physical cause of a disconnect, inspect packet payloads, or measure a game's server ping.
+Events are stored locally in shared preferences, with the displayed history capped at 15 entries. The service unregisters callbacks and stops its sampling loop when stopped or destroyed. Android may still restrict or terminate background work according to device and OS policy; the app does not promise uninterrupted monitoring. The service aggregates Wi-Fi and cellular callbacks by Android `Network` identity so losing one of multiple matching networks does not falsely mark the whole transport unavailable. It only records a default-network loss when the lost identity is still current. Recovery durations use monotonic elapsed-realtime timestamps while event labels retain wall-clock timestamps. The tracker does not infer the physical cause of a disconnect, inspect packet payloads, or measure a game's server ping.
 
 ### DECISION ENGINE
 Generates explainable recommendations from the active network context and repeated DNS/TCP/TLS/HTTP phase summaries. Thresholds require repeated samples and remain indicative; confidence is deliberately limited. Calibration across real devices and operator networks remains future work.
