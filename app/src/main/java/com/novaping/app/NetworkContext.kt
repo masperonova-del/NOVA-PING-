@@ -19,7 +19,11 @@ data class NetworkContext(
     fun summary(): String = buildList {
         add("Réseau : ${transport.label()}")
         add("Internet validé : ${if (internetValidated) "oui" else "non"}")
-        add("Réseau mesuré par Android : ${if (metered) "oui" else "non"}")
+        if (transport == NetworkTransport.NONE) {
+            add("Statut de facturation à l’usage : non disponible (aucun réseau actif)")
+        } else {
+            add("Réseau facturé à l’usage selon Android : ${if (metered) "oui" else "non"}")
+        }
         if (transport == NetworkTransport.CELLULAR) {
             add("Itinérance : ${when (roaming) { true -> "oui"; false -> "non"; null -> "non déterminée" }}")
         }
