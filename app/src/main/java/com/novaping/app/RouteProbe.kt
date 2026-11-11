@@ -76,9 +76,14 @@ data class RouteProbeOutcome(
     val tcpAttemptTotalMs: Long?
         get() = tcpAttempts.takeIf { it.isNotEmpty() }?.sumOf { it.elapsedMs }
 
+    /** True when DNS, TCP, TLS and an HTTP status line were all observed. */
     val completed: Boolean
         get() = dnsMs != null && tcpConnectMs != null && tlsHandshakeMs != null &&
             httpStatusLineMs != null && httpStatus != null
+
+    /** HTTP application success is separate from successful network transport. */
+    val httpResponseSuccessful: Boolean
+        get() = completed && httpStatus in 200..299
 }
 
 /** Measures fresh HTTPS connections to public control endpoints, not game servers. */
@@ -156,7 +161,7 @@ object RouteProbe {
             tlsMs = SystemClock.elapsedRealtime() - tlsStart
 
             val path = (url.path.ifEmpty { "/" }) + (url.query?.let { "?$it" } ?: "")
-            val request = "GET $path HTTP/1.1\r\nHost: $host\r\nConnection: close\r\nUser-Agent: NOVA-PING/1.12.0\r\n\r\n"
+            val request = "GET $path HTTP/1.1\r\nHost: $host\r\nConnection: close\r\nUser-Agent: NOVA-PING\r\n\r\n"
             val output: OutputStream = tlsSocket.outputStream
             val responseStart = SystemClock.elapsedRealtime()
             output.write(request.toByteArray(Charsets.US_ASCII))
