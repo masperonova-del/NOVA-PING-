@@ -255,7 +255,7 @@ class NetworkStabilityTracker {
         }
         val recoveryStart = internetLostAtElapsedMs
         val recoveryDuration = if (validated && previous == false) {
-            recoveryStart?.takeIf { timestampMillis >= it }?.let { timestampMillis - it }
+            recoveryStart?.takeIf { elapsedRealtimeMillis >= it }?.let { elapsedRealtimeMillis - it }
         } else null
         if (!validated) internetLostAtElapsedMs = elapsedRealtimeMillis else internetLostAtElapsedMs = null
         if (validated && previous == false && recoveryDuration == null) {
