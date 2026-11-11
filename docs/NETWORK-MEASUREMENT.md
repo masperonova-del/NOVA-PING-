@@ -31,9 +31,9 @@ These measurements must never be combined into one unlabeled “ping” number.
 1. Read Android's active network and validated-connectivity state.
 2. Stop before testing when Android does not report validated Internet access.
 3. Use three public HTTPS control endpoints.
-4. For the baseline comparison, perform one preparation request and then three independent cycles with three measured HTTPS requests per endpoint in each cycle.
-5. For Route Engine phase analysis, run three cycles with one fresh HTTPS connection per endpoint per cycle; rotate endpoint order between cycles.
-6. Apply a bounded timeout to each DNS/TCP/TLS/HTTP probe; try each address returned by DNS until a TCP connection succeeds.
+4. For the baseline comparison, perform one preparation request and then five independent cycles with five measured HTTPS requests per endpoint in each cycle (25 planned requests per endpoint).
+5. For Route Engine phase analysis, run five independent samples per endpoint, each using a fresh HTTPS connection; rotate endpoint order between cycles.
+6. Use the configured timeout for TCP connection, TLS socket and HTTP status-line reads; try each address returned by DNS until a TCP connection succeeds. The platform DNS lookup itself has no explicit per-call timeout in the current implementation and can exceed the nominal probe timeout.
 7. Aggregate DNS, TCP, TLS and HTTP status-line timings independently, using only successful samples for each phase.
 8. Display median, observed P95, mean absolute variation between successful samples, and the successful/attempted count for each phase.
 9. Count failure categories separately; recommendations require repeated evidence and never label an isolated failure as a network-wide fault.
@@ -76,25 +76,25 @@ The Route Engine opens a fresh HTTPS connection to each public control endpoint 
 3. **TLS handshake:** time to negotiate the secure connection with hostname verification enabled.
 4. **HTTP status line:** elapsed time from sending the HTTP request until the complete first response status line is read. This is not a packet-level first-byte measurement.
 
-Each destination is tested over three cycles with the destination order rotated between cycles. Phase statistics are aggregated independently: a failed TLS handshake does not erase a valid DNS or TCP sample. DNS uses Android's resolver; if it returns multiple addresses, TCP attempts them in order until one connects. The reported TCP duration is for the successful address attempt, not the sum of failed address attempts. These are not a full router-by-router path trace. They can vary with DNS caching, server load, address selection, TLS behavior and the remote service. The HTTP status code is displayed even when it is not a successful 2xx response. The P95 over only three samples is a descriptive observed percentile, not a reliable tail-latency guarantee.
+Each destination is tested over five independent samples with the destination order rotated between cycles. Phase statistics are aggregated independently: a failed TLS handshake does not erase a valid DNS or TCP sample. DNS uses Android's resolver; if it returns multiple addresses, TCP attempts them in order until one connects. The reported TCP duration is for the successful address attempt, not the sum of failed address attempts. These are not a full router-by-router path trace. They can vary with DNS caching, server load, address selection, TLS behavior and the remote service. The HTTP status code is displayed even when it is not a successful 2xx response. The P95 over only five samples is the maximum observed value and is descriptive, not a reliable tail-latency guarantee.
 
 The Decision Engine uses conservative, indicative thresholds to suggest what to investigate next. A single slow phase is not enough to identify the responsible network operator, prove congestion, or recommend a DNS/VPN change. Repeated measurements and controlled comparisons are required.
 
 
 ## Wi-Fi stability observation (1.5.0)
 
-NOVA PING uses Android `ConnectivityManager` callbacks while the app is in the foreground:
+NOVA PING uses Android `ConnectivityManager` callbacks in a user-started foreground service. The service displays a persistent notification with an explicit stop action, so monitoring can continue while the activity is not visible:
 
 - A Wi-Fi-specific network callback observes when Android reports a Wi-Fi network available or lost.
 - Wi-Fi network capabilities are checked for `NET_CAPABILITY_VALIDATED`, which distinguishes a connected Wi-Fi network from one for which Android no longer validates Internet access.
 - A default-network callback records changes in the active transport, including Wi-Fi, cellular, VPN or another transport.
 - Transition timestamps are used to report the observed time until Wi-Fi or Internet validation returns.
 
-These are operating-system network-state observations, not packet-level measurements. A lost Wi-Fi network callback does not identify whether the cause was weak signal, interference, router/repeater behavior or another radio/network event. A validation change does not prove that all Internet traffic is unreachable. Monitoring is active only while the app is in the foreground; the app does not run a hidden background service, inspect game traffic or claim to measure COD Mobile ping.
+These are operating-system network-state observations, not packet-level measurements. A lost Wi-Fi network callback does not identify whether the cause was weak signal, interference, router/repeater behavior or another radio/network event. A validation change does not prove that all Internet traffic is unreachable. The foreground service records periodic snapshots approximately every 60 seconds and keeps up to 15 events locally. Android and device manufacturers may still restrict or terminate the service; uninterrupted monitoring is not guaranteed. The service does not inspect game traffic or measure COD Mobile ping.
 
 
 ## Foreground monitor resume handling (1.5.1)
 
-When NOVA PING returns to the foreground, it reads the current Wi-Fi and default-network snapshot before registering callbacks. An unchanged snapshot does not create a duplicate "Wi-Fi detected" event. If the state differs from the last observed state, the app labels it as a state found on resume and does not pretend to know when the change happened.
+When the user starts the foreground service (or Android recreates it), NOVA PING reads the current Wi-Fi and cellular network snapshots before registering callbacks. An unchanged snapshot does not create a duplicate connection event. A state that differs from the previous in-memory state is reported as an initial/resume state without inventing the transition time.
 
-Recovery durations are only calculated when both the loss and recovery callbacks were observed during one uninterrupted foreground monitoring period. A change that happened while the app was in the background has an unknown transition time and is reported without a fabricated duration.
+Recovery durations are calculated only when both loss and recovery callbacks were observed during one uninterrupted service lifetime. Event display timestamps use wall-clock time; duration calculations use Android's monotonic elapsed-realtime clock so manual or automatic clock adjustments do not distort the measured interval. A change that occurred while the service was stopped has an unknown transition time.
