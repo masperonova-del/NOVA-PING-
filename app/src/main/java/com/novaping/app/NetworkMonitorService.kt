@@ -118,7 +118,7 @@ class NetworkMonitorService : Service() {
         return Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentTitle("NOVA PING — surveillance active")
-            .setContentText("État du réseau enregistré environ chaque minute")
+            .setContentText("Transitions réseau et relevés périodiques indicatifs")
             .setOngoing(true)
             .setCategory(Notification.CATEGORY_SERVICE)
             .addAction(0, "Arrêter", stopPendingIntent)
