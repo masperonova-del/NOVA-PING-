@@ -59,7 +59,7 @@ Identifies relevant conditions such as network type changes, weak or unstable co
 
 ### WI-FI STABILITY MONITOR
 
-Runs in a user-started Android foreground service with a persistent notification and an explicit stop action. `ConnectivityManager` callbacks observe Wi-Fi availability, cellular availability, validation state and changes to the default transport (Wi-Fi, cellular data, VPN or other). A periodic snapshot is also recorded approximately once per minute.
+Runs in a user-started Android foreground service with a persistent notification and an explicit stop action. `ConnectivityManager` callbacks observe Wi-Fi availability, cellular availability, validation state and changes to the default transport (Wi-Fi, cellular data, VPN or other). A periodic snapshot is scheduled approximately once per minute while the device is awake. The main-thread Handler timer can be delayed during deep sleep; this is not an exact sampling guarantee.
 
 Events are stored locally in shared preferences, with the displayed history capped at 15 entries. The service unregisters callbacks and stops its sampling loop when stopped or destroyed. Android may still restrict or terminate background work according to device and OS policy; the app does not promise uninterrupted monitoring. The service aggregates Wi-Fi and cellular callbacks by Android `Network` identity so losing one of multiple matching networks does not falsely mark the whole transport unavailable. It only records a default-network loss when the lost identity is still current. Recovery durations use monotonic elapsed-realtime timestamps while event labels retain wall-clock timestamps. The tracker does not infer the physical cause of a disconnect, inspect packet payloads, or measure a game's server ping.
 
