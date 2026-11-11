@@ -158,7 +158,7 @@ class MainActivity : Activity() {
         val stabilityCard = card()
         stabilityCard.addView(label("Surveillance des coupures", 16f, Color.WHITE, true, Gravity.START))
         stabilityCard.addView(label(
-            "Surveille le Wi-Fi et le réseau actif même lorsque tu quittes l'application. Un service visible conserve les relevés locaux à intervalle d'environ 60 secondes. Tu peux l'arrêter à tout moment.",
+            "Surveille le Wi-Fi et le réseau actif même lorsque tu quittes l'application. Un service visible enregistre les transitions réseau et ajoute des relevés périodiques (cible : environ 60 secondes ; Android peut les retarder lorsque le téléphone dort). Tu peux l'arrêter à tout moment.",
             12f, mutedColor, false, Gravity.START
         ).apply { setPadding(0, dp(6), 0, dp(8)) })
         stabilityStatus = label("Surveillance arrêtée", 13f, accentColor, true, Gravity.START)
@@ -427,7 +427,7 @@ class MainActivity : Activity() {
         if (!::stabilityStatus.isInitialized || !::stabilityToggleButton.isInitialized) return
         val running = preferences.getBoolean("stability_monitor_running", false)
         stabilityStatus.text = if (running) {
-            "Surveillance active en arrière-plan · relevé environ chaque minute"
+            "Surveillance active en arrière-plan · relevés périodiques susceptibles d’être retardés en veille"
         } else {
             preferences.getString("stability_monitor_error", null)
                 ?: "Surveillance arrêtée"
