@@ -37,6 +37,9 @@ class RouteProbeModelTest {
         assertTrue(success.completed)
         assertTrue(success.httpResponseSuccessful)
         assertFalse(notFound.copy(httpStatus = null).httpResponseSuccessful)
+        val aggregate = RouteStatistics.aggregate(listOf(notFound, serverError, success))
+        assertEquals(3, aggregate.completeSamples)
+        assertEquals(1, aggregate.httpSuccessfulSamples)
     }
 
     @Test fun aggregatesPhasesIndependentlyAndCountsFailures() {
