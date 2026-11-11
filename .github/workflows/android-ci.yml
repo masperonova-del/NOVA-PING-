@@ -1,7 +1,7 @@
 name: Android CI
 on:
   push:
-    branches: [ "main", "nova-boost-foundation", "fix/session-network-provenance", "feature/nova-ping-1.11-session-compare", "feature/nova-ping-1.12-diagnostic-reliability", "feature/nova-ping-1.13-animated-ui-optimizer-bridge", "feature/nova-ping-1.14-dashboard-experience", "feature/nova-ping-1.15-reliability-engine", "feature/nova-ping-1.16-measurement-integrity" ]
+    branches: [ "main", "nova-boost-foundation", "fix/session-network-provenance", "feature/nova-ping-1.11-session-compare", "feature/nova-ping-1.12-diagnostic-reliability", "feature/nova-ping-1.13-animated-ui-optimizer-bridge", "feature/nova-ping-1.14-dashboard-experience", "feature/nova-ping-1.15-reliability-engine", "feature/nova-ping-1.16-measurement-integrity", "audit/nova-ping-1.16-certification" ]
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
@@ -26,10 +26,23 @@ jobs:
           gradle-version: "8.9"
       - name: Run metric unit tests
         run: gradle :app:testDebugUnitTest
+      - name: Run Android Lint
+        run: gradle :app:lintDebug
       - name: Build debug APK
         run: gradle :app:assembleDebug
-      - name: Upload debug APK
+      - name: Build release APK
+        run: gradle :app:assembleRelease
+      - name: Generate release dependency inventory
+        run: gradle :app:dependencies --configuration releaseRuntimeClasspath > dependency-report.txt
+      - name: Upload debug and release APKs
         uses: actions/upload-artifact@v4
         with:
-          name: nova-ping-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: nova-ping-certification-apks
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/release/app-release-unsigned.apk
+      - name: Upload dependency inventory
+        uses: actions/upload-artifact@v4
+        with:
+          name: nova-ping-release-dependencies
+          path: dependency-report.txt
