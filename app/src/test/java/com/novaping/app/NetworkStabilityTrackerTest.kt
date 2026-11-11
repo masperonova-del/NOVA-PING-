@@ -211,4 +211,28 @@ class NetworkStabilityTrackerTest {
         val event = tracker.onDefaultTransportChanged("Données mobiles", 300L)
         assertEquals(NetworkStabilityEventType.DEFAULT_NETWORK_CHANGED, event?.type)
     }
+
+    @Test fun doesNotReportZeroSecondWifiRecoveryWhenClockMovesBackwards() {
+        val tracker = NetworkStabilityTracker()
+        tracker.onWifiAvailabilityChanged(true, 5_000L)
+        tracker.onWifiAvailabilityChanged(false, 8_000L)
+        val restored = tracker.onWifiAvailabilityChanged(true, 2_000L)
+        assertEquals(
+            "Wi-Fi de nouveau disponible ; durée de coupure inconnue",
+            restored?.details
+        )
+    }
+
+    @Test fun marksInternetRecoveryDurationUnknownWhenClockMovesBackwards() {
+        val tracker = NetworkStabilityTracker()
+        tracker.onWifiAvailabilityChanged(true, 1_000L)
+        tracker.onWifiInternetValidationChanged(true, 1_100L)
+        tracker.onWifiInternetValidationChanged(false, 5_000L)
+        val restored = tracker.onWifiInternetValidationChanged(true, 2_000L)
+        assertEquals(
+            "Internet validé sur le Wi-Fi ; durée de perte inconnue",
+            restored?.details
+        )
+    }
+
 }
