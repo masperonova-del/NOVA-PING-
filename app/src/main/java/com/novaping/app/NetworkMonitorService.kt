@@ -87,6 +87,12 @@ class NetworkMonitorService : Service() {
         }
     }
 
+    private fun notifyMonitorStateChanged() {
+        sendBroadcast(
+            Intent("com.novaping.app.action.STABILITY_HISTORY_UPDATED").setPackage(packageName)
+        )
+    }
+
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -223,6 +229,7 @@ class NetworkMonitorService : Service() {
             .putBoolean("stability_monitor_running", true)
             .remove("stability_monitor_error")
             .apply()
+        notifyMonitorStateChanged()
         recordPeriodicSnapshot()
         handler.removeCallbacks(sampleRunnable)
         handler.postDelayed(sampleRunnable, SAMPLE_INTERVAL_MS)
@@ -273,12 +280,6 @@ class NetworkMonitorService : Service() {
 
     private fun currentActiveCapabilities(): NetworkCapabilities? =
         connectivityManager.activeNetwork?.let { connectivityManager.getNetworkCapabilities(it) }
-
-    private fun currentMobileCapabilities(): NetworkCapabilities? =
-        connectivityManager.allNetworks
-            .asSequence()
-            .mapNotNull { connectivityManager.getNetworkCapabilities(it) }
-            .firstOrNull { it.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) }
 
     private fun transportName(capabilities: NetworkCapabilities?): String = when {
         capabilities == null -> "Aucun"
@@ -334,6 +335,7 @@ class NetworkMonitorService : Service() {
         wifiCallback = null
         mobileCallback = null
         preferences.edit().putBoolean("stability_monitor_running", false).apply()
+        notifyMonitorStateChanged()
     }
 
     override fun onDestroy() {
