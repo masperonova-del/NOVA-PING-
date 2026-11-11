@@ -43,6 +43,8 @@ class NetworkMonitorService : Service() {
     private var defaultCallback: ConnectivityManager.NetworkCallback? = null
     private var wifiCallback: ConnectivityManager.NetworkCallback? = null
     private var mobileCallback: ConnectivityManager.NetworkCallback? = null
+    private val wifiNetworks = NetworkPresenceRegistry()
+    private val mobileNetworks = NetworkPresenceRegistry()
     private var monitoring = false
 
     private val sampleRunnable = object : Runnable {
@@ -117,16 +119,16 @@ class NetworkMonitorService : Service() {
 
     private fun startMonitoring() {
         val now = System.currentTimeMillis()
-        val wifi = currentWifiCapabilities()
+        val wifi = wifiNetworks.synchronize(networksForTransport(NetworkCapabilities.TRANSPORT_WIFI))
         tracker.synchronizeWifiState(
-            available = wifi != null,
-            internetValidated = wifi?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
+            available = wifi.available,
+            internetValidated = wifi.internetValidated,
             timestampMillis = now
         ).forEach(::recordEvent)
-        val mobile = currentMobileCapabilities()
+        val mobile = mobileNetworks.synchronize(networksForTransport(NetworkCapabilities.TRANSPORT_CELLULAR))
         tracker.synchronizeMobileState(
-            available = mobile != null,
-            internetValidated = mobile?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
+            available = mobile.available,
+            internetValidated = mobile.internetValidated,
             timestampMillis = now
         ).forEach(::recordEvent)
         tracker.synchronizeDefaultTransport(transportName(currentActiveCapabilities()))
@@ -135,25 +137,33 @@ class NetworkMonitorService : Service() {
             override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
                 recordEvent(tracker.onDefaultTransportChanged(transportName(capabilities), System.currentTimeMillis()))
             }
+
+            override fun onLost(network: Network) {
+                recordEvent(tracker.onDefaultTransportChanged("Aucun", System.currentTimeMillis()))
+            }
         }
         wifiCallback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                recordEvent(tracker.onWifiAvailabilityChanged(true, System.currentTimeMillis()))
+                val before = wifiNetworks.snapshot()
+                val after = wifiNetworks.onAvailable(network.toString())
+                applyWifiSnapshot(before, after)
             }
 
             override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
                 if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
-                    recordEvent(
-                        tracker.onWifiInternetValidationChanged(
-                            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
-                            System.currentTimeMillis()
-                        )
+                    val before = wifiNetworks.snapshot()
+                    val after = wifiNetworks.onCapabilitiesChanged(
+                        network.toString(),
+                        capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
                     )
+                    applyWifiSnapshot(before, after)
                 }
             }
 
             override fun onLost(network: Network) {
-                recordEvent(tracker.onWifiAvailabilityChanged(false, System.currentTimeMillis()))
+                val before = wifiNetworks.snapshot()
+                val after = wifiNetworks.onLost(network.toString())
+                applyWifiSnapshot(before, after)
             }
         }
 
@@ -166,22 +176,26 @@ class NetworkMonitorService : Service() {
         )
         mobileCallback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                recordEvent(tracker.onMobileAvailabilityChanged(true, System.currentTimeMillis()))
+                val before = mobileNetworks.snapshot()
+                val after = mobileNetworks.onAvailable(network.toString())
+                applyMobileSnapshot(before, after)
             }
 
             override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
                 if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) {
-                    recordEvent(
-                        tracker.onMobileInternetValidationChanged(
-                            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
-                            System.currentTimeMillis()
-                        )
+                    val before = mobileNetworks.snapshot()
+                    val after = mobileNetworks.onCapabilitiesChanged(
+                        network.toString(),
+                        capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
                     )
+                    applyMobileSnapshot(before, after)
                 }
             }
 
             override fun onLost(network: Network) {
-                recordEvent(tracker.onMobileAvailabilityChanged(false, System.currentTimeMillis()))
+                val before = mobileNetworks.snapshot()
+                val after = mobileNetworks.onLost(network.toString())
+                applyMobileSnapshot(before, after)
             }
         }
         connectivityManager.registerNetworkCallback(
@@ -201,11 +215,43 @@ class NetworkMonitorService : Service() {
         handler.postDelayed(sampleRunnable, SAMPLE_INTERVAL_MS)
     }
 
-    private fun currentWifiCapabilities(): NetworkCapabilities? =
-        connectivityManager.allNetworks
-            .asSequence()
-            .mapNotNull { connectivityManager.getNetworkCapabilities(it) }
-            .firstOrNull { it.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) }
+    private fun networksForTransport(transport: Int): Map<String, Boolean> =
+        connectivityManager.allNetworks.mapNotNull { network ->
+            val capabilities = connectivityManager.getNetworkCapabilities(network)
+            if (capabilities?.hasTransport(transport) == true) {
+                network.toString() to capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+            } else null
+        }.toMap()
+
+    private fun applyWifiSnapshot(
+        before: NetworkPresenceSnapshot,
+        after: NetworkPresenceSnapshot
+    ) {
+        val now = System.currentTimeMillis()
+        if (before.available != after.available) {
+            recordEvent(tracker.onWifiAvailabilityChanged(after.available, now))
+        }
+        if (after.available && after.internetValidated != null &&
+            before.internetValidated != after.internetValidated
+        ) {
+            recordEvent(tracker.onWifiInternetValidationChanged(after.internetValidated, now))
+        }
+    }
+
+    private fun applyMobileSnapshot(
+        before: NetworkPresenceSnapshot,
+        after: NetworkPresenceSnapshot
+    ) {
+        val now = System.currentTimeMillis()
+        if (before.available != after.available) {
+            recordEvent(tracker.onMobileAvailabilityChanged(after.available, now))
+        }
+        if (after.available && after.internetValidated != null &&
+            before.internetValidated != after.internetValidated
+        ) {
+            recordEvent(tracker.onMobileInternetValidationChanged(after.internetValidated, now))
+        }
+    }
 
     private fun currentActiveCapabilities(): NetworkCapabilities? =
         connectivityManager.activeNetwork?.let { connectivityManager.getNetworkCapabilities(it) }
@@ -226,12 +272,12 @@ class NetworkMonitorService : Service() {
     }
 
     private fun recordPeriodicSnapshot() {
-        val wifi = currentWifiCapabilities()
+        val wifi = wifiNetworks.snapshot()
         val active = currentActiveCapabilities()
         recordEvent(
             tracker.periodicSnapshot(
-                wifiAvailable = wifi != null,
-                internetValidated = wifi?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
+                wifiAvailable = wifi.available,
+                internetValidated = wifi.internetValidated,
                 activeTransport = transportName(active),
                 activeInternetAvailable = active?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true,
                 activeInternetValidated = active?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true,
