@@ -235,4 +235,25 @@ class NetworkStabilityTrackerTest {
         )
     }
 
+    @Test fun wifiRecoveryDurationUsesMonotonicTimeWhenWallClockMovesBackwards() {
+        val tracker = NetworkStabilityTracker()
+        tracker.onWifiAvailabilityChanged(true, 5_000L, 100L)
+        tracker.onWifiAvailabilityChanged(false, 6_000L, 200L)
+
+        val restored = tracker.onWifiAvailabilityChanged(true, 1_000L, 700L)
+
+        assertEquals("Wi-Fi rétabli après 0.5 s", restored?.details)
+    }
+
+    @Test fun internetRecoveryDurationUsesMonotonicTimeWhenWallClockMovesBackwards() {
+        val tracker = NetworkStabilityTracker()
+        tracker.onWifiAvailabilityChanged(true, 5_000L, 100L)
+        tracker.onWifiInternetValidationChanged(true, 5_100L, 150L)
+        tracker.onWifiInternetValidationChanged(false, 6_000L, 200L)
+
+        val restored = tracker.onWifiInternetValidationChanged(true, 1_000L, 700L)
+
+        assertEquals("Internet rétabli après 0.5 s", restored?.details)
+    }
+
 }
