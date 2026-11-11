@@ -24,6 +24,7 @@ import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.content.ContextCompat
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -499,12 +500,12 @@ class MainActivity : Activity() {
         if (::status.isInitialized) refreshNetworkInfo()
         if (!stabilityReceiverRegistered) {
             val filter = IntentFilter(ACTION_STABILITY_HISTORY_UPDATED)
-            if (Build.VERSION.SDK_INT >= 33) {
-                registerReceiver(stabilityHistoryReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-            } else {
-                @Suppress("DEPRECATION")
-                registerReceiver(stabilityHistoryReceiver, filter)
-            }
+            ContextCompat.registerReceiver(
+                this,
+                stabilityHistoryReceiver,
+                filter,
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )
             stabilityReceiverRegistered = true
         }
         refreshStabilityMonitorUi()
