@@ -208,7 +208,8 @@ object RouteProbe {
             failure = RouteProbeFailure.UNKNOWN
             errorType = error.javaClass.simpleName
             errorMessage = error.message?.take(180)
-            if (failure == RouteProbeFailure.TLS_HANDSHAKE) {
+            if (tcpMs != null && tlsMs == null) {
+                failure = RouteProbeFailure.TLS_HANDSHAKE
                 tlsFailureCategory = TlsFailureClassifier.classify(errorType, errorMessage)
             }
         } finally {
