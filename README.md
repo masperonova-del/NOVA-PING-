@@ -198,4 +198,6 @@ La surveillance de stabilité est exécutée par un service Android démarré ex
 - Ajout de tests unitaires sur les réseaux simultanés, les callbacks de perte répétés et les ajustements de l'horloge.
 - Version Android de développement : **1.15.0-dev** (versionCode **30**).
 
+**Limite de cadence :** les relevés périodiques visent environ 60 secondes mais peuvent être retardés pendant la veille profonde Android ; il ne s'agit pas d'un échantillonnage garanti à la seconde près.
+
 **Validation :** les tests automatisés et la compilation CI valident les modèles et le code compilé. Le comportement des callbacks simultanés, les notifications et la continuité du service doivent encore être confirmés sur un appareil réel. Le service reste soumis aux restrictions Android et des constructeurs.
