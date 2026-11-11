@@ -45,6 +45,7 @@ class NetworkMonitorService : Service() {
     private var mobileCallback: ConnectivityManager.NetworkCallback? = null
     private val wifiNetworks = NetworkPresenceRegistry()
     private val mobileNetworks = NetworkPresenceRegistry()
+    @Volatile private var defaultNetwork: Network? = null
     private var monitoring = false
 
     private val sampleRunnable = object : Runnable {
@@ -131,15 +132,26 @@ class NetworkMonitorService : Service() {
             internetValidated = mobile.internetValidated,
             timestampMillis = now
         ).forEach(::recordEvent)
+        defaultNetwork = connectivityManager.activeNetwork
         tracker.synchronizeDefaultTransport(transportName(currentActiveCapabilities()))
 
         defaultCallback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                // Update identity before capabilities arrive so a late onLost for
+                // the previous default network cannot overwrite the new network.
+                defaultNetwork = network
+            }
+
             override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+                defaultNetwork = network
                 recordEvent(tracker.onDefaultTransportChanged(transportName(capabilities), System.currentTimeMillis()))
             }
 
             override fun onLost(network: Network) {
-                recordEvent(tracker.onDefaultTransportChanged("Aucun", System.currentTimeMillis()))
+                if (defaultNetwork == network) {
+                    defaultNetwork = null
+                    recordEvent(tracker.onDefaultTransportChanged("Aucun", System.currentTimeMillis()))
+                }
             }
         }
         wifiCallback = object : ConnectivityManager.NetworkCallback() {
