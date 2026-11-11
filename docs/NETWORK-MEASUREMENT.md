@@ -98,3 +98,10 @@ These are operating-system network-state observations, not packet-level measurem
 When the user starts the foreground service (or Android recreates it), NOVA PING reads the current Wi-Fi and cellular network snapshots before registering callbacks. An unchanged snapshot does not create a duplicate connection event. A state that differs from the previous in-memory state is reported as an initial/resume state without inventing the transition time.
 
 Recovery durations are calculated only when both loss and recovery callbacks were observed during one uninterrupted service lifetime. Event display timestamps use wall-clock time; duration calculations use Android's monotonic elapsed-realtime clock so manual or automatic clock adjustments do not distort the measured interval. A change that occurred while the service was stopped has an unknown transition time.
+
+
+## HTTP result semantics — 1.16.0
+
+The Route Engine distinguishes a completed network exchange from a successful HTTP application response. A complete DNS → TCP → TLS → HTTP status-line sequence remains a completed transport measurement even when the endpoint returns HTTP 4xx or 5xx. Only HTTP 2xx is classified as `httpResponseSuccessful`. This prevents an endpoint-side HTTP error from being mistaken for a transport failure, while also preventing a non-2xx response from being described as an application success.
+
+The request User-Agent is version-neutral (`NOVA-PING`) so it cannot become stale when the Android app version changes.
