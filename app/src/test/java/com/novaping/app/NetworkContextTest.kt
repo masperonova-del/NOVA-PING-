@@ -26,4 +26,12 @@ class NetworkContextTest {
         assertTrue(context.metered)
         assertNull(context.roaming)
     }
+    @Test fun offlineSummaryDoesNotClaimNetworkIsUnmetered() {
+        val context = NetworkContext.from(
+            NetworkTransport.NONE, false, false, false, null, null, null
+        )
+
+        assertTrue(context.summary().contains("non disponible (aucun réseau actif)"))
+    }
+
 }
