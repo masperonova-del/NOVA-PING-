@@ -254,7 +254,7 @@ class NetworkStabilityTracker {
             recoveryStart?.takeIf { timestampMillis >= it }?.let { timestampMillis - it }
         } else null
         if (!validated) internetLostAt = timestampMillis else internetLostAt = null
-        if (validated && previous == false && recoveryStart == null) {
+        if (validated && previous == false && recoveryDuration == null) {
             return NetworkStabilityEvent(
                 NetworkStabilityEventType.INTERNET_STATUS,
                 timestampMillis,
