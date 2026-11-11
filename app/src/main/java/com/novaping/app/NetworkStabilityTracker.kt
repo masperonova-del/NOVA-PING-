@@ -216,7 +216,7 @@ class NetworkStabilityTracker {
         }
         val recoveryStart = wifiDisconnectedAt
         val recoveryDuration = if (available && wasAvailable == false) {
-            recoveryStart?.let { (timestampMillis - it).coerceAtLeast(0) }
+            recoveryStart?.takeIf { timestampMillis >= it }?.let { timestampMillis - it }
         } else null
         if (available) wifiDisconnectedAt = null
         return NetworkStabilityEvent(
@@ -251,7 +251,7 @@ class NetworkStabilityTracker {
         }
         val recoveryStart = internetLostAt
         val recoveryDuration = if (validated && previous == false) {
-            recoveryStart?.let { (timestampMillis - it).coerceAtLeast(0) }
+            recoveryStart?.takeIf { timestampMillis >= it }?.let { timestampMillis - it }
         } else null
         if (!validated) internetLostAt = timestampMillis else internetLostAt = null
         if (validated && previous == false && recoveryStart == null) {
