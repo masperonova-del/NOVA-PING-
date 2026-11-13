@@ -701,6 +701,43 @@ class MainActivity : Activity() {
                     ).apply { setPadding(0, dp(5), 0, 0) })
                     routeResults.addView(item)
                 }
+
+                val selectedProfile = GameCatalog.findByDisplayName(
+                    gameSpinner.selectedItem?.toString() ?: "Autre jeu"
+                )
+                val boostAssessment = NovaBoostEngine.assess(context, aggregates, selectedProfile)
+                routeResults.addView(label(
+                    "NOVA BOOST — CONSEILLER INTELLIGENT",
+                    13f, accentColor, true, Gravity.START
+                ).apply { setPadding(0, dp(16), 0, dp(6)) })
+                val boostCard = card()
+                val boostModeLabel = when (boostAssessment.mode) {
+                    BoostMode.OBSERVE -> "OBSERVATION"
+                    BoostMode.RECOMMEND -> "RECOMMANDATIONS DISPONIBLES"
+                    BoostMode.READY -> "PRÊT"
+                    BoostMode.ACTIVE -> "ACTIF"
+                    BoostMode.FAILED -> "ÉCHEC"
+                    BoostMode.STOPPED -> "ARRÊTÉ"
+                }
+                boostCard.addView(label(
+                    "ÉTAT : $boostModeLabel",
+                    13f, Color.rgb(100, 210, 150), true, Gravity.START
+                ))
+                boostCard.addView(label(
+                    boostAssessment.summary,
+                    12f, Color.WHITE, false, Gravity.START
+                ).apply { setPadding(0, dp(6), 0, dp(8)) })
+                boostAssessment.recommendations.take(2).forEach { recommendation ->
+                    boostCard.addView(label(
+                        "• ${recommendation.title}\n${recommendation.explanation}\nAction : ${recommendation.action}",
+                        12f, mutedColor, false, Gravity.START
+                    ).apply { setPadding(dp(4), dp(5), dp(4), dp(5)) })
+                }
+                boostCard.addView(label(
+                    "LIMITES ET TRANSPARENCE\n" + boostAssessment.limitations.joinToString("\n• ", prefix = "• "),
+                    11f, mutedColor, false, Gravity.START
+                ).apply { setPadding(0, dp(8), 0, 0) })
+                routeResults.addView(boostCard)
                 routeResults.addView(label(
                     "Statistiques calculées séparément sur les réponses disponibles. Avec 5 essais par phase, le P95 observé est le maximum de cet échantillon et ne constitue pas une garantie. Les points de contrôle HTTPS ne représentent pas les serveurs de jeu.",
                     11f, mutedColor, false, Gravity.START
