@@ -113,8 +113,7 @@ object GameEndpointObservationRegistry {
             if (first == 100 && second in 64..127) return false // 100.64.0.0/10
             if (first == 169 && second == 254) return false
             if (first == 172 && second in 16..31) return false
-            if (first == 192 && second == 0) return false
-            if (first == 192 && second == 0 && third == 2) return false
+            if (first == 192 && second == 0 && (third == 0 || third == 2)) return false
             if (first == 192 && second == 88 && third == 99) return false
             if (first == 192 && second == 168) return false
             if (first == 198 && second in 18..19) return false
@@ -125,11 +124,14 @@ object GameEndpointObservationRegistry {
 
         if (address is Inet6Address) {
             val bytes = address.address.map { it.toInt() and 0xff }
-            // Restrict candidates to global-unicast 2000::/3 and exclude the
-            // documentation prefix 2001:db8::/32.
+            // Restrict candidates to global-unicast 2000::/3 and exclude
+            // documentation (2001:db8::/32) and ORCHID ranges.
             if ((bytes[0] and 0xe0) != 0x20) return false
             if (bytes[0] == 0x20 && bytes[1] == 0x01 &&
                 bytes[2] == 0x0d && bytes[3] == 0xb8
+            ) return false
+            if (bytes[0] == 0x20 && bytes[1] == 0x01 && bytes[2] == 0x00 &&
+                (bytes[3] in 0x10..0x1f || bytes[3] in 0x20..0x2f)
             ) return false
             return true
         }

@@ -35,6 +35,22 @@ It aggregates observation counts and distinct session counts. Repeated observati
 
 The model stores only endpoint metadata. It has no packet-payload, credential, message-content, or remote-upload fields.
 
+
+## Packet metadata parser now added
+
+The branch now contains `GamePacketMetadataParser`, a pure Kotlin decoder for individual IP packets supplied by a future capture adapter. It extracts only:
+
+- IP version and remote numeric address;
+- remote TCP/UDP port and transport;
+- inbound/outbound direction relative to explicitly supplied local TUN addresses;
+- packet length and whether the first fragment indicates fragmentation.
+
+It handles IPv4 headers and IPv6 extension headers (including TCP/UDP after supported extension headers), rejects non-initial fragments, malformed lengths, unsupported transports, ambiguous local/remote direction and non-global address ranges. The parser does not retain packet bytes, expose payload data, open sockets, establish a VPN, forward traffic or observe the phone by itself.
+
+The existing WireGuard dependency is a WireGuard tunnel backend, not a generic passive packet-capture API. The current `WireGuardEngine` only detects the backend version. A future capture adapter still needs a correctly functioning full packet path before this parser can receive live game packets.
+
+WireGuard Android embedding reference: https://github.com/WireGuard/wireguard-android
+
 ## Required next implementation stage
 
 Before enabling live capture, a separate engineering change must provide:

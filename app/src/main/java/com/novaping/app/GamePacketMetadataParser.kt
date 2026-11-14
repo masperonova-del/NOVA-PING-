@@ -137,7 +137,8 @@ object GamePacketMetadataParser {
                 } else {
                     (u8(packet, offset + 1) + 1) * 8
                 }
-                if (extensionLength < 8 || offset + extensionLength > packetEnd) return null
+                val minimumLength = if (nextHeader == 51) 12 else 8
+                if (extensionLength < minimumLength || offset + extensionLength > packetEnd) return null
                 nextHeader = followingHeader
                 offset += extensionLength
             }

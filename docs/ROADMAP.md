@@ -273,3 +273,17 @@ Une réponse HTTPS vers un service cloud n'est pas le ping du serveur de jeu. Un
 - [ ] Confirmer le rôle de serveur de match par une preuve indépendante avant toute mesure dédiée.
 
 **Limite :** cette version ajoute le modèle et les règles d'agrégation, pas encore la capture réseau Android. L'architecture de capture doit traiter correctement l'interface TUN et le transfert des paquets avant toute activation. Voir `docs/GAME-ENDPOINT-DISCOVERY.md`.
+
+
+## Version 1.24.0-dev — Décodeur de métadonnées IP
+
+- [x] Ajouter un décodeur pur Kotlin pour les paquets IPv4 et IPv6.
+- [x] Extraire uniquement l'adresse distante, le port TCP/UDP, la version IP et le sens du paquet.
+- [x] Traiter les en-têtes d'extension IPv6 pris en charge et ignorer les fragments non initiaux.
+- [x] Rejeter les paquets tronqués, incohérents, ambigus, les protocoles non TCP/UDP et les plages IP privées ou réservées.
+- [x] Ajouter les tests unitaires IPv4, IPv6, TCP, UDP, fragments et paquets mal formés.
+- [ ] Construire l'adaptateur Android de capture avec consentement système et filtrage strict par package.
+- [ ] Fournir un transfert complet des paquets et vérifier qu'aucune connexion du jeu n'est interrompue.
+- [ ] Relier les seules métadonnées admissibles au registre local des observations.
+
+**Limite :** le décodeur est testé sur des paquets fournis aux tests unitaires. Il ne capture encore aucun trafic réel et ne mesure pas le ping CODM. Le moteur WireGuard embarqué ne remplace pas un adaptateur générique de capture et de transfert.
