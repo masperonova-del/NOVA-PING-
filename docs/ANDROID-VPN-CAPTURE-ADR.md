@@ -90,4 +90,4 @@ Until every gate passes, no VPN declaration, dependency, app UI toggle or “liv
 
 ## Current outcome
 
-The pure Kotlin packet parser and its unit tests are complete. Android live capture, forwarding, the SOCKS5 bridge and UI integration remain unimplemented. The current build green status validates the code and APK build only; it does not validate live network forwarding or CODM match-server discovery.
+The pure Kotlin packet parser and its unit tests are complete. A loopback-only SOCKS5 TCP CONNECT bridge now exists with per-instance ephemeral RFC 1929 username/password credentials, mandatory upstream socket-protection callback, bounded connect timeout, bidirectional relay and explicit shutdown. Its unit tests exercise an authenticated local TCP echo path and lifecycle. UDP ASSOCIATE, Android live capture, TUN forwarding, the metadata tap and UI integration remain unimplemented. The bridge is not wired into a VPN and must not be treated as a traffic optimizer. CI validates source/tests/APK compilation only; it does not validate live network forwarding or CODM match-server discovery.
