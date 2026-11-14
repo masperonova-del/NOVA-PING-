@@ -93,6 +93,10 @@ static void test_reject_malformed_and_private_remote(void)
     assert(!np_parse_packet_metadata(short_packet, sizeof(short_packet),
                                       &local, 1, &result));
     assert(!np_parse_packet_metadata(packet, sizeof(packet), &local, 1, &result));
+
+    /* Deprecated 6to4 relay anycast is not public endpoint evidence. */
+    packet[16] = 192; packet[17] = 88; packet[18] = 99; packet[19] = 1;
+    assert(!np_parse_packet_metadata(packet, sizeof(packet), &local, 1, &result));
 }
 
 static void test_first_fragment_flag(void)
