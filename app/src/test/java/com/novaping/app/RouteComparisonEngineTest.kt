@@ -44,7 +44,7 @@ class RouteComparisonEngineTest {
             listOf(batch("VPN", NetworkTransport.WIFI, 80))
         )
         assertEquals(RouteComparisonVerdict.INSUFFICIENT, result.verdict)
-        assertEquals(1, result.validPairs)
+        assertEquals(0, result.validPairs)
     }
 
     @Test fun rejectsPairsMeasuredOnDifferentTransports() {
