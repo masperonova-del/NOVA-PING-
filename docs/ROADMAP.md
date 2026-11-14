@@ -308,7 +308,8 @@ Une réponse HTTPS vers un service cloud n'est pas le ping du serveur de jeu. Un
 
 - [x] Ajouter un serveur SOCKS5 limité à l'interface loopback.
 - [x] Exiger une authentification RFC 1929 avec identifiants aléatoires propres à chaque instance.
-- [x] Implémenter TCP CONNECT avec prise en charge des adresses IPv4, IPv6 et domaines.
+- [x] Implémenter TCP CONNECT pour les adresses IPv4 et IPv6 numériques.
+- [x] Refuser les noms de domaine en TCP CONNECT tant que le DNS contrôlé n'est pas intégré, afin d'éviter une fuite via le résolveur système.
 - [x] Exiger la protection du socket sortant avant toute connexion distante.
 - [x] Relayer les flux TCP dans les deux sens et gérer la fermeture des sockets.
 - [x] Ajouter des tests de relais TCP authentifié et d'arrêt du service.
@@ -317,7 +318,11 @@ Une réponse HTTPS vers un service cloud n'est pas le ping du serveur de jeu. Un
 - [x] Rejeter les trames SOCKS5 UDP fragmentées, limiter les transferts simultanés et fermer le relais à la fermeture du canal TCP.
 - [x] Ajouter un test local UDP echo pour vérifier l'association, le retour du datagramme et la protection du socket sortant.
 - [x] Respecter le port UDP annoncé par le client et rejeter les datagrammes provenant d'un port source différent.
-- [ ] Ajouter une résolution DNS contrôlée (UDP/TCP) sans fuite hors du chemin protégé.
+- [x] Ajouter l'encodage des requêtes DNS A/AAAA et la validation stricte des réponses, identifiants, questions, longueurs et TTL.
+- [x] Ajouter un cache positif en mémoire, borné par TTL, avec copies défensives et sans cache des réponses vides/TTL nul.
+- [x] Ajouter des tests unitaires du codec DNS et du cache.
+- [ ] Ajouter le transport DNS contrôlé UDP/TCP avec sockets protégés, délais et validation sur réponse locale simulée.
+- [ ] Brancher la résolution contrôlée sur TCP CONNECT et UDP ASSOCIATE sans fallback système.
 - [ ] Intégrer le pont à un moteur TUN après validation du point d'observation non bloquant.
 
 **Limite :** le pont TCP/UDP est une brique locale testée, pas un VPN. Les destinations UDP par nom de domaine sont rejetées tant qu'une résolution DNS contrôlée n'est pas disponible. Le moteur de transfert, la capture Android et la mesure d'endpoints de jeu en direct restent à construire. Aucun trafic du jeu n'est redirigé à ce stade.
