@@ -330,7 +330,7 @@ class MainActivity : Activity() {
             15f, Color.WHITE, true, Gravity.START
         ))
         vpnConsentCard.addView(label(
-            "Android affichera sa propre demande d'autorisation VPN. Cette étape n'active aucun tunnel et ne redirige aucun trafic.",
+            "Android affichera sa demande système globale. Le jeu choisi sera utilisé pour préparer le futur filtrage par application. Cette étape n'active aucun tunnel et ne redirige aucun trafic.",
             12f, mutedColor, false, Gravity.START
         ).apply { setPadding(0, dp(6), 0, dp(10)) })
         installedGameApps = loadInstalledLaunchableApps()
@@ -1888,6 +1888,9 @@ class MainActivity : Activity() {
                 val appInfo = activityInfo.applicationInfo
                 if (activityInfo.packageName == packageName) return@mapNotNull null
                 if ((appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0) {
+                    return@mapNotNull null
+                }
+                if (appInfo.category != android.content.pm.ApplicationInfo.CATEGORY_GAME) {
                     return@mapNotNull null
                 }
                 InstalledLaunchableApp(
