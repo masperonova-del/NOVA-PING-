@@ -46,6 +46,16 @@ internal object DnsWireCodec {
         }
     }
 
+    /** True only for a matching DNS response header that explicitly requests TCP retry. */
+    fun isTruncatedResponse(packet: ByteArray, expectedTransactionId: Int): Boolean {
+        if (packet.size < HEADER || expectedTransactionId !in 0..65535) return false
+        if (u16(packet, 0) != expectedTransactionId) return false
+        val flags = u16(packet, 2)
+        return (flags and 0x8000) != 0 &&
+            (flags and 0x7800) == 0 &&
+            (flags and 0x0200) != 0
+    }
+
     fun parseResponse(packet: ByteArray, expectedHostname: String, expectedType: DnsRecordType, expectedTransactionId: Int): List<DnsAnswer>? {
         if (packet.size < HEADER || expectedTransactionId !in 0..65535 || u16(packet, 0) != expectedTransactionId) return null
         val flags = u16(packet, 2)
