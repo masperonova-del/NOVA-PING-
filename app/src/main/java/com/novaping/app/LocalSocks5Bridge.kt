@@ -8,6 +8,8 @@ import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketException
+import java.security.MessageDigest
+import java.security.SecureRandom
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -22,12 +24,15 @@ import java.util.concurrent.CountDownLatch
  * No VPN is started by this class. UDP ASSOCIATE is deliberately rejected until
  * its datagram lifecycle and DNS behavior are implemented and tested.
  */
+internal data class Socks5BridgeCredentials(val username: String, val password: String)
+
 internal class LocalSocks5Bridge(
     private val protectUpstreamSocket: (Socket) -> Boolean,
     private val bindAddress: InetAddress = InetAddress.getLoopbackAddress(),
     private val connectTimeoutMillis: Int = 10_000
 ) : Closeable {
     private val running = AtomicBoolean(false)
+    val credentials: Socks5BridgeCredentials = generateCredentials()
     private val workers: ExecutorService = Executors.newCachedThreadPool { task ->
         Thread(task, "NovaSocks5Worker").apply { isDaemon = true }
     }
@@ -77,13 +82,35 @@ internal class LocalSocks5Bridge(
             if (version != 5 || methodCount == 0) return
             val methods = ByteArray(methodCount)
             input.readFully(methods)
-            if (methods.none { (it.toInt() and 0xff) == 0 }) {
+            if (methods.none { (it.toInt() and 0xff) == 2 }) {
                 output.write(byteArrayOf(5, 0xff.toByte()))
                 output.flush()
                 return
             }
-            output.write(byteArrayOf(5, 0))
+            output.write(byteArrayOf(5, 2))
             output.flush()
+
+            val authVersion = input.readUnsignedByte()
+            val usernameLength = input.readUnsignedByte()
+            val usernameBytes = ByteArray(usernameLength)
+            input.readFully(usernameBytes)
+            val passwordLength = input.readUnsignedByte()
+            val passwordBytes = ByteArray(passwordLength)
+            input.readFully(passwordBytes)
+            val suppliedUsername = String(usernameBytes, Charsets.UTF_8)
+            val suppliedPassword = String(passwordBytes, Charsets.UTF_8)
+            val validCredentials = authVersion == 1 &&
+                MessageDigest.isEqual(
+                    suppliedUsername.toByteArray(Charsets.UTF_8),
+                    credentials.username.toByteArray(Charsets.UTF_8)
+                ) &&
+                MessageDigest.isEqual(
+                    suppliedPassword.toByteArray(Charsets.UTF_8),
+                    credentials.password.toByteArray(Charsets.UTF_8)
+                )
+            output.write(byteArrayOf(1, if (validCredentials) 0 else 1))
+            output.flush()
+            if (!validCredentials) return
 
             val requestVersion = input.readUnsignedByte()
             val command = input.readUnsignedByte()
@@ -210,6 +237,14 @@ internal class LocalSocks5Bridge(
         output.write(bytes)
         output.writeShort(port)
         output.flush()
+    }
+
+
+    private fun generateCredentials(): Socks5BridgeCredentials {
+        val random = SecureRandom()
+        fun token(): String = ByteArray(24).also(random::nextBytes)
+            .joinToString("") { "%02x".format(it) }
+        return Socks5BridgeCredentials(token(), token())
     }
 
     private fun closeSocket(socket: Socket?) {
