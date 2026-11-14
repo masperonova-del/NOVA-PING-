@@ -128,3 +128,46 @@ Cette étape ne démarre pas de VPN et n'appelle pas `Builder.establish()`. Le p
 Après le retour positif de la boîte de dialogue Android, l'application valide et mémorise le package sélectionné dans des préférences VPN dédiées. Si l'autorisation était déjà accordée, le package est mémorisé immédiatement après validation. Le service relit ce package au moment où son futur chemin de préparation est appelé, vérifie à nouveau sa syntaxe et sa présence dans PackageManager, puis construit un `Builder` limité à ce package avec `addAllowedApplication()`.
 
 La préparation du builder vérifie aussi que le consentement Android est toujours accordé. Aucun service n'est démarré par l'écran de sélection, aucun `Builder.establish()` n'est appelé et aucun trafic n'est redirigé. Une sélection absente, invalide ou désinstallée échoue sans fallback. Des tests unitaires couvrent la validation syntaxique des noms de package ; la vérification d'installation reste assurée par Android PackageManager.
+
+
+## Audit d'intégration — décision du 14 novembre 2026
+
+Une vérification du dépôt NOVA PING et de l'API amont HEV a été effectuée avant toute intégration native.
+
+### État réel du dépôt
+
+- `NovaVpnService` prépare un `VpnService.Builder` limité au package de jeu sélectionné et expose les wrappers `protect()` TCP/UDP.
+- Le consentement Android et la mémorisation du jeu sont présents.
+- Le service n'appelle pas `Builder.establish()`, ne démarre pas de moteur TUN et ne redirige aucun trafic.
+- `LocalSocks5Bridge`, son relais UDP et le résolveur DNS contrôlé existent comme composants testables, mais aucun service Android ne les démarre ni ne les raccorde à un moteur natif.
+- La dépendance WireGuard est déjà dans Gradle, mais `WireGuardEngine` ne fait qu'instancier `GoBackend` et lire sa version. Aucun profil WireGuard, pair, endpoint, clé ou relais n'est configuré. Ce backend ne constitue donc pas un chemin de transfert actif.
+
+### Vérification de l'API HEV
+
+Le README amont consulté expose pour Android un AAR avec les méthodes JNI suivantes : démarrage avec un chemin de configuration et le descripteur TUN, arrêt, état d'exécution et statistiques de trafic. L'API documentée ne décrit aucun callback de paquet ni mécanisme d'observation par paquet. Le moteur attend un serveur SOCKS5 configuré ; il ne fournit pas lui-même un serveur de sortie Internet.
+
+Référence amont consultée : https://github.com/heiher/hev-socks5-tunnel
+
+Conséquence : l'AAR standard ne peut pas, à lui seul, alimenter `GamePacketMetadataParser`. Lire le même descripteur TUN depuis un second thread n'est pas une solution : les deux lecteurs se disputeraient les paquets et pourraient interrompre le transfert. Les statistiques globales HEV ne remplacent pas les observations IP/port/transport par flux.
+
+### Décision technique
+
+1. **Ne pas intégrer ni démarrer l'AAR HEV standard dans cette étape.** Son interface publique documentée ne satisfait pas l'exigence de tap de métadonnées.
+2. **Ne pas activer WireGuard comme solution de remplacement.** Il nécessite un pair et un serveur WireGuard provisionnés, absents du dépôt. Ajouter un tunnel sans endpoint valide ne ferait que créer une fausse progression et pourrait couper la connexion.
+3. Garder le service VPN en mode préparation uniquement. Aucun `establish()`, aucune route par défaut, aucun bouton d'activation et aucun trafic de jeu redirigé.
+4. Pour la prochaine preuve technique, comparer deux voies réelles :
+   - un fork natif HEV, versionné et reproductible, avec un hook de copie d'en-têtes dans le chemin de traitement existant, callback borné/non bloquant et tests natifs ;
+   - un moteur qui expose déjà une API d'observation sûre, sans second lecteur TUN.
+5. Avant toute compilation native, figer le commit amont exact, vérifier les ABI livrées, la licence, la chaîne NDK et la reproductibilité de l'AAR. Ne pas utiliser une dépendance mutable de type `latest`.
+6. Une fois le tap disponible, raccorder le callback à une file bornée puis au parseur Kotlin. Si la file est pleine, abandonner l'échantillon de télémétrie, jamais le paquet original.
+
+### Critères de sortie de cette étape
+
+- Le choix du moteur est justifié par son API réellement disponible, pas seulement par ses performances ou sa compatibilité Android.
+- Un test natif démontre que le tap reçoit des métadonnées sans consommer, modifier ou bloquer les paquets transférés.
+- Les sockets de sortie du pont SOCKS5 sont protégés avant toute connexion.
+- Un test local de bout en bout vérifie TCP, UDP et DNS, puis les scénarios arrêt, révocation et changement de réseau.
+- Les vérifications sur appareil confirment que la connectivité normale revient après arrêt ou erreur.
+- Tant que ces critères ne sont pas atteints, l'interface et la documentation continuent d'indiquer clairement qu'aucun tunnel n'est actif.
+
+Cette décision remplace toute interprétation selon laquelle la seule présence de l'AAR HEV ou de la bibliothèque WireGuard suffirait à rendre le moteur TUN opérationnel.
