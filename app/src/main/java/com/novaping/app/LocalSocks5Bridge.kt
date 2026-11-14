@@ -31,7 +31,8 @@ internal class LocalSocks5Bridge(
     private val protectUpstreamSocket: (Socket) -> Boolean,
     private val bindAddress: InetAddress = InetAddress.getLoopbackAddress(),
     private val protectUpstreamDatagramSocket: (DatagramSocket) -> Boolean = { false },
-    private val connectTimeoutMillis: Int = 10_000
+    private val connectTimeoutMillis: Int = 10_000,
+    private val protectedDnsResolver: ProtectedDnsResolver? = null
 ) : Closeable {
     private val running = AtomicBoolean(false)
     val credentials: Socks5BridgeCredentials = generateCredentials()
@@ -143,10 +144,12 @@ internal class LocalSocks5Bridge(
                         writeReply(output, 0x08)
                         return
                     }
-                    // Never use the system resolver here: it could bypass the protected
-                    // upstream socket path and leak DNS outside a future VPN tunnel.
-                    writeReply(output, 0x08)
-                    return
+                    val resolved = protectedDnsResolver?.resolveAddress(name)
+                    if (resolved == null) {
+                        writeReply(output, 0x04)
+                        return
+                    }
+                    resolved
                 }
                 else -> {
                     writeReply(output, 0x08)
@@ -162,7 +165,8 @@ internal class LocalSocks5Bridge(
                 }
                 val relay = LocalSocks5UdpRelay(
                     protectUpstreamDatagramSocket = protectUpstreamDatagramSocket,
-                    bindAddress = bindAddress
+                    bindAddress = bindAddress,
+                    protectedDnsResolver = protectedDnsResolver
                 )
                 try {
                     relay.start(client.inetAddress, destinationPort.takeIf { it != 0 })
