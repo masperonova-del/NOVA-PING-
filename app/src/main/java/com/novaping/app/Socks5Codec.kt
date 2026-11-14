@@ -1,7 +1,6 @@
 package com.novaping.app
 
 import java.net.IDN
-import java.net.Inet6Address
 import java.net.InetAddress
 import java.nio.charset.StandardCharsets
 
