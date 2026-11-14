@@ -104,6 +104,39 @@ static void test_reject_malformed_and_private_remote(void)
     assert(!np_parse_packet_metadata(packet, sizeof(packet), &local, 1, &result));
 }
 
+static void test_reject_malformed_headers_and_fragments(void)
+{
+    uint8_t packet[40] = {
+        0x45, 0, 0, 0x28, 0, 0, 0, 0, 64, 6, 0, 0,
+        10, 0, 0, 2, 1, 1, 1, 1,
+        0x9c, 0x40, 0x01, 0xbb, 0, 0, 0, 1, 0, 0, 0, 0,
+        0x50, 0x18, 0x10, 0, 0, 0, 0, 0
+    };
+    np_local_address_t local = { .family = NP_ADDRESS_IPV4,
+                                 .bytes = { 10, 0, 0, 2 } };
+    np_packet_metadata_t result;
+
+    /* Invalid IPv4 IHL and total-length overflow. */
+    packet[0] = 0x44;
+    assert(!np_parse_packet_metadata(packet, sizeof(packet), &local, 1, &result));
+    packet[0] = 0x45;
+    packet[2] = 0x01; packet[3] = 0x00;
+    assert(!np_parse_packet_metadata(packet, sizeof(packet), &local, 1, &result));
+
+    /* Invalid TCP data offset and unsupported IP protocol. */
+    packet[2] = 0; packet[3] = 0x28;
+    packet[32] = 0x40;
+    assert(!np_parse_packet_metadata(packet, sizeof(packet), &local, 1, &result));
+    packet[32] = 0x50;
+    packet[9] = 1;
+    assert(!np_parse_packet_metadata(packet, sizeof(packet), &local, 1, &result));
+
+    /* A non-initial IPv4 fragment has no transport header to inspect. */
+    packet[9] = 6;
+    packet[6] = 0; packet[7] = 1;
+    assert(!np_parse_packet_metadata(packet, sizeof(packet), &local, 1, &result));
+}
+
 static void test_first_fragment_flag(void)
 {
     uint8_t packet[28] = {
@@ -148,6 +181,7 @@ int main(void)
     test_ipv4_inbound_tcp();
     test_ipv6_outbound_udp();
     test_reject_malformed_and_private_remote();
+    test_reject_malformed_headers_and_fragments();
     test_first_fragment_flag();
     test_bounded_spsc_queue();
     puts("NOVA native packet metadata tests: PASS");
