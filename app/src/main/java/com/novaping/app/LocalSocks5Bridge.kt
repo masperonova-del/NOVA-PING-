@@ -143,8 +143,10 @@ internal class LocalSocks5Bridge(
                         writeReply(output, 0x08)
                         return
                     }
-                    if (command == 0x03) InetAddress.getLoopbackAddress()
-                    else InetAddress.getAllByName(name).first()
+                    // Never use the system resolver here: it could bypass the protected
+                    // upstream socket path and leak DNS outside a future VPN tunnel.
+                    writeReply(output, 0x08)
+                    return
                 }
                 else -> {
                     writeReply(output, 0x08)
