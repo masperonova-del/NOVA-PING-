@@ -11,8 +11,8 @@ android {
         applicationId = "com.novaping.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 31
-        versionName = "1.17.0-dev"
+        versionCode = 32
+        versionName = "1.17.1-dev"
     }
 
     buildTypes {
