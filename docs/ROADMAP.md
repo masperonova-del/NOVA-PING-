@@ -322,7 +322,10 @@ Une réponse HTTPS vers un service cloud n'est pas le ping du serveur de jeu. Un
 - [x] Ajouter un cache positif en mémoire, borné par TTL, avec copies défensives et sans cache des réponses vides/TTL nul.
 - [x] Ajouter des tests unitaires du codec DNS et du cache.
 - [x] Ajouter le transport DNS contrôlé UDP avec socket protégé, délai borné et validation de réponse.
-- [ ] Brancher la résolution contrôlée sur TCP CONNECT et UDP ASSOCIATE sans fallback système.
+- [x] Ajouter le repli TCP protégé lorsque la réponse UDP est tronquée.
+- [x] Exposer une résolution A puis AAAA via le résolveur contrôlé et son cache.
+- [x] Brancher TCP CONNECT et UDP ASSOCIATE sur ce résolveur optionnel, sans fallback système.
+- [ ] Fournir et valider la configuration Android du résolveur et des callbacks `VpnService.protect()` avant activation.
 - [ ] Intégrer le pont à un moteur TUN après validation du point d'observation non bloquant.
 
-**Limite :** le pont TCP/UDP est une brique locale testée, pas un VPN. Les destinations UDP par nom de domaine sont rejetées tant qu'une résolution DNS contrôlée n'est pas disponible. Le moteur de transfert, la capture Android et la mesure d'endpoints de jeu en direct restent à construire. Aucun trafic du jeu n'est redirigé à ce stade.
+**Limite :** le pont TCP/UDP reste une brique locale, pas un VPN. La résolution de domaines est disponible uniquement si un résolveur DNS contrôlé est explicitement injecté et correctement configuré ; sans lui, les demandes de domaines échouent sans fallback système. Le moteur de transfert, la capture Android et la mesure d'endpoints de jeu en direct restent à construire. Aucun trafic du jeu n'est redirigé à ce stade.
