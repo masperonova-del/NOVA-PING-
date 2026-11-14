@@ -118,6 +118,7 @@ static void test_bounded_spsc_queue(void)
     uint32_t i;
 
     np_metadata_queue_init(&queue);
+    assert(np_metadata_queue_is_lock_free(&queue));
     for (i = 0; i < NP_METADATA_QUEUE_CAPACITY; ++i) {
         input.remote_port = (uint16_t)(1000u + i);
         assert(np_metadata_queue_push(&queue, &input));
