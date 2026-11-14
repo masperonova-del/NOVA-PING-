@@ -198,3 +198,14 @@ Une réponse HTTPS vers un service cloud n'est pas le ping du serveur de jeu. Un
 - [ ] Vérifier l'accessibilité, les tailles d'écran et le contraste sur plusieurs appareils.
 
 **Limite :** l'actualisation du tableau de bord relit l'état Android local ; elle ne télécharge pas une nouvelle version de l'application et ne met pas à jour l'APK installé. Les numéros de builds GitHub Actions sont indépendants de `versionName` et `versionCode` Android.
+
+
+## Version 1.19.0-dev — Intégrité des comparaisons A/B
+
+- [x] Refuser les séries directes et candidates de tailles différentes au lieu de les apparier silencieusement par troncature.
+- [x] Exiger une identité directe stable et un même profil candidat (libellé et serveur VPN) sur toutes les paires.
+- [x] Refuser les lots contenant des hôtes vides ou dupliqués.
+- [x] Exiger cinq tentatives et au moins trois observations complètes sur chaque phase nécessaire avant comparaison.
+- [x] Ajouter des tests de non-régression pour les séries déséquilibrées, les hôtes dupliqués, les profils changeants et les phases incomplètes.
+
+**Limite :** la comparaison reste une analyse de points de contrôle HTTPS. Elle ne mesure pas le ping du jeu, ne prouve pas une amélioration de routage et ne modifie pas le réseau Android.
