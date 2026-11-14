@@ -5,6 +5,7 @@ import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.EOFException
 import java.net.InetAddress
+import java.net.DatagramSocket
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketException
@@ -29,6 +30,7 @@ internal data class Socks5BridgeCredentials(val username: String, val password: 
 internal class LocalSocks5Bridge(
     private val protectUpstreamSocket: (Socket) -> Boolean,
     private val bindAddress: InetAddress = InetAddress.getLoopbackAddress(),
+    private val protectUpstreamDatagramSocket: (DatagramSocket) -> Boolean = { false },
     private val connectTimeoutMillis: Int = 10_000
 ) : Closeable {
     private val running = AtomicBoolean(false)
@@ -120,7 +122,7 @@ internal class LocalSocks5Bridge(
                 writeReply(output, 0x01)
                 return
             }
-            if (command != 0x01) {
+            if (command != 0x01 && command != 0x03) {
                 writeReply(output, 0x07)
                 return
             }
@@ -149,6 +151,24 @@ internal class LocalSocks5Bridge(
                 }
             }
             val destinationPort = input.readUnsignedShort()
+            if (command == 0x03) {
+                val relay = LocalSocks5UdpRelay(
+                    protectUpstreamDatagramSocket = protectUpstreamDatagramSocket,
+                    bindAddress = bindAddress
+                )
+                try {
+                    relay.start(client.inetAddress)
+                    writeReply(output, 0x00, relay.localAddress, relay.localPort)
+                    client.soTimeout = 0
+                    // RFC 1928: the UDP association ends when its TCP control connection closes.
+                    while (input.read() != -1) {
+                        // No application data is expected on the control channel.
+                    }
+                } finally {
+                    relay.close()
+                }
+                return
+            }
             if (destinationPort == 0) {
                 writeReply(output, 0x01)
                 return
