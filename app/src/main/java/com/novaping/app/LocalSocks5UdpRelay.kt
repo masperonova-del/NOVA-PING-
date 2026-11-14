@@ -15,13 +15,13 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Loopback SOCKS5 UDP relay for one authenticated TCP control connection.
  *
  * Only the first UDP source endpoint from the TCP peer's IP is pinned.
- * Domain destinations are rejected deliberately: system DNS resolution here
- * could bypass the protected socket path and leak outside the VPN.
+ * Domain destinations are resolved only by the injected protected DNS resolver.
  */
 internal class LocalSocks5UdpRelay(
     private val protectUpstreamDatagramSocket: (DatagramSocket) -> Boolean,
     private val bindAddress: InetAddress = InetAddress.getLoopbackAddress(),
-    private val responseTimeoutMillis: Int = 3_000
+    private val responseTimeoutMillis: Int = 3_000,
+    private val protectedDnsResolver: ProtectedDnsResolver? = null
 ) : Closeable {
     private val running = AtomicBoolean(false)
     private val workers = Executors.newFixedThreadPool(8) { task ->
@@ -85,7 +85,7 @@ internal class LocalSocks5UdpRelay(
                 val destination = when (val address = datagram.destination.address) {
                     is Socks5Address.Ipv4 -> InetAddress.getByAddress(address.bytes)
                     is Socks5Address.Ipv6 -> InetAddress.getByAddress(address.bytes)
-                    is Socks5Address.Domain -> continue
+                    is Socks5Address.Domain -> protectedDnsResolver?.resolveAddress(address.asciiName) ?: continue
                 }
                 if (datagram.destination.port !in 1..65535 || !permits.tryAcquire()) continue
                 workers.execute {
