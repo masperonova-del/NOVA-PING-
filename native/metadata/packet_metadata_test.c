@@ -87,10 +87,10 @@ static void test_ipv6_destination_options_udp(void)
 {
     uint8_t packet[56] = { 0 };
     np_local_address_t local = { .family = NP_ADDRESS_IPV6,
-                                 .bytes = { 0xfd, 0, 0x44, 0, 0, 0, 0, 0,
+                                 .bytes = { 0xfd, 0, 0, 0x44, 0, 0, 0, 0,
                                             0, 0, 0, 0, 0, 0, 0, 2 } };
     np_packet_metadata_t result;
-    const uint8_t expected_remote[4] = { 0x26, 0x06, 0x47, 0x00 };
+    const uint8_t expected_remote[16] = {\n        0x26, 0x06, 0x47, 0x00, 0x47, 0x00, 0, 0,\n        0, 0, 0, 0, 0, 0, 0x11, 0x11\n    };
 
     packet[0] = 0x60;
     packet[4] = 0;
