@@ -90,7 +90,10 @@ static void test_ipv6_destination_options_udp(void)
                                  .bytes = { 0xfd, 0, 0, 0x44, 0, 0, 0, 0,
                                             0, 0, 0, 0, 0, 0, 0, 2 } };
     np_packet_metadata_t result;
-    const uint8_t expected_remote[16] = {\n        0x26, 0x06, 0x47, 0x00, 0x47, 0x00, 0, 0,\n        0, 0, 0, 0, 0, 0, 0x11, 0x11\n    };
+    const uint8_t expected_remote[16] = {
+        0x26, 0x06, 0x47, 0x00, 0x47, 0x00, 0, 0,
+        0, 0, 0, 0, 0, 0, 0x11, 0x11
+    };
 
     packet[0] = 0x60;
     packet[4] = 0;
@@ -98,11 +101,7 @@ static void test_ipv6_destination_options_udp(void)
     packet[6] = 60; /* Destination Options */
     packet[7] = 64;
     memcpy(packet + 8, local.bytes, 16);
-    packet[24] = 0x26;
-    packet[25] = 0x06;
-    packet[26] = 0x47;
-    packet[27] = 0x00;
-    packet[39] = 0x11;
+    memcpy(packet + 24, expected_remote, sizeof(expected_remote));
     packet[40] = 17; /* UDP follows the extension header */
     packet[41] = 0;  /* Eight-byte extension header */
     packet[48] = 0xcf;
@@ -118,8 +117,7 @@ static void test_ipv6_destination_options_udp(void)
     assert(result.direction == NP_DIRECTION_OUTBOUND);
     assert(result.remote_port == 7500);
     assert(result.packet_length_bytes == sizeof(packet));
-    assert(memcmp(result.remote_address,
-                  "\\x26\\x06\\x47\\x00", 4) == 0);
+    assert(memcmp(result.remote_address, expected_remote, sizeof(expected_remote)) == 0);
 }
 
 static void test_reject_malformed_and_private_remote(void)
