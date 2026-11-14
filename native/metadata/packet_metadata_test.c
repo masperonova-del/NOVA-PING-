@@ -51,6 +51,7 @@ static void test_ipv6_outbound_udp(void)
                                  .bytes = { 0xfd, 0, 0, 0, 0, 0, 0, 0,
                                             0, 0, 0, 0, 0, 0, 0, 1 } };
     np_packet_metadata_t result;
+    const uint8_t expected_remote[4] = { 0x26, 0x06, 0x47, 0x00 };
 
     packet[0] = 0x60;
     packet[4] = 0;
