@@ -7,6 +7,9 @@ import org.junit.Test
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.net.InetAddress
+import java.net.DatagramPacket
+import java.net.DatagramSocket
+import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import kotlin.concurrent.thread
@@ -103,5 +106,94 @@ class LocalSocks5BridgeTest {
         bridge.close()
         assertTrue(!bridge.isRunning)
         assertEquals(-1, bridge.localPort)
+    }
+
+    @Test
+    fun udpAssociateRelaysUnfragmentedDatagramsAndProtectsUpstreamSocket() {
+        val loopback = InetAddress.getLoopbackAddress()
+        val echo = DatagramSocket(null).apply {
+            bind(InetSocketAddress(loopback, 0))
+            soTimeout = 5_000
+        }
+        val echoThread = thread(isDaemon = true) {
+            val bytes = ByteArray(1024)
+            val packet = DatagramPacket(bytes, bytes.size)
+            echo.receive(packet)
+            echo.send(DatagramPacket(packet.data, packet.offset, packet.length, packet.address, packet.port))
+        }
+        var protectedUdpSockets = 0
+        val bridge = LocalSocks5Bridge(
+            protectUpstreamSocket = { true },
+            bindAddress = loopback,
+            protectUpstreamDatagramSocket = {
+                protectedUdpSockets++
+                true
+            }
+        )
+        try {
+            val tcpPort = bridge.start()
+            Socket(loopback, tcpPort).use { control ->
+                control.soTimeout = 5_000
+                val input = DataInputStream(control.getInputStream())
+                val output = DataOutputStream(control.getOutputStream())
+                val credentials = bridge.credentials
+                val username = credentials.username.toByteArray(Charsets.UTF_8)
+                val password = credentials.password.toByteArray(Charsets.UTF_8)
+
+                output.write(byteArrayOf(5, 1, 2))
+                output.flush()
+                assertEquals(5, input.readUnsignedByte())
+                assertEquals(2, input.readUnsignedByte())
+                output.writeByte(1)
+                output.writeByte(username.size)
+                output.write(username)
+                output.writeByte(password.size)
+                output.write(password)
+                output.flush()
+                assertEquals(1, input.readUnsignedByte())
+                assertEquals(0, input.readUnsignedByte())
+
+                // UDP ASSOCIATE with an unspecified client UDP endpoint.
+                output.write(byteArrayOf(5, 3, 0, 1, 0, 0, 0, 0, 0, 0))
+                output.flush()
+                assertEquals(5, input.readUnsignedByte())
+                assertEquals(0, input.readUnsignedByte())
+                assertEquals(0, input.readUnsignedByte())
+                val atyp = input.readUnsignedByte()
+                val addressLength = when (atyp) {
+                    1 -> 4
+                    4 -> 16
+                    else -> error("Unexpected UDP relay address type: $atyp")
+                }
+                val relayAddress = InetAddress.getByAddress(ByteArray(addressLength).also(input::readFully))
+                val relayPort = input.readUnsignedShort()
+
+                DatagramSocket(null).use { clientUdp ->
+                    clientUdp.bind(InetSocketAddress(loopback, 0))
+                    clientUdp.soTimeout = 5_000
+                    val payload = "NOVA-UDP".toByteArray(Charsets.US_ASCII)
+                    val frame = Socks5Codec.encodeUdpDatagram(
+                        Socks5UdpDatagram(
+                            Socks5Endpoint(Socks5Address.Ipv4(loopback.address), echo.localPort),
+                            payload
+                        )
+                    )
+                    clientUdp.send(DatagramPacket(frame, frame.size, relayAddress, relayPort))
+                    val responseBytes = ByteArray(2048)
+                    val response = DatagramPacket(responseBytes, responseBytes.size)
+                    clientUdp.receive(response)
+                    val decoded = Socks5Codec.parseUdpDatagram(
+                        response.data.copyOfRange(response.offset, response.offset + response.length)
+                    )
+                    assertTrue(decoded != null)
+                    assertArrayEquals(payload, decoded!!.payload)
+                }
+                assertTrue("UDP upstream socket must be protected", protectedUdpSockets > 0)
+            }
+            echoThread.join(2_000)
+        } finally {
+            bridge.close()
+            echo.close()
+        }
     }
 }
