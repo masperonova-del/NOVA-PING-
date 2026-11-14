@@ -115,4 +115,9 @@ Le manifeste déclare maintenant `NovaVpnService` avec la permission système `B
 - un constructeur de configuration VPN limité à un seul package de jeu installé via `Builder.addAllowedApplication()` ;
 - des méthodes de protection des sockets TCP et UDP qui délèguent à `VpnService.protect()`.
 
-Cette étape ne démarre pas de VPN et n'appelle pas `Builder.establish()`. Le flux de consentement système, l'identification fiable du package installé sélectionné, l'instanciation du résolveur DNS avec une adresse numérique explicitement configurée, le moteur TUN/tun2socks et le tap de métadonnées restent à intégrer. La déclaration du service dans le manifeste ne signifie donc pas que le trafic est actuellement capturé ou optimisé.
+L'écran de préparation VPN est maintenant présent dans `MainActivity` :
+- il propose les applications installées déclarées par Android comme jeux et possédant une activité de lancement ;
+- il appelle `VpnService.prepare()` et affiche la boîte de dialogue système uniquement si une autorisation est nécessaire ;
+- il indique explicitement le résultat du consentement sans démarrer de tunnel.
+
+Cette étape ne démarre pas de VPN et n'appelle pas `Builder.establish()`. Le package choisi n'est pas encore transmis au service pour créer le tunnel. L'instanciation du résolveur DNS avec une adresse numérique explicitement configurée, le moteur TUN/tun2socks et le tap de métadonnées restent à intégrer. La déclaration du service et l'accord de consentement Android ne signifient donc pas que le trafic est actuellement capturé ou optimisé.
