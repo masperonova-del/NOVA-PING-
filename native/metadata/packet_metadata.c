@@ -29,6 +29,8 @@ static bool ipv4_is_public(const uint8_t *a)
         return false;
     if (a[0] == 192 && a[1] == 0 && a[2] == 2)
         return false;
+    if (a[0] == 192 && a[1] == 88 && a[2] == 99)
+        return false;
     if (a[0] == 198 && (a[1] == 18 || a[1] == 19))
         return false;
     if (a[0] == 198 && a[1] == 51 && a[2] == 100)
@@ -52,8 +54,8 @@ static bool ipv6_is_public(const uint8_t *a)
         return false;
 
     /* ORCHIDv1 2001:10::/28. */
-    if (a[0] == 0x20 && a[1] == 0x01 &&
-        a[2] == 0x00 && (a[3] & 0xf0u) == 0x10u)
+    if (a[0] == 0x20 && a[1] == 0x01 && a[2] == 0x00 &&
+        ((a[3] & 0xf0u) == 0x10u || (a[3] & 0xf0u) == 0x20u))
         return false;
 
     return true;
