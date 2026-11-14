@@ -23,6 +23,7 @@ data class RouteComparisonResult(
 object RouteComparisonEngine {
     private const val REQUIRED_PAIRS = 3
     private const val REQUIRED_SAMPLES_PER_HOST = MeasurementPlan.ROUTE_SAMPLES_PER_TARGET
+    private const val MIN_COMPLETE_SAMPLES = MeasurementPlan.MIN_COMPLETE_SAMPLES_FOR_BOOST_RECOMMENDATION
 
     fun compare(
         directBatches: List<RouteComparisonBatch>,
@@ -34,18 +35,29 @@ object RouteComparisonEngine {
             "Une amélioration HTTPS ne prouve pas une réduction du ping dans CODM.",
             "Aucun routage n'est modifié et aucun VPN n'est activé."
         )
+        if (directBatches.size != candidateBatches.size ||
+            directBatches.size < REQUIRED_PAIRS
+        ) {
+            return insufficient(0, limitations, "Les deux séries doivent contenir le même nombre de lots et au moins $REQUIRED_PAIRS paires.")
+        }
+
+        val directIdentity = directBatches.map { it.label }.distinct()
+        val candidateIdentity = candidateBatches.map { it.label to it.vpnLabel }.distinct()
+        if (directIdentity.size != 1 || candidateIdentity.size != 1) {
+            return insufficient(0, limitations, "Le profil direct ou le profil candidat change entre les séries.")
+        }
+
         val paired = directBatches.zip(candidateBatches).filter { (direct, candidate) ->
             direct.transport == candidate.transport &&
-                direct.aggregates.map { it.host }.toSet().isNotEmpty() &&
-                direct.aggregates.map { it.host }.toSet() == candidate.aggregates.map { it.host }.toSet() &&
-                direct.aggregates.all { it.sampleCount == REQUIRED_SAMPLES_PER_HOST } &&
-                candidate.aggregates.all { it.sampleCount == REQUIRED_SAMPLES_PER_HOST }
+                isValidBatch(direct) &&
+                isValidBatch(candidate) &&
+                direct.aggregates.map { it.host }.toSet() ==
+                    candidate.aggregates.map { it.host }.toSet()
         }
         if (paired.size < REQUIRED_PAIRS) {
-            return RouteComparisonResult(
-                RouteComparisonVerdict.INSUFFICIENT, paired.size,
-                "Comparaison insuffisante : ${paired.size}/$REQUIRED_PAIRS séries appariées valides.",
-                limitations
+            return insufficient(
+                paired.size, limitations,
+                "Comparaison insuffisante : ${paired.size}/$REQUIRED_PAIRS séries appariées avec des lots complets et comparables."
             )
         }
 
@@ -100,10 +112,37 @@ object RouteComparisonEngine {
         return RouteComparisonResult(verdict, comparablePairs, summary, limitations)
     }
 
+    private fun insufficient(
+        validPairs: Int,
+        limitations: List<String>,
+        reason: String
+    ) = RouteComparisonResult(
+        RouteComparisonVerdict.INSUFFICIENT,
+        validPairs,
+        reason,
+        limitations
+    )
+
+    private fun isValidBatch(batch: RouteComparisonBatch): Boolean {
+        if (batch.aggregates.isEmpty()) return false
+        val hosts = batch.aggregates.map { it.host }
+        if (hosts.any { it.isBlank() } || hosts.distinct().size != hosts.size) return false
+        return batch.aggregates.all { aggregate ->
+            aggregate.sampleCount == REQUIRED_SAMPLES_PER_HOST &&
+                aggregate.completeSamples >= MIN_COMPLETE_SAMPLES &&
+                aggregate.dns.successfulSamples >= MIN_COMPLETE_SAMPLES &&
+                aggregate.tcp.successfulSamples >= MIN_COMPLETE_SAMPLES &&
+                aggregate.tcpAttemptTotal.successfulSamples >= MIN_COMPLETE_SAMPLES &&
+                aggregate.tls.successfulSamples >= MIN_COMPLETE_SAMPLES &&
+                aggregate.httpStatusLine.successfulSamples >= MIN_COMPLETE_SAMPLES
+        }
+    }
+
     private fun phaseScore(aggregate: RouteAggregate): Pair<Long, Long>? {
         val phases = listOf(aggregate.dns, aggregate.tcpAttemptTotal, aggregate.tls, aggregate.httpStatusLine)
         if (phases.any {
-                it.successfulSamples < 3 || it.medianMs == null || it.p95ObservedMs == null
+                it.successfulSamples < MIN_COMPLETE_SAMPLES ||
+                    it.medianMs == null || it.p95ObservedMs == null
             }) return null
         return phases.sumOf { it.medianMs!! } to phases.sumOf { it.p95ObservedMs!! }
     }
