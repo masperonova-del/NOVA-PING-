@@ -1854,15 +1854,29 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == vpnConsentRequestCode) {
-            vpnConsentStatus.text = if (resultCode == RESULT_OK) {
-                "Autorisation Android accordée. Tunnel non établi : aucun trafic n'est redirigé."
+            if (resultCode == RESULT_OK) {
+                val selectedPackage = selectedVpnGamePackage
+                if (selectedPackage.isNullOrBlank()) {
+                    vpnConsentStatus.text = "Autorisation accordée, mais aucun jeu valide n'est sélectionné."
+                    vpnConsentStatus.setTextColor(Color.rgb(255, 190, 110))
+                } else {
+                    try {
+                        NovaVpnService.saveSelectedGamePackage(this, selectedPackage)
+                        val selectedLabel = installedGameApps
+                            .firstOrNull { it.packageName == selectedPackage }?.label ?: selectedPackage
+                        vpnConsentStatus.text =
+                            "Autorisation Android accordée. Jeu mémorisé : $selectedLabel. Tunnel non établi ; aucun trafic n'est redirigé."
+                        vpnConsentStatus.setTextColor(Color.rgb(100, 210, 150))
+                    } catch (error: Exception) {
+                        vpnConsentStatus.text =
+                            "Consentement accordé, mais sélection non enregistrée : ${error.message ?: "erreur inconnue"}"
+                        vpnConsentStatus.setTextColor(Color.rgb(255, 190, 110))
+                    }
+                }
             } else {
-                "Autorisation refusée ou annulée. Aucun VPN actif."
+                vpnConsentStatus.text = "Autorisation refusée ou annulée. Aucun VPN actif."
+                vpnConsentStatus.setTextColor(Color.rgb(255, 190, 110))
             }
-            vpnConsentStatus.setTextColor(
-                if (resultCode == RESULT_OK) Color.rgb(100, 210, 150)
-                else Color.rgb(255, 190, 110)
-            )
             return
         }
         if (requestCode != exportRequestCode) return
@@ -1910,9 +1924,16 @@ class MainActivity : Activity() {
         }
         val consentIntent = VpnService.prepare(this)
         if (consentIntent == null) {
-            vpnConsentStatus.text =
-                "Autorisation Android déjà accordée. Tunnel non établi : aucun trafic n'est redirigé."
-            vpnConsentStatus.setTextColor(Color.rgb(100, 210, 150))
+            try {
+                NovaVpnService.saveSelectedGamePackage(this, selectedPackage)
+                vpnConsentStatus.text =
+                    "Autorisation Android déjà accordée. Jeu mémorisé. Tunnel non établi : aucun trafic n'est redirigé."
+                vpnConsentStatus.setTextColor(Color.rgb(100, 210, 150))
+            } catch (error: Exception) {
+                vpnConsentStatus.text =
+                    "Impossible d'enregistrer ce jeu : ${error.message ?: "erreur inconnue"}"
+                vpnConsentStatus.setTextColor(Color.rgb(255, 190, 110))
+            }
             return
         }
         try {
