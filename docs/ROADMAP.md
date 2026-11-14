@@ -316,6 +316,7 @@ Une réponse HTTPS vers un service cloud n'est pas le ping du serveur de jeu. Un
 - [x] Protéger chaque socket UDP sortant via un callback obligatoire avant toute émission.
 - [x] Rejeter les trames SOCKS5 UDP fragmentées, limiter les transferts simultanés et fermer le relais à la fermeture du canal TCP.
 - [x] Ajouter un test local UDP echo pour vérifier l'association, le retour du datagramme et la protection du socket sortant.
+- [x] Respecter le port UDP annoncé par le client et rejeter les datagrammes provenant d'un port source différent.
 - [ ] Ajouter une résolution DNS contrôlée (UDP/TCP) sans fuite hors du chemin protégé.
 - [ ] Intégrer le pont à un moteur TUN après validation du point d'observation non bloquant.
 
