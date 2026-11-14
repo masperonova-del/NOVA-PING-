@@ -257,3 +257,19 @@ Une réponse HTTPS vers un service cloud n'est pas le ping du serveur de jeu. Un
 **Limite :** la documentation Activision publie des ports mais pas les IP des serveurs de match. Les ports ne permettent pas, seuls, d'identifier un hôte distant, de distinguer à coup sûr un serveur de lobby d'un serveur de partie, ni de mesurer le ping CODM. La table doit être revalidée sur la source officielle avant toute nouvelle certification.
 
 **Source officielle consultée le 14 novembre 2026 :** https://support.activision.com/fr/articles/ports-used-for-call-of-duty-games
+
+
+## Version 1.23.0-dev — Modèle d'observation des endpoints de jeu
+
+- [x] Ajouter un modèle d'observation des IP/ports distants associés à une application de jeu explicitement sélectionnée.
+- [x] Exiger un état de consentement explicite et l'identité exacte du package attendu.
+- [x] Valider les adresses IP numériques publiques sans résolution DNS.
+- [x] Agréger les observations par jeu, package, IP, port et transport.
+- [x] Distinguer les observations répétées sur plusieurs sessions des répétitions au sein d'une seule session.
+- [x] Ne jamais assimiler une observation à la preuve d'un serveur de match.
+- [x] Ajouter les tests unitaires du filtrage, de la validation IP et de l'agrégation.
+- [ ] Implémenter une collecte Android réellement consentie, limitée à l'application choisie, sans perturber son trafic.
+- [ ] Connecter les candidats observés à l'interface et à l'historique local.
+- [ ] Confirmer le rôle de serveur de match par une preuve indépendante avant toute mesure dédiée.
+
+**Limite :** cette version ajoute le modèle et les règles d'agrégation, pas encore la capture réseau Android. L'architecture de capture doit traiter correctement l'interface TUN et le transfert des paquets avant toute activation. Voir `docs/GAME-ENDPOINT-DISCOVERY.md`.
