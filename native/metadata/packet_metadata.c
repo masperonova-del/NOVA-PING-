@@ -340,6 +340,216 @@ bool np_packet_reader_copy(const np_packet_reader_t *reader,
     return remaining == 0u;
 }
 
+
+/*
+ * This reader parser copies only the IP and transport headers into a bounded
+ * scratch buffer. The packet's declared length is checked against the complete
+ * chained reader, while the parser scratch buffer contains no application
+ * payload. Unusually large extension chains are skipped rather than expanded.
+ */
+#define NP_MAX_HEADER_CAPTURE 2048u
+
+static bool reader_copy_header(const np_packet_reader_t *reader,
+                               uint8_t *scratch,
+                               size_t *captured,
+                               size_t offset,
+                               size_t length)
+{
+    if (offset > NP_MAX_HEADER_CAPTURE ||
+        length > NP_MAX_HEADER_CAPTURE - offset)
+        return false;
+    if (offset > reader->total_length ||
+        length > reader->total_length - offset)
+        return false;
+    if (!np_packet_reader_copy(reader, offset, scratch + offset, length))
+        return false;
+    if (*captured < offset + length)
+        *captured = offset + length;
+    return true;
+}
+
+bool np_parse_packet_metadata_reader(const np_packet_reader_t *reader,
+                                     const np_local_address_t *local_addresses,
+                                     size_t local_address_count,
+                                     np_packet_metadata_t *output)
+{
+    uint8_t scratch[NP_MAX_HEADER_CAPTURE];
+    size_t captured = 0u;
+    size_t packet_end;
+    size_t offset;
+    size_t transport_header_length;
+    uint8_t version;
+    uint8_t protocol;
+    uint8_t family;
+    uint8_t address_length;
+    uint8_t source[16] = { 0 };
+    uint8_t destination[16] = { 0 };
+    uint8_t remote[16] = { 0 };
+    uint16_t source_port;
+    uint16_t destination_port;
+    bool source_local;
+    bool destination_local;
+    bool fragmented = false;
+
+    if (reader == NULL || local_addresses == NULL || output == NULL ||
+        reader->total_length == 0u || reader->total_length > UINT32_MAX ||
+        local_address_count == 0u ||
+        local_address_count > NP_MAX_LOCAL_ADDRESSES ||
+        !reader_copy_header(reader, scratch, &captured, 0u, 1u))
+        return false;
+
+    version = scratch[0] >> 4;
+    if (version == 4u) {
+        uint16_t fragment_field;
+        size_t ip_header_length;
+        uint16_t declared_length;
+
+        if (!reader_copy_header(reader, scratch, &captured, 0u,
+                                NP_IPV4_MIN_HEADER))
+            return false;
+        ip_header_length = (size_t)(scratch[0] & 0x0fu) * 4u;
+        declared_length = read_u16(scratch + 2);
+        if (ip_header_length < NP_IPV4_MIN_HEADER ||
+            ip_header_length > 60u || declared_length < ip_header_length ||
+            (size_t)declared_length > reader->total_length ||
+            !reader_copy_header(reader, scratch, &captured, 0u,
+                                ip_header_length))
+            return false;
+
+        family = NP_ADDRESS_IPV4;
+        address_length = 4u;
+        packet_end = declared_length;
+        protocol = scratch[9];
+        memcpy(source, scratch + 12, 4u);
+        memcpy(destination, scratch + 16, 4u);
+        fragment_field = read_u16(scratch + 6);
+        if ((fragment_field & 0x1fffu) != 0u)
+            return false;
+        fragmented = (fragment_field & 0x2000u) != 0u;
+        offset = ip_header_length;
+    } else if (version == 6u) {
+        uint16_t payload_length;
+        uint8_t extension_count = 0u;
+
+        if (!reader_copy_header(reader, scratch, &captured, 0u,
+                                NP_IPV6_HEADER))
+            return false;
+        payload_length = read_u16(scratch + 4);
+        if (payload_length == 0u)
+            return false; /* IPv6 jumbograms are not supported here. */
+        packet_end = NP_IPV6_HEADER + (size_t)payload_length;
+        if (packet_end > reader->total_length)
+            return false;
+
+        family = NP_ADDRESS_IPV6;
+        address_length = 16u;
+        memcpy(source, scratch + 8, 16u);
+        memcpy(destination, scratch + 24, 16u);
+        protocol = scratch[6];
+        offset = NP_IPV6_HEADER;
+
+        while (protocol == 0u || protocol == 43u || protocol == 60u ||
+               protocol == 44u || protocol == 51u) {
+            uint8_t following;
+            size_t extension_length;
+
+            if (extension_count >= NP_MAX_IPV6_EXTENSIONS)
+                return false;
+            ++extension_count;
+
+            if (protocol == 44u) {
+                uint16_t fragment_field;
+                if (offset > packet_end || 8u > packet_end - offset ||
+                    !reader_copy_header(reader, scratch, &captured, offset, 8u))
+                    return false;
+                following = scratch[offset];
+                fragment_field = read_u16(scratch + offset + 2u);
+                if ((fragment_field & 0xfff8u) != 0u)
+                    return false;
+                fragmented = (fragment_field & 0x0001u) != 0u;
+                extension_length = 8u;
+            } else {
+                if (offset > packet_end || 2u > packet_end - offset ||
+                    !reader_copy_header(reader, scratch, &captured, offset, 2u))
+                    return false;
+                following = scratch[offset];
+                if (protocol == 51u)
+                    extension_length = ((size_t)scratch[offset + 1u] + 2u) * 4u;
+                else
+                    extension_length = ((size_t)scratch[offset + 1u] + 1u) * 8u;
+                if (extension_length < (protocol == 51u ? 12u : 8u))
+                    return false;
+            }
+
+            if (extension_length > packet_end - offset ||
+                !reader_copy_header(reader, scratch, &captured, offset,
+                                    extension_length))
+                return false;
+            protocol = following;
+            offset += extension_length;
+        }
+    } else {
+        return false;
+    }
+
+    source_local = address_matches_local(family, source, local_addresses,
+                                         local_address_count);
+    destination_local = address_matches_local(family, destination,
+                                              local_addresses,
+                                              local_address_count);
+    if (source_local == destination_local)
+        return false;
+
+    if (offset > packet_end || packet_end - offset < NP_UDP_HEADER ||
+        !reader_copy_header(reader, scratch, &captured, offset, NP_UDP_HEADER))
+        return false;
+
+    if (protocol == NP_TRANSPORT_TCP) {
+        size_t tcp_header_length;
+        if (packet_end - offset < NP_TCP_MIN_HEADER ||
+            !reader_copy_header(reader, scratch, &captured, offset,
+                                NP_TCP_MIN_HEADER))
+            return false;
+        tcp_header_length = (size_t)(scratch[offset + 12u] >> 4) * 4u;
+        if (tcp_header_length < NP_TCP_MIN_HEADER ||
+            tcp_header_length > packet_end - offset ||
+            !reader_copy_header(reader, scratch, &captured, offset,
+                                tcp_header_length))
+            return false;
+        transport_header_length = tcp_header_length;
+    } else if (protocol == NP_TRANSPORT_UDP) {
+        uint16_t udp_length = read_u16(scratch + offset + 4u);
+        if (udp_length < NP_UDP_HEADER ||
+            (!fragmented && (size_t)udp_length > packet_end - offset))
+            return false;
+        transport_header_length = NP_UDP_HEADER;
+    } else {
+        return false;
+    }
+
+    (void)transport_header_length;
+    source_port = read_u16(scratch + offset);
+    destination_port = read_u16(scratch + offset + 2u);
+    if (source_port == 0u || destination_port == 0u)
+        return false;
+
+    memcpy(remote, source_local ? destination : source, address_length);
+    if (!is_public_address(family, remote))
+        return false;
+
+    memset(output, 0, sizeof(*output));
+    output->ip_version = family;
+    output->address_length = address_length;
+    output->transport = protocol;
+    output->direction = source_local ? NP_DIRECTION_OUTBOUND
+                                     : NP_DIRECTION_INBOUND;
+    memcpy(output->remote_address, remote, address_length);
+    output->remote_port = source_local ? destination_port : source_port;
+    output->packet_length_bytes = (uint32_t)packet_end;
+    output->fragmented = fragmented ? 1u : 0u;
+    return true;
+}
+
 void np_metadata_queue_init(np_metadata_queue_t *queue)
 {
     if (queue == NULL)
