@@ -463,9 +463,8 @@ static void test_header_only_reader_parser_ipv6_extension(void)
     packet[25] = 0x06;
     packet[26] = 0x47;
     packet[27] = 0;
-    packet[38] = 0x11;
-    packet[39] = 17; /* UDP follows the extension header */
-    packet[40] = 0;
+    packet[40] = 17; /* UDP follows the Destination Options header */
+    packet[41] = 0;  /* Eight-byte extension header */
     packet[48] = 0xc3;
     packet[49] = 0x50;
     packet[50] = 0x01;
