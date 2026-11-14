@@ -46,6 +46,24 @@ typedef struct {
     uint8_t fragmented;
 } np_packet_metadata_t;
 
+/* Read-only view over chained packet storage (pbuf-like segments). */
+typedef struct {
+    const uint8_t *data;
+    size_t length;
+} np_packet_segment_t;
+
+typedef struct {
+    const np_packet_segment_t *segments;
+    size_t segment_count;
+    size_t total_length;
+} np_packet_reader_t;
+
+/* Copies only the requested byte range; supports headers crossing segments. */
+bool np_packet_reader_copy(const np_packet_reader_t *reader,
+                           size_t offset,
+                           uint8_t *destination,
+                           size_t length);
+
 typedef struct {
     np_packet_metadata_t records[NP_METADATA_QUEUE_CAPACITY];
     _Atomic uint32_t head;
