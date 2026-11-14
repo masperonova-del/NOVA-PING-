@@ -14,6 +14,8 @@ object MeasurementPlan {
 
     const val ROUTE_SAMPLES_PER_TARGET = 5
     const val MIN_COMPLETE_ROUTE_SAMPLES_FOR_CLEAN_RESULT = 4
+    const val MIN_TARGETS_FOR_BOOST_RECOMMENDATION = 2
+    const val MIN_COMPLETE_SAMPLES_FOR_BOOST_RECOMMENDATION = 3
 
     fun isHttpsRankable(successful: Int, attempted: Int): Boolean =
         attempted == HTTPS_TOTAL_REQUESTS &&
