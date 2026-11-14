@@ -241,3 +241,55 @@ Des tests natifs couvrent IPv4 UDP sortant, IPv4 TCP entrant, IPv6 UDP sortant, 
 Le workflow Android CI compile ce composant en C11 avec avertissements traités comme erreurs et exécute le binaire de test sur l'hôte Linux.
 
 **Limite explicite :** ce prototype parse des buffers de test fournis par le harnais ; il n'est pas encore branché aux points HEV, ne reçoit aucun paquet de l'appareil et n'est pas appelé par JNI. Le test CI prouve la compilation et le comportement des cas unitaires, pas la sûreté temps réel du chemin de transfert. Le VPN reste inactif et aucune redirection n'est introduite.
+
+
+## Revue de propriété des pbuf et cardinalité des producteurs — 14 novembre 2026
+
+Une inspection supplémentaire du code HEV épinglé au commit `75dbc1e9ace6c70d3d1b94df7c283efe1de7effc` précise les contraintes qui doivent être résolues avant de raccorder la file de métadonnées.
+
+### Chaînes pbuf : aucune hypothèse de contiguïté
+
+- `lwip_io_task_entry()` reçoit un `pbuf` de `hev_tunnel_read()`, puis le remet à `netif->input()`. Le compactage `tunnel_compact_pbuf()` ne copie que les buffers déjà contigus (`buf->next == NULL`) et de taille limitée ; les chaînes restent donc possibles.
+- `netif_output_handler()` transmet le `pbuf` directement à `hev_tunnel_write()`. Il ne garantit pas que `p->payload` contienne à lui seul tous les octets du paquet.
+- Le chemin TCP accumule explicitement des chaînes avec `pbuf_cat()`.
+- Le chemin UDP peut recevoir des datagrammes réassemblés en chaîne ; il les clone alors pour obtenir un contenu contigu.
+- Le chemin UDP GSO construit également des chaînes de pbuf de référence. Un pbuf transmis à la sortie peut donc représenter un agrégat, et non un unique datagramme ordinaire.
+
+**Décision :** ne jamais analyser directement `p->payload` en supposant que `p->len == p->tot_len`. Ne jamais modifier, libérer, conserver ou retarder le pbuf depuis le tap.
+
+### Extraction limitée aux en-têtes
+
+Une copie complète de chaque paquet dans un tampon fixe de 64 Kio serait inutile, coûteuse et particulièrement inadaptée au chemin critique. La future interface du parseur natif doit distinguer :
+
+- la longueur totale déclarée par l'en-tête IP ;
+- la longueur réellement disponible dans le pbuf ;
+- le nombre d'octets d'en-tête copiés dans un petit tampon borné.
+
+L'adaptateur devra utiliser une primitive de copie pbuf consciente des chaînes (par exemple `pbuf_copy_partial()`) pour récupérer uniquement les octets nécessaires à l'analyse des en-têtes IP, des extensions IPv6 et de TCP/UDP. Il vérifiera séparément que la longueur IP déclarée ne dépasse pas `p->tot_len`, que les en-têtes nécessaires sont entièrement disponibles et que la limite de copie n'est jamais dépassée. Aucun octet de charge utile applicative ne sera copié.
+
+Le parseur actuel exige que la longueur IP déclarée soit inférieure ou égale à la longueur du buffer fourni. Il ne faut donc pas lui transmettre un préfixe tronqué en prétendant qu'il s'agit du paquet complet. Une API native distincte ou un refactoring explicite devra préserver cette validation tout en acceptant une vue limitée aux en-têtes. Les vecteurs partagés Kotlin/C devront couvrir cette nouvelle distinction.
+
+Les paquets GSO/agrégés seront ignorés par la télémétrie tant qu'une stratégie documentée ne permet pas d'identifier et de séparer correctement chaque segment. Le transfert original reste inchangé.
+
+### Cardinalité des producteurs : la file SPSC n'est pas encore raccordable
+
+Le prototype actuel est une file **SPSC** (un producteur, un consommateur). Les deux points d'instrumentation envisagés ne constituent pas automatiquement un producteur unique :
+
+- le point d'entrée TUN est exécuté dans `lwip_io_task_entry()` ;
+- le point de sortie TUN est exécuté dans `netif_output_handler()`, appelé depuis le traitement lwIP et potentiellement depuis différents contextes de tâches HEV.
+
+Le code inspecté montre des appels lwIP protégés par le mutex HEV à plusieurs endroits, mais cela ne suffit pas à lui seul à démontrer le modèle exact d'exécution natif, l'unicité du thread OS ni l'absence de producteurs concurrents au niveau du callback. Une file SPSC unique ne doit donc pas être utilisée pour les deux hooks sur la seule base de cette inspection.
+
+Avant raccordement, il faudra prouver la cardinalité réelle des producteurs à partir de l'ordonnanceur HEV et des chemins d'appel. Les options acceptables sont :
+1. une file SPSC distincte par producteur réellement unique, avec un consommateur qui les draine ;
+2. une file MPSC bornée si plusieurs producteurs peuvent réellement s'exécuter concurremment, avec garanties atomiques vérifiées sur chaque ABI.
+
+Le contrôle atomique ABI qui vient de passer en CI confirme la compilation et la liaison du probe 32 bits ; il ne prouve ni l'unicité des producteurs, ni le comportement concurrent à l'exécution sur appareil. Le contrôle runtime `atomic_is_lock_free()` restera obligatoire avant toute utilisation de la file.
+
+### Garde-fous inchangés
+
+- Les hooks ne doivent ni bloquer, ni allouer de mémoire, ni appeler JNI de façon synchrone.
+- Si la file est pleine, seul l'échantillon de télémétrie est perdu.
+- Le pbuf original est toujours transmis au moteur sans modification.
+- Aucun payload, identifiant de compte, contenu de message ou secret n'est enregistré.
+- Aucun VPN réel n'est activé avant les tests natifs, l'intégration JNI, les tests de transfert et les contrôles sur appareil.
