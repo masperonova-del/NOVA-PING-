@@ -198,3 +198,14 @@ Une réponse HTTPS vers un service cloud n'est pas le ping du serveur de jeu. Un
 - [ ] Vérifier l'accessibilité, les tailles d'écran et le contraste sur plusieurs appareils.
 
 **Limite :** l'actualisation du tableau de bord relit l'état Android local ; elle ne télécharge pas une nouvelle version de l'application et ne met pas à jour l'APK installé. Les numéros de builds GitHub Actions sont indépendants de `versionName` et `versionCode` Android.
+
+
+## Version 1.17.1-dev — Seuil de preuve NOVA BOOST
+
+- [x] Empêcher le statut RECOMMEND d'être déclenché par une seule mesure ou un lot partiel.
+- [x] Exiger deux destinations HTTPS distinctes, cinq essais par destination et au moins quatre connexions complètes sur cinq.
+- [x] Conserver les détails et recommandations diagnostiques en mode OBSERVE lorsque les preuves sont insuffisantes.
+- [x] Ajouter des tests unitaires pour les mesures partielles, les échecs répétés, une seule destination qualifiée et deux destinations qualifiées.
+- [ ] Valider le nouveau statut sur l'APK installé et poursuivre le jalon VPN POC séparément.
+
+**Limite :** ce seuil améliore la prudence de l'évaluation. Il ne crée pas de routage VPN, ne teste pas de relais et ne prouve aucune baisse du ping en jeu.
