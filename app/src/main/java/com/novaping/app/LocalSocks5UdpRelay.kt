@@ -39,7 +39,8 @@ internal class LocalSocks5UdpRelay(
     val isRunning: Boolean get() = running.get()
 
     @Synchronized
-    fun start(tcpPeerAddress: InetAddress): Int {
+    fun start(tcpPeerAddress: InetAddress, expectedClientPort: Int? = null): Int {
+        require(expectedClientPort == null || expectedClientPort in 1..65535)
         check(running.compareAndSet(false, true)) { "UDP relay already started" }
         allowedClientAddress = tcpPeerAddress
         try {
@@ -68,7 +69,8 @@ internal class LocalSocks5UdpRelay(
                 val endpoint = synchronized(endpointLock) {
                     val current = clientEndpoint
                     if (current == null) {
-                        InetSocketAddress(packet.address, packet.port).also { clientEndpoint = it }
+                        if (expectedClientPort != null && packet.port != expectedClientPort) null
+                        else InetSocketAddress(packet.address, packet.port).also { clientEndpoint = it }
                     } else if (current.address == packet.address && current.port == packet.port) {
                         current
                     } else {
