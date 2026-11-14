@@ -64,6 +64,9 @@ jobs:
               -fPIC -I native/metadata \
               -c native/metadata/packet_metadata_test.c \
               -o "/tmp/nova-packet-metadata-test-$target.o"
+            "$CLANG" --target="$target" -std=c11 -Wall -Wextra -Werror -pedantic \
+              native/metadata/android_atomic_abi_probe.c \
+              -o "/tmp/nova-atomic-probe-$target"
           done
       - name: Run metric unit tests
         run: gradle :app:testDebugUnitTest
