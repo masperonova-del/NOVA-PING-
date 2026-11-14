@@ -230,3 +230,15 @@ Une réponse HTTPS vers un service cloud n'est pas le ping du serveur de jeu. Un
 - [ ] Ne pas confondre une preuve documentaire d'hôte avec la preuve qu'Android peut mesurer cet hôte depuis l'appareil.
 
 **État initial :** aucun endpoint de match CODM n'est ajouté par cette version. Le registre est une fondation technique ; les profils restent non vérifiés tant qu'aucune preuve admissible n'est enregistrée.
+
+## Version 1.21.0-dev — Intégration Game Intelligence
+
+- [x] Relier le sélecteur de jeu à l'état du registre de preuves.
+- [x] Afficher explicitement l'absence de serveur de match vérifié par jeu.
+- [x] Séparer les points de contrôle Internet des destinations de match.
+- [x] Ne pas injecter d'adresse IP ou de région non confirmée.
+- [ ] Ajouter des enregistrements uniquement après validation d'une source publique fiable et du rôle réel de serveur de match.
+- [ ] Ajouter une sonde dédiée uniquement lorsque le protocole et l'accessibilité de mesure sont établis.
+- [ ] Vérifier l'interface et les APK sur appareil Android réel.
+
+**Limite :** cette version intègre l'état de preuve dans l'interface ; elle ne découvre pas encore automatiquement les adresses IP des serveurs de match. Le registre est actuellement vide.
