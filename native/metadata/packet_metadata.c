@@ -295,6 +295,15 @@ void np_metadata_queue_init(np_metadata_queue_t *queue)
     atomic_init(&queue->dropped, 0u);
 }
 
+bool np_metadata_queue_is_lock_free(const np_metadata_queue_t *queue)
+{
+    if (queue == NULL)
+        return false;
+    return atomic_is_lock_free(&queue->head) &&
+           atomic_is_lock_free(&queue->tail) &&
+           atomic_is_lock_free(&queue->dropped);
+}
+
 bool np_metadata_queue_push(np_metadata_queue_t *queue,
                             const np_packet_metadata_t *record)
 {
