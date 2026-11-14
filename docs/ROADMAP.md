@@ -302,3 +302,18 @@ Une réponse HTTPS vers un service cloud n'est pas le ping du serveur de jeu. Un
 - [ ] Relier les métadonnées locales au registre et à l'interface Game Intelligence.
 
 **Limite :** aucune capture Android en direct n'est activée. HEV reste un candidat d'intégration jusqu'à validation du pont SOCKS5 et du point d'observation. Voir `docs/ANDROID-VPN-CAPTURE-ADR.md`.
+
+
+## Version 1.26.0-dev — Pont SOCKS5 local (TCP)
+
+- [x] Ajouter un serveur SOCKS5 limité à l'interface loopback.
+- [x] Exiger une authentification RFC 1929 avec identifiants aléatoires propres à chaque instance.
+- [x] Implémenter TCP CONNECT avec prise en charge des adresses IPv4, IPv6 et domaines.
+- [x] Exiger la protection du socket sortant avant toute connexion distante.
+- [x] Relayer les flux TCP dans les deux sens et gérer la fermeture des sockets.
+- [x] Ajouter des tests de relais TCP authentifié et d'arrêt du service.
+- [ ] Implémenter UDP ASSOCIATE avec association client, relais de datagrammes et filtrage de la source.
+- [ ] Tester DNS UDP/TCP, les délais, les erreurs et la fermeture des associations.
+- [ ] Intégrer le pont à un moteur TUN après validation du point d'observation non bloquant.
+
+**Limite :** le pont TCP est une brique locale testée, pas un VPN. UDP, le moteur de transfert, la capture Android et la mesure d'endpoints de jeu en direct restent à construire. Aucun trafic du jeu n'est redirigé à ce stade.
