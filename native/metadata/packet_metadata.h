@@ -64,6 +64,14 @@ bool np_packet_reader_copy(const np_packet_reader_t *reader,
                            uint8_t *destination,
                            size_t length);
 
+/* Parses bounded IP/TCP/UDP headers from chained storage; payload is not copied. */
+bool np_parse_packet_metadata_reader(
+    const np_packet_reader_t *reader,
+    const np_local_address_t *local_addresses,
+    size_t local_address_count,
+    np_packet_metadata_t *output
+);
+
 typedef struct {
     np_packet_metadata_t records[NP_METADATA_QUEUE_CAPACITY];
     _Atomic uint32_t head;
