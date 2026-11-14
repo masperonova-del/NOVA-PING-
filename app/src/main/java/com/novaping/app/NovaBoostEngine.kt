@@ -19,6 +19,8 @@ data class BoostAssessment(
 )
 
 object NovaBoostEngine {
+    private const val MIN_QUALIFIED_TARGETS_FOR_RECOMMENDATION = 2
+
     fun assess(
         context: NetworkContext,
         aggregates: List<RouteAggregate>,
@@ -26,15 +28,27 @@ object NovaBoostEngine {
     ): BoostAssessment {
         val recommendations = DecisionEngine.recommend(context, aggregates)
         val hasMeasurements = aggregates.any { it.sampleCount > 0 }
-        val mode = if (hasMeasurements) BoostMode.RECOMMEND else BoostMode.OBSERVE
+        val qualifiedTargets = aggregates
+            .filter {
+                it.sampleCount == MeasurementPlan.ROUTE_SAMPLES_PER_TARGET &&
+                    it.completeSamples >= MeasurementPlan.MIN_COMPLETE_ROUTE_SAMPLES_FOR_CLEAN_RESULT
+            }
+            .map { it.host.lowercase() }
+            .distinct()
+            .size
+        val hasRecommendationEvidence =
+            qualifiedTargets >= MIN_QUALIFIED_TARGETS_FOR_RECOMMENDATION
+        val mode = if (hasRecommendationEvidence) BoostMode.RECOMMEND else BoostMode.OBSERVE
 
         val summary = when {
             !hasMeasurements ->
                 "NOVA BOOST observe le contexte réseau. Lance un diagnostic complet pour obtenir des recommandations fondées sur des mesures."
+            !hasRecommendationEvidence ->
+                "Des mesures existent, mais elles ne sont pas encore suffisantes : au moins deux destinations doivent fournir chacune cinq essais, dont quatre connexions HTTPS complètes. NOVA BOOST reste en observation."
             recommendations.any { it.title == "Données insuffisantes" } ->
                 "Les mesures disponibles sont insuffisantes pour conclure. Recommencer le diagnostic avant toute optimisation."
             else ->
-                "Les recommandations NOVA BOOST sont calculées à partir des mesures NOVA PING. Aucune modification du routage n'a été appliquée."
+                "Les recommandations NOVA BOOST sont calculées à partir de mesures suffisamment complètes. Aucune modification du routage n'a été appliquée."
         }
 
         val limitations = buildList {
