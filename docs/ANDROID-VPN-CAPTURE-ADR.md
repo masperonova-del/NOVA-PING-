@@ -314,3 +314,18 @@ La CI `43622324319` a validé les tests C, les tests sous ASan/UBSan, la compila
 Le lecteur générique `np_packet_reader_copy()` est maintenant testé avec toutes les paires de frontières possibles sur un paquet IPv4/TCP de test, y compris les segments vides. Les tests vérifient aussi les lectures qui traversent les frontières, les plages hors limites, les longueurs agrégées incohérentes et les tableaux de segments absents.
 
 Cette primitive est un composant de base uniquement : elle n'est pas encore branchée sur les `pbuf` HEV et ne produit pas encore de métadonnées directement depuis une chaîne. Le parseur existant continue d'exiger un paquet complet. L'étape suivante reste la conception d'un parseur à longueur totale déclarée et préfixe d'en-têtes capturé, afin de ne jamais copier la charge utile.
+
+## Parseur natif à lecture segmentée et copie limitée aux en-têtes
+
+Le prototype `np_parse_packet_metadata_reader()` accepte maintenant une vue `np_packet_reader_t` constituée de segments en lecture seule. Il vérifie la longueur IP déclarée contre la longueur agrégée réelle du lecteur, puis copie par étapes uniquement les octets nécessaires aux en-têtes :
+
+- IPv4 : en-tête de base, options éventuelles, puis en-tête TCP ou UDP ;
+- IPv6 : en-tête de base, extensions prises en charge (maximum huit), puis en-tête TCP ou UDP ;
+- TCP : en-tête minimal puis options jusqu'à la longueur indiquée par le champ Data Offset ;
+- UDP : en-tête fixe de huit octets.
+
+Le tampon de travail est fixe et borné à 2048 octets. Les chaînes d'extensions qui dépassent cette limite sont ignorées pour la télémétrie. La charge utile applicative n'est pas copiée dans ce tampon. Les paquets malformés, tronqués, non pris en charge, les fragments non initiaux et les destinations non publiques continuent d'échouer sans produire de métadonnées.
+
+Des tests natifs couvrent IPv4 TCP/UDP segmenté, IPv6 avec Destination Options, des frontières de segments au milieu des en-têtes et une longueur IP déclarée supérieure à la longueur réellement disponible.
+
+**Limite importante :** ce parseur consomme encore une abstraction `np_packet_reader_t`. Aucun adaptateur `pbuf_copy_partial()` HEV n'est implémenté, aucun hook HEV ne l'appelle et aucune télémétrie réelle ne remonte depuis le VPN Android. Le tampon de 2048 octets est une limite de télémétrie volontaire, pas une limite imposée au transfert réseau : un paquet dont les en-têtes dépassent cette borne est simplement ignoré par l'analyse. Le VPN reste inactif.
