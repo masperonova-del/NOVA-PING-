@@ -710,6 +710,10 @@ class MainActivity : Activity() {
                         12f, mutedColor, false, Gravity.START
                     ).apply { setPadding(0, dp(6), 0, dp(6)) })
                     boostCard.addView(label(
+                        boostAssessment.evidenceSummary,
+                        11f, accentColor, true, Gravity.START
+                    ).apply { setPadding(0, dp(2), 0, dp(6)) })
+                    boostCard.addView(label(
                         "Jeu : ${boostAssessment.gameProfile.displayName}\nRoutage automatique : non disponible\nVPN démarré : non",
                         11f, accentColor, false, Gravity.START
                     ).apply { setPadding(0, dp(4), 0, dp(4)) })
