@@ -1,7 +1,7 @@
 name: Android CI
 on:
   push:
-    branches: [ "main", "nova-boost-foundation", "fix/session-network-provenance", "feature/nova-ping-1.11-session-compare", "feature/nova-ping-1.12-diagnostic-reliability", "feature/nova-ping-1.13-animated-ui-optimizer-bridge", "feature/nova-ping-1.14-dashboard-experience", "feature/nova-ping-1.15-reliability-engine", "feature/nova-ping-1.16-measurement-integrity", "audit/nova-ping-1.16-certification", "feature/nova-boost-ui-1.17", "feature/nova-ping-1.18-evidence-gating", "feature/nova-ping-1.19-comparison-integrity", "feature/nova-ping-1.20-game-evidence-registry" ]
+    branches: [ "main", "nova-boost-foundation", "fix/session-network-provenance", "feature/nova-ping-1.11-session-compare", "feature/nova-ping-1.12-diagnostic-reliability", "feature/nova-ping-1.13-animated-ui-optimizer-bridge", "feature/nova-ping-1.14-dashboard-experience", "feature/nova-ping-1.15-reliability-engine", "feature/nova-ping-1.16-measurement-integrity", "audit/nova-ping-1.16-certification", "feature/nova-boost-ui-1.17", "feature/nova-ping-1.18-evidence-gating", "feature/nova-ping-1.19-comparison-integrity", "feature/nova-ping-1.20-game-evidence-registry", "feature/nova-ping-1.21-game-discovery" ]
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
