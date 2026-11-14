@@ -83,6 +83,44 @@ static void test_ipv6_outbound_udp(void)
     assert(!np_parse_packet_metadata(packet, sizeof(packet), &local, 1, &result));
 }
 
+static void test_ipv6_destination_options_udp(void)
+{
+    uint8_t packet[56] = { 0 };
+    np_local_address_t local = { .family = NP_ADDRESS_IPV6,
+                                 .bytes = { 0xfd, 0, 0x44, 0, 0, 0, 0, 0,
+                                            0, 0, 0, 0, 0, 0, 0, 2 } };
+    np_packet_metadata_t result;
+
+    packet[0] = 0x60;
+    packet[4] = 0;
+    packet[5] = 16;
+    packet[6] = 60; /* Destination Options */
+    packet[7] = 64;
+    memcpy(packet + 8, local.bytes, 16);
+    packet[24] = 0x26;
+    packet[25] = 0x06;
+    packet[26] = 0x47;
+    packet[27] = 0x00;
+    packet[39] = 0x11;
+    packet[40] = 17; /* UDP follows the extension header */
+    packet[41] = 0;  /* Eight-byte extension header */
+    packet[48] = 0xcf;
+    packet[49] = 0x08; /* 53000 */
+    packet[50] = 0x1d;
+    packet[51] = 0x4c; /* 7500 */
+    packet[53] = 8;
+
+    assert(np_parse_packet_metadata(packet, sizeof(packet), &local, 1, &result));
+    assert(result.ip_version == 6);
+    assert(result.address_length == 16);
+    assert(result.transport == NP_TRANSPORT_UDP);
+    assert(result.direction == NP_DIRECTION_OUTBOUND);
+    assert(result.remote_port == 7500);
+    assert(result.packet_length_bytes == sizeof(packet));
+    assert(memcmp(result.remote_address,
+                  "\\x26\\x06\\x47\\x00", 4) == 0);
+}
+
 static void test_reject_malformed_and_private_remote(void)
 {
     const uint8_t short_packet[8] = { 0x45 };
@@ -180,6 +218,7 @@ int main(void)
     test_ipv4_outbound_udp();
     test_ipv4_inbound_tcp();
     test_ipv6_outbound_udp();
+    test_ipv6_destination_options_udp();
     test_reject_malformed_and_private_remote();
     test_reject_malformed_headers_and_fragments();
     test_first_fragment_flag();
