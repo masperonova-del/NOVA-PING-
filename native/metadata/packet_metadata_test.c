@@ -353,7 +353,8 @@ static void test_packet_reader_all_split_points(void)
                 { packet + second, sizeof(packet) - second }
             };
             np_packet_reader_t reader = {
-                segments, 3u, sizeof(packet)
+                .segments = segments, .segment_count = 3u,
+                .total_length = sizeof(packet)
             };
             memset(copied, 0, sizeof(copied));
             assert(np_packet_reader_copy(&reader, 0u, copied, sizeof(packet)));
@@ -365,12 +366,18 @@ static void test_packet_reader_all_split_points(void)
 
     /* Null segment arrays and arithmetic/range violations fail closed. */
     {
-        const np_packet_reader_t invalid = { NULL, 1u, sizeof(packet) };
+        const np_packet_reader_t invalid = {
+            .segments = NULL, .segment_count = 1u,
+            .total_length = sizeof(packet)
+        };
         assert(!np_packet_reader_copy(&invalid, 0u, copied, 1u));
     }
     {
         const np_packet_segment_t segment = { packet, sizeof(packet) };
-        const np_packet_reader_t reader = { &segment, 1u, sizeof(packet) };
+        const np_packet_reader_t reader = {
+            .segments = &segment, .segment_count = 1u,
+            .total_length = sizeof(packet)
+        };
         assert(!np_packet_reader_copy(&reader, SIZE_MAX, copied, 1u));
     }
 }
@@ -386,8 +393,9 @@ static void test_packet_reader_crosses_segments_without_copying_payload(void)
         { third, sizeof(third) }
     };
     const np_packet_reader_t reader = {
-        segments, sizeof(segments) / sizeof(segments[0]),
-        sizeof(first) + sizeof(second) + sizeof(third)
+        .segments = segments,
+        .segment_count = sizeof(segments) / sizeof(segments[0]),
+        .total_length = sizeof(first) + sizeof(second) + sizeof(third)
     };
     uint8_t header[8] = { 0 };
     const uint8_t expected[] = { 0x00, 0x28, 0x00, 0x01, 0x02, 0x03 };
@@ -409,7 +417,10 @@ static void test_packet_reader_crosses_segments_without_copying_payload(void)
         const np_packet_segment_t invalid_segments[] = {
             { NULL, 1u }
         };
-        const np_packet_reader_t invalid = { invalid_segments, 1u, 1u };
+        const np_packet_reader_t invalid = {
+            .segments = invalid_segments, .segment_count = 1u,
+            .total_length = 1u
+        };
         assert(!np_packet_reader_copy(&invalid, 0u, header, 1u));
     }
 }
@@ -439,14 +450,16 @@ static void test_header_only_reader_parser_ipv4_tcp_and_udp(void)
         { udp_packet + 20u, 5u }, { udp_packet + 25u, 15u }
     };
     const np_packet_reader_t udp_reader = {
-        udp_segments, 4u, sizeof(udp_packet)
+        .segments = udp_segments, .segment_count = 4u,
+        .total_length = sizeof(udp_packet)
     };
     const np_packet_segment_t tcp_segments[] = {
         { tcp_packet, 19u }, { tcp_packet + 19u, 1u },
         { tcp_packet + 20u, 11u }, { tcp_packet + 31u, 9u }
     };
     const np_packet_reader_t tcp_reader = {
-        tcp_segments, 4u, sizeof(tcp_packet)
+        .segments = tcp_segments, .segment_count = 4u,
+        .total_length = sizeof(tcp_packet)
     };
 
     assert(np_parse_packet_metadata_reader(&udp_reader, &local, 1u, &result));
@@ -473,7 +486,10 @@ static void test_header_only_reader_parser_ipv6_extension(void)
         { packet, 39u }, { packet + 39u, 2u },
         { packet + 41u, 7u }, { packet + 48u, 8u }
     };
-    const np_packet_reader_t reader = { segments, 4u, sizeof(packet) };
+    const np_packet_reader_t reader = {
+        .segments = segments, .segment_count = 4u,
+        .total_length = sizeof(packet)
+    };
     np_packet_metadata_t result;
 
     packet[0] = 0x60;
@@ -500,6 +516,74 @@ static void test_header_only_reader_parser_ipv6_extension(void)
     assert(result.transport == NP_TRANSPORT_UDP);
     assert(result.remote_port == 443u);
     assert(result.packet_length_bytes == sizeof(packet));
+}
+
+typedef struct {
+    const uint8_t *bytes;
+    size_t length;
+    size_t max_read_end;
+    size_t total_bytes_read;
+} test_copy_context_t;
+
+static bool test_reader_copy_callback(void *opaque, size_t offset,
+                                      uint8_t *destination, size_t length)
+{
+    test_copy_context_t *context = opaque;
+    if (context == NULL || offset > context->length ||
+        length > context->length - offset ||
+        (length > 0u && destination == NULL))
+        return false;
+    if (length > 0u) {
+        memcpy(destination, context->bytes + offset, length);
+        if (context->max_read_end < offset + length)
+            context->max_read_end = offset + length;
+        context->total_bytes_read += length;
+    }
+    return true;
+}
+
+static void test_callback_reader_copies_headers_only(void)
+{
+    const uint8_t packet[40] = {
+        0x45, 0x00, 0x00, 0x28, 0, 1, 0, 0, 64, 17, 0, 0,
+        10, 0, 0, 2, 8, 8, 8, 8,
+        0xc3, 0x50, 0, 53, 0, 20, 0, 0,
+        0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x11, 0x22,
+        0x33, 0x44, 0x55, 0x66
+    };
+    const np_local_address_t local = {
+        .family = NP_ADDRESS_IPV4, .bytes = { 10, 0, 0, 2 }
+    };
+    test_copy_context_t context = {
+        .bytes = packet, .length = sizeof(packet)
+    };
+    const np_packet_reader_t reader = {
+        .total_length = sizeof(packet),
+        .copy = test_reader_copy_callback,
+        .copy_context = &context
+    };
+    np_packet_metadata_t result;
+
+    assert(np_parse_packet_metadata_reader(&reader, &local, 1u, &result));
+    assert(result.transport == NP_TRANSPORT_UDP);
+    assert(result.remote_port == 53u);
+    /* IPv4 + UDP headers end at byte 28; application payload is untouched. */
+    assert(context.max_read_end == 28u);
+    assert(context.max_read_end < sizeof(packet));
+}
+
+static void test_callback_reader_rejects_mixed_sources(void)
+{
+    const uint8_t byte = 0x45;
+    const np_packet_segment_t segment = { &byte, 1u };
+    const np_packet_reader_t reader = {
+        .segments = &segment,
+        .segment_count = 1u,
+        .total_length = 1u,
+        .copy = test_reader_copy_callback
+    };
+    uint8_t output;
+    assert(!np_packet_reader_copy(&reader, 0u, &output, 1u));
 }
 
 static void test_header_only_reader_parser_rejects_bad_lengths(void)
@@ -535,6 +619,8 @@ int main(int argc, char **argv)
     test_header_only_reader_parser_ipv4_tcp_and_udp();
     test_header_only_reader_parser_ipv6_extension();
     test_header_only_reader_parser_rejects_bad_lengths();
+    test_callback_reader_copies_headers_only();
+    test_callback_reader_rejects_mixed_sources();
     if (argc > 1) test_shared_packet_metadata_vectors(argv[1]);
     puts("NOVA native packet metadata tests: PASS");
     return 0;
