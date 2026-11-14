@@ -31,6 +31,7 @@ internal class LocalSocks5UdpRelay(
     private val endpointLock = Any()
     @Volatile private var relaySocket: DatagramSocket? = null
     @Volatile private var allowedClientAddress: InetAddress? = null
+    @Volatile private var expectedClientPort: Int? = null
     @Volatile private var clientEndpoint: InetSocketAddress? = null
     private val receiver = Thread(::receiveLoop, "NovaSocks5UdpReceiver").apply { isDaemon = true }
 
@@ -43,6 +44,7 @@ internal class LocalSocks5UdpRelay(
         require(expectedClientPort == null || expectedClientPort in 1..65535)
         check(running.compareAndSet(false, true)) { "UDP relay already started" }
         allowedClientAddress = tcpPeerAddress
+        this.expectedClientPort = expectedClientPort
         try {
             val socket = DatagramSocket(null)
             socket.reuseAddress = false
