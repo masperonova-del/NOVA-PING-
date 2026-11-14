@@ -21,7 +21,7 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: "platform-tools"
+          packages: "platform-tools ndk;27.2.12479018"
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -43,6 +43,28 @@ jobs:
             native/metadata/packet_metadata_test.c \
             -o /tmp/nova-packet-metadata-sanitized
           /tmp/nova-packet-metadata-sanitized test-fixtures/packet_metadata_vectors.tsv
+      - name: Cross-compile native metadata for Android ABIs
+        shell: bash
+        run: |
+          NDK="$ANDROID_HOME/ndk/27.2.12479018"
+          CLANG="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/clang"
+          test -x "$CLANG"
+          for target in \
+            aarch64-linux-android26 \
+            armv7a-linux-androideabi26 \
+            i686-linux-android26 \
+            x86_64-linux-android26; do
+            abi="${target%-*}"
+            echo "Compiling native metadata for $target"
+            "$CLANG" --target="$target" -std=c11 -Wall -Wextra -Werror -pedantic \
+              -fPIC -I native/metadata \
+              -c native/metadata/packet_metadata.c \
+              -o "/tmp/nova-packet-metadata-$target.o"
+            "$CLANG" --target="$target" -std=c11 -Wall -Wextra -Werror -pedantic \
+              -fPIC -I native/metadata \
+              -c native/metadata/packet_metadata_test.c \
+              -o "/tmp/nova-packet-metadata-test-$target.o"
+          done
       - name: Run metric unit tests
         run: gradle :app:testDebugUnitTest
       - name: Run Android Lint
