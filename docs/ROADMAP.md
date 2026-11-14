@@ -209,3 +209,24 @@ Une réponse HTTPS vers un service cloud n'est pas le ping du serveur de jeu. Un
 - [x] Ajouter des tests de non-régression pour les séries déséquilibrées, les hôtes dupliqués, les profils changeants et les phases incomplètes.
 
 **Limite :** la comparaison reste une analyse de points de contrôle HTTPS. Elle ne mesure pas le ping du jeu, ne prouve pas une amélioration de routage et ne modifie pas le réseau Android.
+
+
+## Version 1.19.0-dev — Intégrité des comparaisons
+
+- [x] Exiger au moins trois paires de séries comparables.
+- [x] Refuser les transports différents, les lots incomplets, les hôtes dupliqués et les profils candidats changeants.
+- [x] Séparer explicitement les points de contrôle HTTPS des serveurs de match.
+- [x] Tests unitaires, Android Lint, APK Debug et APK Release validés par GitHub Actions (build #323).
+- [ ] Confirmer sur appareil réel le verdict et le nombre de paires valides affichés après une comparaison.
+
+## Version 1.20.0-dev — Registre de preuves Game Intelligence
+
+- [x] Ajouter un modèle de preuve serveur lié à un jeu, une région, un hôte et un protocole.
+- [x] Exiger une provenance HTTPS, une date de publication, une date de vérification et une échéance.
+- [x] Rejeter les preuves expirées, mal formées ou dont la chronologie est incohérente.
+- [x] Ajouter des tests unitaires de provenance, d'expiration et de filtrage par jeu.
+- [ ] Connecter le registre à l'interface Game Intelligence.
+- [ ] N'ajouter aucune destination de match tant qu'une source fiable, datée et vérifiable ne la confirme.
+- [ ] Ne pas confondre une preuve documentaire d'hôte avec la preuve qu'Android peut mesurer cet hôte depuis l'appareil.
+
+**État initial :** aucun endpoint de match CODM n'est ajouté par cette version. Le registre est une fondation technique ; les profils restent non vérifiés tant qu'aucune preuve admissible n'est enregistrée.
