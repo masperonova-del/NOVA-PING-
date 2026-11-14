@@ -143,7 +143,8 @@ internal class LocalSocks5Bridge(
                         writeReply(output, 0x08)
                         return
                     }
-                    InetAddress.getAllByName(name).first()
+                    if (command == 0x03) InetAddress.getLoopbackAddress()
+                    else InetAddress.getAllByName(name).first()
                 }
                 else -> {
                     writeReply(output, 0x08)
