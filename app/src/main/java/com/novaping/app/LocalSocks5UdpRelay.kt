@@ -110,8 +110,10 @@ internal class LocalSocks5UdpRelay(
             DatagramSocket(null).use { upstream ->
                 upstream.bind(InetSocketAddress(0))
                 if (!protectUpstreamDatagramSocket(upstream)) return
+                // Connecting the UDP socket pins replies to the requested peer and filters spoofed sources.
+                upstream.connect(InetSocketAddress(destination, destinationPort))
                 upstream.soTimeout = responseTimeoutMillis
-                upstream.send(DatagramPacket(payload, payload.size, destination, destinationPort))
+                upstream.send(DatagramPacket(payload, payload.size))
                 val responseBytes = ByteArray(65_507)
                 val response = DatagramPacket(responseBytes, responseBytes.size)
                 upstream.receive(response)
