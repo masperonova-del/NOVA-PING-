@@ -54,6 +54,16 @@ internal class ProtectedDnsResolver(
         return answers
     }
 
+    /** Resolves through validated A first, then AAAA; never uses the platform resolver. */
+    fun resolveAddress(hostname: String): InetAddress? {
+        val ipv4 = resolve(hostname, DnsRecordType.A)
+            ?.firstOrNull { it.type == DnsRecordType.A }?.addressBytes
+        if (ipv4 != null) return runCatching { InetAddress.getByAddress(ipv4) }.getOrNull()
+        val ipv6 = resolve(hostname, DnsRecordType.AAAA)
+            ?.firstOrNull { it.type == DnsRecordType.AAAA }?.addressBytes
+        return ipv6?.let { runCatching { InetAddress.getByAddress(it) }.getOrNull() }
+    }
+
     private fun queryUdp(query: ByteArray): ByteArray? = runCatching {
         DatagramSocket(null).use { socket ->
             socket.reuseAddress = false
