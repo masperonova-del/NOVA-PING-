@@ -329,3 +329,25 @@ Le tampon de travail est fixe et borné à 2048 octets. Les chaînes d'extension
 Des tests natifs couvrent IPv4 TCP/UDP segmenté, IPv6 avec Destination Options, des frontières de segments au milieu des en-têtes et une longueur IP déclarée supérieure à la longueur réellement disponible.
 
 **Limite importante :** ce parseur consomme encore une abstraction `np_packet_reader_t`. Aucun adaptateur `pbuf_copy_partial()` HEV n'est implémenté, aucun hook HEV ne l'appelle et aucune télémétrie réelle ne remonte depuis le VPN Android. Le tampon de 2048 octets est une limite de télémétrie volontaire, pas une limite imposée au transfert réseau : un paquet dont les en-têtes dépassent cette borne est simplement ignoré par l'analyse. Le VPN reste inactif.
+
+## Réévaluation de la cardinalité des producteurs HEV — commit amont épinglé
+
+La revue du sous-module hev-task-system référencé par HEV a permis de préciser le modèle d'exécution :
+
+- hev_task_system_init() crée un contexte dans le stockage TLS du thread appelant.
+- hev_task_system_run() entre dans hev_task_system_schedule() et sélectionne/exécute les tâches coopératives dans ce contexte. Le scheduler bascule entre tâches ; il ne crée pas un thread OS par tâche.
+- Dans HEV, les tâches d'entrée TUN, timer et sessions sont créées avec hev_task_new() puis exécutées par ce même scheduler.
+- Le callback netif_output_handler() est appelé synchroniquement par lwIP. Les chemins visibles qui peuvent produire cette sortie sont sérialisés par le HevTaskMutex partagé : netif->input() dans lwip_io_task_entry(), tcp_write()/tcp_output() dans la tâche TCP, udp_sendfrom() dans la tâche UDP et tcp_tmr() dans la tâche timer.
+- Le hook d'entrée TUN et le hook de sortie TUN s'exécutent donc séquentiellement dans le même contexte de scheduler pour cette instance HEV, et non comme deux producteurs OS concurrents.
+
+### Décision de conception actualisée
+
+Pour le commit HEV 75dbc1e9ace6c70d3d1b94df7c283efe1de7effc et le sous-module hev-task-system ded55c412b3951bc7decb5cb3b9135701e762998, une file SPSC unique peut être envisagée pour les deux points d'observation, car ils sont appelés séquentiellement par le même thread de scheduler.
+
+Cette conclusion est strictement liée à cette version et à ce cycle de vie :
+- initialisation, exécution et appels lwIP doivent rester attachés au même thread OS ;
+- aucun callback externe ne doit appeler directement lwIP depuis un autre thread ;
+- toute mise à jour HEV ou du sous-module impose de réexaminer le modèle d'exécution et les chemins d'appel ;
+- le contrôle runtime atomic_is_lock_free() reste obligatoire sur l'appareil avant utilisation.
+
+Cette revue lève le doute de concurrence entre les deux hooks pour la version épinglée ; elle n'implémente toujours aucun hook. Le parseur segmenté, la file et le lecteur de segments restent des composants de test isolés. Aucun pbuf n'est encore observé en production, aucun callback JNI n'est ajouté et aucun VPN n'est activé.
