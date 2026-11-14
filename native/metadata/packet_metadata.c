@@ -25,7 +25,7 @@ static bool ipv4_is_public(const uint8_t *a)
         return false;
     if (a[0] == 192 && a[1] == 168)
         return false;
-    if (a[0] == 192 && a[1] == 0 && a[2] == 0)
+    if (a[0] == 192 && a[1] == 0 && (a[2] == 0 || a[2] == 2))
         return false;
     if (a[0] == 192 && a[1] == 0 && a[2] == 2)
         return false;
