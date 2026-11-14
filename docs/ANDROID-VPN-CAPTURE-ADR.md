@@ -171,3 +171,33 @@ Conséquence : l'AAR standard ne peut pas, à lui seul, alimenter `GamePacketMet
 - Tant que ces critères ne sont pas atteints, l'interface et la documentation continuent d'indiquer clairement qu'aucun tunnel n'est actif.
 
 Cette décision remplace toute interprétation selon laquelle la seule présence de l'AAR HEV ou de la bibliothèque WireGuard suffirait à rendre le moteur TUN opérationnel.
+
+
+## Inspection du chemin de paquets HEV — précision du point d'instrumentation
+
+Inspection du code source amont (branche `main`, dépôt consulté le 14 novembre 2026) :
+
+- Dans `src/hev-socks5-tunnel.c`, `lwip_io_task_entry()` lit les paquets TUN avec `hev_tunnel_read()`, met à jour les compteurs, puis remet le `pbuf` à `netif->input()`. C'est le point d'entrée du trafic reçu depuis Android, avant traitement par lwIP.
+- Dans le même fichier, `netif_output_handler()` reçoit le `pbuf` sortant et appelle `hev_tunnel_write()`. C'est le point de sortie vers le descripteur TUN.
+- Ces deux emplacements couvrent les deux directions du chemin de données sans ouvrir un second lecteur sur le descripteur TUN.
+- `src/hev-jni.c` enregistre actuellement quatre méthodes JNI : démarrer, arrêter, état et statistiques. Il n'existe pas de méthode de remontée des métadonnées.
+- Le callback JNI synchrone depuis la boucle de transfert serait à éviter : il introduirait un coût et un risque de blocage dans le chemin critique.
+
+### Conséquence pour le parseur NOVA PING
+
+Le parseur Kotlin actuel valide les longueurs déclarées du paquet et exige que les octets nécessaires aux en-têtes IP et TCP/UDP soient présents. Lui transmettre un préfixe tronqué sans adapter son contrat serait incorrect.
+
+Le premier prototype doit donc utiliser une extraction native des seuls champs de métadonnées à ces deux points, puis publier des enregistrements fixes dans une file SPSC bornée et non bloquante. Le thread de transfert ne doit jamais attendre le consommateur ; si la file est pleine, seul l'échantillon de télémétrie est abandonné. Aucun contenu applicatif ni charge utile ne doit entrer dans la file.
+
+L'extraction native doit vérifier les longueurs d'en-tête, IPv4 IHL, extensions IPv6, fragmentation, protocoles TCP/UDP, ports et adresses locales/distantes. Les cas ambigus ou malformés sont ignorés. Les tests doivent comparer les résultats natifs avec les cas de référence du parseur Kotlin.
+
+### Séquencement de réalisation
+
+1. Figer le commit amont HEV exact et archiver les références de source/licence utilisées.
+2. Définir un enregistrement C stable (version, direction, famille IP, protocole, adresses, ports, longueur, indicateur de fragmentation).
+3. Ajouter le hook de métadonnées aux deux points identifiés, sans modifier le `pbuf` et sans bloquer le transfert.
+4. Exposer une lecture JNI par lots, hors chemin de transfert, avec limites strictes et arrêt propre.
+5. Ajouter tests C pour IPv4/IPv6, extensions, fragments, paquets malformés et saturation de file ; ajouter tests JNI/Kotlin pour décodage et cycle de vie.
+6. Seulement après ces tests, intégrer l'AAR natif au service Android encore inactif.
+
+Aucune instrumentation native ni activation VPN n'est déclarée comme réalisée par cette inspection. Il s'agit du plan d'implémentation fondé sur les points de code vérifiés.
