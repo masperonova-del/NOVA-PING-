@@ -242,3 +242,18 @@ Une réponse HTTPS vers un service cloud n'est pas le ping du serveur de jeu. Un
 - [ ] Vérifier l'interface et les APK sur appareil Android réel.
 
 **Limite :** cette version intègre l'état de preuve dans l'interface ; elle ne découvre pas encore automatiquement les adresses IP des serveurs de match. Le registre est actuellement vide.
+
+
+## Version 1.22.0-dev — Références réseau publiques Game Intelligence
+
+- [x] Ajouter un registre distinct pour les informations de connectivité publiées par les éditeurs.
+- [x] Intégrer la table officielle Activision des ports CODM Android/iOS : TCP 80, 443, 65010 (salon), 65050 (chat) et UDP 7500–8000.
+- [x] Vérifier le domaine HTTPS de provenance, le protocole et les bornes de ports avant affichage.
+- [x] Afficher la date de consultation de la source et les limites d'interprétation dans l'interface.
+- [x] Garder le statut « aucun serveur de match vérifié » tant qu'aucune adresse et aucun rôle de serveur de match ne sont confirmés.
+- [x] Ajouter des tests de filtre par jeu, de provenance, de protocole et de plage de ports.
+- [ ] Vérifier sur appareil réel la lisibilité de la nouvelle référence CODM.
+
+**Limite :** la documentation Activision publie des ports mais pas les IP des serveurs de match. Les ports ne permettent pas, seuls, d'identifier un hôte distant, de distinguer à coup sûr un serveur de lobby d'un serveur de partie, ni de mesurer le ping CODM. La table doit être revalidée sur la source officielle avant toute nouvelle certification.
+
+**Source officielle consultée le 14 novembre 2026 :** https://support.activision.com/fr/articles/ports-used-for-call-of-duty-games
