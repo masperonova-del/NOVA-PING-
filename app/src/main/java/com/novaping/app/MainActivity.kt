@@ -203,6 +203,12 @@ class MainActivity : Activity() {
         gameCard.addView(gameEvidenceStatus)
         val gameEvidenceDetails = label("", 12f, mutedColor, false, Gravity.START)
         gameCard.addView(gameEvidenceDetails)
+        val gameNetworkReferenceStatus = label("", 12f, accentColor, true, Gravity.START).apply {
+            setPadding(0, dp(12), 0, dp(4))
+        }
+        gameCard.addView(gameNetworkReferenceStatus)
+        val gameNetworkReferenceDetails = label("", 12f, mutedColor, false, Gravity.START)
+        gameCard.addView(gameNetworkReferenceDetails)
         // No endpoint is seeded until its source and game-server role are independently verified.
         val gameEvidenceRecords = emptyList<GameServerEvidence>()
         fun refreshGameEvidenceStatus(position: Int) {
@@ -227,14 +233,36 @@ class MainActivity : Activity() {
                 }
             }
         }
+        fun refreshGameNetworkReference(position: Int) {
+            val profile = GameCatalog.profiles.getOrNull(position) ?: GameCatalog.profiles.last()
+            val references = GameNetworkReferenceRegistry.forGame(profile.id)
+            gameNetworkReferenceStatus.text = if (references.isEmpty()) {
+                "AUCUNE RÉFÉRENCE DE PORT PUBLIÉE POUR CE JEU"
+            } else {
+                "RÉFÉRENCE OFFICIELLE DE CONNECTIVITÉ DISPONIBLE — AUCUNE IP DE MATCH CONFIRMÉE"
+            }
+            gameNetworkReferenceDetails.text = references.joinToString("\\n\\n") { reference ->
+                val portLines = reference.ports.joinToString("\\n") { port ->
+                    "${port.protocol} ${port.displayRange()} — ${port.purpose}"
+                }
+                "${reference.sourceTitle} (${reference.platform})\\n" +
+                    "Consultée le ${reference.checkedOn}\\n" +
+                    portLines + "\\nSource : ${reference.sourceUrl}\\n" +
+                    "Cette documentation décrit des ports, pas des adresses IP. Elle ne prouve pas qu'un hôte est un serveur de partie et ne fournit pas un ping CODM."
+            }
+        }
         gameSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
             override fun onItemSelected(
                 parent: android.widget.AdapterView<*>?, view: android.view.View?,
                 position: Int, id: Long
-            ) = refreshGameEvidenceStatus(position)
+            ) {
+                refreshGameEvidenceStatus(position)
+                refreshGameNetworkReference(position)
+            }
             override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
         }
         refreshGameEvidenceStatus(gameSpinner.selectedItemPosition)
+        refreshGameNetworkReference(gameSpinner.selectedItemPosition)
         gameCard.addView(label(
             "Une destination ne sera affichée qu'après vérification de sa source, de son rôle de serveur de match et de sa disponibilité de mesure.",
             12f, mutedColor, false, Gravity.START
