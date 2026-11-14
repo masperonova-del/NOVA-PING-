@@ -23,7 +23,7 @@ class Socks5CodecTest {
             443
         )
         assertArrayEquals(
-            byteArrayOf(5, 1, 0, 1, 1, 1, 1, 1, 1, -69.toByte()),
+            intArrayOf(5, 1, 0, 1, 1, 1, 1, 1, 1, 187).map(Int::toByte).toByteArray(),
             Socks5Codec.commandRequest(Socks5Command.CONNECT, endpoint)
         )
     }
@@ -60,11 +60,11 @@ class Socks5CodecTest {
     }
 
     @Test fun parsesDomainCommandReply() {
-        val bytes = byteArrayOf(
-            5, 0, 0, 3, 11,
+        val bytes = intArrayOf(
+            5, 0, 0, 3, 9,
             108, 111, 99, 97, 108, 104, 111, 115, 116,
             0x1f, 0x90
-        )
+        ).map(Int::toByte).toByteArray()
         val parsed = Socks5Codec.parseCommandReply(bytes)!!
         assertEquals(Socks5Address.Domain("localhost"), parsed.second.address)
         assertEquals(8080, parsed.second.port)
