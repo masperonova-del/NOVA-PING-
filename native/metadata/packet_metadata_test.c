@@ -597,7 +597,10 @@ static void test_header_only_reader_parser_rejects_bad_lengths(void)
         .family = NP_ADDRESS_IPV4, .bytes = { 10, 0, 0, 2 }
     };
     const np_packet_segment_t segment = { packet, sizeof(packet) };
-    const np_packet_reader_t reader = { &segment, 1u, sizeof(packet) };
+    const np_packet_reader_t reader = {
+        .segments = &segment, .segment_count = 1u,
+        .total_length = sizeof(packet)
+    };
     np_packet_metadata_t result;
 
     /* IP declares 40 bytes but the chained storage only contains 28. */
