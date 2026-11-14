@@ -121,3 +121,10 @@ L'écran de préparation VPN est maintenant présent dans `MainActivity` :
 - il indique explicitement le résultat du consentement sans démarrer de tunnel.
 
 Cette étape ne démarre pas de VPN et n'appelle pas `Builder.establish()`. Le package choisi n'est pas encore transmis au service pour créer le tunnel. L'instanciation du résolveur DNS avec une adresse numérique explicitement configurée, le moteur TUN/tun2socks et le tap de métadonnées restent à intégrer. La déclaration du service et l'accord de consentement Android ne signifient donc pas que le trafic est actuellement capturé ou optimisé.
+
+
+## Liaison de la sélection au service — préparation uniquement
+
+Après le retour positif de la boîte de dialogue Android, l'application valide et mémorise le package sélectionné dans des préférences VPN dédiées. Si l'autorisation était déjà accordée, le package est mémorisé immédiatement après validation. Le service relit ce package au moment où son futur chemin de préparation est appelé, vérifie à nouveau sa syntaxe et sa présence dans PackageManager, puis construit un `Builder` limité à ce package avec `addAllowedApplication()`.
+
+La préparation du builder vérifie aussi que le consentement Android est toujours accordé. Aucun service n'est démarré par l'écran de sélection, aucun `Builder.establish()` n'est appelé et aucun trafic n'est redirigé. Une sélection absente, invalide ou désinstallée échoue sans fallback. Des tests unitaires couvrent la validation syntaxique des noms de package ; la vérification d'installation reste assurée par Android PackageManager.
