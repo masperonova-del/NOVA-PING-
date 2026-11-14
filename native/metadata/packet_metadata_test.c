@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static void test_ipv4_outbound_udp(void)
@@ -212,7 +213,100 @@ static void test_bounded_spsc_queue(void)
     assert(!np_metadata_queue_pop(&queue, &output));
 }
 
-int main(void)
+
+
+static size_t decode_hex(const char *text, uint8_t *output, size_t capacity)
+{
+    size_t length = strlen(text);
+    size_t i;
+    if ((length % 2u) != 0u || length / 2u > capacity)
+        return 0u;
+    for (i = 0; i < length / 2u; ++i) {
+        char pair[3] = { text[i * 2u], text[i * 2u + 1u], '\0' };
+        char *end = NULL;
+        unsigned long value = strtoul(pair, &end, 16);
+        if (end == pair || *end != '\0' || value > 255u)
+            return 0u;
+        output[i] = (uint8_t)value;
+    }
+    return length / 2u;
+}
+
+static unsigned long parse_number(const char *text)
+{
+    char *end = NULL;
+    unsigned long value = strtoul(text, &end, 10);
+    assert(end != text && *end == '\0');
+    return value;
+}
+
+static void test_shared_packet_metadata_vectors(const char *path)
+{
+    FILE *file = fopen(path, "r");
+    char line[8192];
+    unsigned int tested = 0u;
+
+    assert(file != NULL);
+    while (fgets(line, sizeof(line), file) != NULL) {
+        char *fields[11];
+        char *cursor = line;
+        uint8_t local_bytes[16] = { 0 };
+        uint8_t packet[2048] = { 0 };
+        uint8_t expected_remote[16] = { 0 };
+        size_t local_length;
+        size_t packet_length;
+        size_t remote_length = 0u;
+        size_t i;
+        np_local_address_t local = { 0 };
+        np_packet_metadata_t result;
+        bool accepted;
+
+        if (line[0] == '#' || line[0] == '\n' || line[0] == '\r')
+            continue;
+        for (i = 0; i < 11u; ++i) {
+            char *separator;
+            fields[i] = cursor;
+            separator = strchr(cursor, '\t');
+            if (i < 10u) {
+                assert(separator != NULL);
+                *separator = '\0';
+                cursor = separator + 1;
+            } else if (separator != NULL) {
+                *separator = '\0';
+            }
+        }
+
+        local_length = decode_hex(fields[1], local_bytes, sizeof(local_bytes));
+        packet_length = decode_hex(fields[2], packet, sizeof(packet));
+        assert((local_length == 4u || local_length == 16u) && packet_length > 0u);
+        local.family = local_length == 4u ? NP_ADDRESS_IPV4 : NP_ADDRESS_IPV6;
+        memcpy(local.bytes, local_bytes, local_length);
+
+        accepted = np_parse_packet_metadata(packet, packet_length, &local, 1u, &result);
+        if (strcmp(fields[3], "reject") == 0) {
+            assert(!accepted);
+        } else {
+            assert(strcmp(fields[3], "accept") == 0 && accepted);
+            remote_length = decode_hex(fields[5], expected_remote, sizeof(expected_remote));
+            assert(result.ip_version == parse_number(fields[4]));
+            assert(result.address_length == remote_length);
+            assert(memcmp(result.remote_address, expected_remote, remote_length) == 0);
+            assert(result.remote_port == parse_number(fields[6]));
+            assert(result.transport == (strcmp(fields[7], "TCP") == 0
+                ? NP_TRANSPORT_TCP : NP_TRANSPORT_UDP));
+            assert(result.direction == (strcmp(fields[8], "OUTBOUND") == 0
+                ? NP_DIRECTION_OUTBOUND : NP_DIRECTION_INBOUND));
+            assert(result.packet_length_bytes == parse_number(fields[9]));
+            assert(result.fragmented == parse_number(fields[10]));
+        }
+        ++tested;
+    }
+    assert(fclose(file) == 0);
+    assert(tested >= 8u);
+    printf("Shared packet metadata vectors: %u passed\n", tested);
+}
+
+int main(int argc, char **argv)
 {
     test_ipv4_outbound_udp();
     test_ipv4_inbound_tcp();
@@ -222,6 +316,7 @@ int main(void)
     test_reject_malformed_headers_and_fragments();
     test_first_fragment_flag();
     test_bounded_spsc_queue();
+    if (argc > 1) test_shared_packet_metadata_vectors(argv[1]);
     puts("NOVA native packet metadata tests: PASS");
     return 0;
 }
