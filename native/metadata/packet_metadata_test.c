@@ -307,6 +307,46 @@ static void test_shared_packet_metadata_vectors(const char *path)
     printf("Shared packet metadata vectors: %u passed\n", tested);
 }
 
+
+static void test_packet_reader_crosses_segments_without_copying_payload(void)
+{
+    const uint8_t first[] = { 0x45, 0x00, 0x00 };
+    const uint8_t second[] = { 0x28, 0x00 };
+    const uint8_t third[] = { 0x01, 0x02, 0x03, 0xaa, 0xbb, 0xcc };
+    const np_packet_segment_t segments[] = {
+        { first, sizeof(first) },
+        { second, sizeof(second) },
+        { third, sizeof(third) }
+    };
+    const np_packet_reader_t reader = {
+        segments, sizeof(segments) / sizeof(segments[0]),
+        sizeof(first) + sizeof(second) + sizeof(third)
+    };
+    uint8_t header[8] = { 0 };
+    const uint8_t expected[] = { 0x00, 0x28, 0x00, 0x01, 0x02, 0x03 };
+
+    /* Read across all segment boundaries, without requesting trailing payload. */
+    assert(np_packet_reader_copy(&reader, 2u, header, sizeof(header)));
+    assert(memcmp(header, (const uint8_t[]){0x00,0x28,0x00,0x01,0x02,0x03,0xaa,0xbb}, 8u) == 0);
+    assert(np_packet_reader_copy(&reader, 2u, header, sizeof(expected)));
+    assert(memcmp(header, expected, sizeof(expected)) == 0);
+
+    /* Out-of-range reads and inconsistent aggregate lengths fail closed. */
+    assert(!np_packet_reader_copy(&reader, reader.total_length - 1u, header, 2u));
+    {
+        np_packet_reader_t invalid = reader;
+        invalid.total_length--;
+        assert(!np_packet_reader_copy(&invalid, 0u, header, 1u));
+    }
+    {
+        const np_packet_segment_t invalid_segments[] = {
+            { NULL, 1u }
+        };
+        const np_packet_reader_t invalid = { invalid_segments, 1u, 1u };
+        assert(!np_packet_reader_copy(&invalid, 0u, header, 1u));
+    }
+}
+
 int main(int argc, char **argv)
 {
     test_ipv4_outbound_udp();
@@ -317,6 +357,7 @@ int main(int argc, char **argv)
     test_reject_malformed_headers_and_fragments();
     test_first_fragment_flag();
     test_bounded_spsc_queue();
+    test_packet_reader_crosses_segments_without_copying_payload();
     if (argc > 1) test_shared_packet_metadata_vectors(argv[1]);
     puts("NOVA native packet metadata tests: PASS");
     return 0;
