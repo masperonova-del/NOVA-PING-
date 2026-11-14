@@ -312,8 +312,11 @@ Une réponse HTTPS vers un service cloud n'est pas le ping du serveur de jeu. Un
 - [x] Exiger la protection du socket sortant avant toute connexion distante.
 - [x] Relayer les flux TCP dans les deux sens et gérer la fermeture des sockets.
 - [x] Ajouter des tests de relais TCP authentifié et d'arrêt du service.
-- [ ] Implémenter UDP ASSOCIATE avec association client, relais de datagrammes et filtrage de la source.
-- [ ] Tester DNS UDP/TCP, les délais, les erreurs et la fermeture des associations.
+- [x] Implémenter UDP ASSOCIATE avec association liée au canal TCP authentifié, relais de datagrammes et verrouillage du premier endpoint UDP du client.
+- [x] Protéger chaque socket UDP sortant via un callback obligatoire avant toute émission.
+- [x] Rejeter les trames SOCKS5 UDP fragmentées, limiter les transferts simultanés et fermer le relais à la fermeture du canal TCP.
+- [x] Ajouter un test local UDP echo pour vérifier l'association, le retour du datagramme et la protection du socket sortant.
+- [ ] Ajouter une résolution DNS contrôlée (UDP/TCP) sans fuite hors du chemin protégé.
 - [ ] Intégrer le pont à un moteur TUN après validation du point d'observation non bloquant.
 
-**Limite :** le pont TCP est une brique locale testée, pas un VPN. UDP, le moteur de transfert, la capture Android et la mesure d'endpoints de jeu en direct restent à construire. Aucun trafic du jeu n'est redirigé à ce stade.
+**Limite :** le pont TCP/UDP est une brique locale testée, pas un VPN. Les destinations UDP par nom de domaine sont rejetées tant qu'une résolution DNS contrôlée n'est pas disponible. Le moteur de transfert, la capture Android et la mesure d'endpoints de jeu en direct restent à construire. Aucun trafic du jeu n'est redirigé à ce stade.
