@@ -258,8 +258,12 @@ static void test_shared_packet_metadata_vectors(const char *path)
         size_t remote_length = 0u;
         size_t i;
         np_local_address_t local = { 0 };
+        np_packet_segment_t segment;
+        np_packet_reader_t reader;
         np_packet_metadata_t result;
+        np_packet_metadata_t reader_result;
         bool accepted;
+        bool reader_accepted;
 
         if (line[0] == '#' || line[0] == '\n' || line[0] == '\r')
             continue;
@@ -284,9 +288,28 @@ static void test_shared_packet_metadata_vectors(const char *path)
         memcpy(local.bytes, local_bytes, local_length);
 
         accepted = np_parse_packet_metadata(packet, packet_length, &local, 1u, &result);
+        segment.data = packet;
+        segment.length = packet_length;
+        reader.segments = &segment;
+        reader.segment_count = 1u;
+        reader.total_length = packet_length;
+        reader_accepted = np_parse_packet_metadata_reader(
+            &reader, &local, 1u, &reader_result);
+        /* The segmented/header-only parser must agree with the full parser. */
+        assert(reader_accepted == accepted);
         if (strcmp(fields[3], "reject") == 0) {
-            assert(!accepted);
+            assert(!accepted && !reader_accepted);
         } else {
+            assert(reader_accepted);
+            assert(reader_result.ip_version == result.ip_version);
+            assert(reader_result.address_length == result.address_length);
+            assert(memcmp(reader_result.remote_address, result.remote_address,
+                          result.address_length) == 0);
+            assert(reader_result.remote_port == result.remote_port);
+            assert(reader_result.transport == result.transport);
+            assert(reader_result.direction == result.direction);
+            assert(reader_result.packet_length_bytes == result.packet_length_bytes);
+            assert(reader_result.fragmented == result.fragmented);
             assert(strcmp(fields[3], "accept") == 0 && accepted);
             remote_length = decode_hex(fields[5], expected_remote, sizeof(expected_remote));
             assert(result.ip_version == parse_number(fields[4]));
