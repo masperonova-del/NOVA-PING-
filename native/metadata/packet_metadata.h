@@ -64,6 +64,8 @@ bool np_parse_packet_metadata(
 
 /* Single-producer / single-consumer queue. Producer never waits. */
 void np_metadata_queue_init(np_metadata_queue_t *queue);
+/* Runtime gate: true only when all queue atomics are lock-free on this ABI. */
+bool np_metadata_queue_is_lock_free(const np_metadata_queue_t *queue);
 bool np_metadata_queue_push(np_metadata_queue_t *queue,
                             const np_packet_metadata_t *record);
 bool np_metadata_queue_pop(np_metadata_queue_t *queue,
