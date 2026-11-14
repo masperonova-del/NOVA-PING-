@@ -1,7 +1,7 @@
 name: Android CI
 on:
   push:
-    branches: [ "main", "nova-boost-foundation", "fix/session-network-provenance", "feature/nova-ping-1.11-session-compare", "feature/nova-ping-1.12-diagnostic-reliability", "feature/nova-ping-1.13-animated-ui-optimizer-bridge", "feature/nova-ping-1.14-dashboard-experience", "feature/nova-ping-1.15-reliability-engine", "feature/nova-ping-1.16-measurement-integrity", "audit/nova-ping-1.16-certification", "feature/nova-boost-ui-1.17", "feature/nova-ping-1.18-evidence-gating", "feature/nova-ping-1.19-comparison-integrity", "feature/nova-ping-1.20-game-evidence-registry", "feature/nova-ping-1.21-game-discovery", "feature/nova-ping-1.22-public-network-intelligence" ]
+    branches: [ "main", "nova-boost-foundation", "fix/session-network-provenance", "feature/nova-ping-1.11-session-compare", "feature/nova-ping-1.12-diagnostic-reliability", "feature/nova-ping-1.13-animated-ui-optimizer-bridge", "feature/nova-ping-1.14-dashboard-experience", "feature/nova-ping-1.15-reliability-engine", "feature/nova-ping-1.16-measurement-integrity", "audit/nova-ping-1.16-certification", "feature/nova-boost-ui-1.17", "feature/nova-ping-1.18-evidence-gating", "feature/nova-ping-1.19-comparison-integrity", "feature/nova-ping-1.20-game-evidence-registry", "feature/nova-ping-1.21-game-discovery", "feature/nova-ping-1.22-public-network-intelligence", "fix/game-evidence-endpoint-validation" ]
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
@@ -24,6 +24,14 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
+      - name: Run native packet metadata tests
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -pedantic \
+            -I native/metadata \
+            native/metadata/packet_metadata.c \
+            native/metadata/packet_metadata_test.c \
+            -o /tmp/nova-packet-metadata-test
+          /tmp/nova-packet-metadata-test
       - name: Run metric unit tests
         run: gradle :app:testDebugUnitTest
       - name: Run Android Lint
