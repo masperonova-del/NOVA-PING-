@@ -293,3 +293,17 @@ Le contrôle atomique ABI qui vient de passer en CI confirme la compilation et l
 - Le pbuf original est toujours transmis au moteur sans modification.
 - Aucun payload, identifiant de compte, contenu de message ou secret n'est enregistré.
 - Aucun VPN réel n'est activé avant les tests natifs, l'intégration JNI, les tests de transfert et les contrôles sur appareil.
+
+
+## Lecteur de segments natif — première primitive validée
+
+Le commit `11cc13b` ajoute au prototype C une vue de lecture en segments, indépendante de lwIP :
+
+- `np_packet_reader_t` décrit une séquence de segments en lecture seule et sa longueur agrégée.
+- `np_packet_reader_copy()` copie uniquement une plage explicitement demandée, même si elle traverse plusieurs segments.
+- La fonction vérifie les pointeurs, les débordements de taille, la cohérence entre la somme des segments et la longueur déclarée, ainsi que les bornes de chaque lecture.
+- Les tests couvrent une lecture traversant plusieurs frontières de segments, une plage limitée aux octets demandés, une lecture hors limites, une longueur agrégée incohérente et un segment invalide.
+
+La CI `43622324319` a validé les tests C, les tests sous ASan/UBSan, la compilation pour les quatre ABI Android, les tests Kotlin, Android Lint et les builds Debug/Release.
+
+**Limite :** cette primitive ne dépend pas de lwIP et n'est pas encore un adaptateur `pbuf`. Elle ne parse pas encore directement un paquet segmenté et n'est pas appelée depuis HEV. Le prochain travail doit fournir une interface de lecture incrémentale pour le parseur, capable de valider la longueur IP totale sans copier la charge utile, puis un adaptateur lwIP utilisant une copie partielle bornée. Le raccordement aux hooks HEV reste bloqué jusqu'à preuve de la cardinalité des producteurs et tests de non-régression du transfert.
