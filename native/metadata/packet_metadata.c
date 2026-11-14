@@ -301,9 +301,18 @@ bool np_packet_reader_copy(const np_packet_reader_t *reader,
     size_t i;
 
     if (reader == NULL || (length > 0u && destination == NULL) ||
-        (reader->segment_count > 0u && reader->segments == NULL) ||
         offset > reader->total_length ||
         length > reader->total_length - offset)
+        return false;
+
+    /* A callback-backed reader must not also expose a segment chain. */
+    if (reader->copy != NULL) {
+        if (reader->segments != NULL || reader->segment_count != 0u)
+            return false;
+        return reader->copy(reader->copy_context, offset, destination, length);
+    }
+
+    if (reader->segment_count > 0u && reader->segments == NULL)
         return false;
 
     /* Validate the complete chain and its declared aggregate length first. */
