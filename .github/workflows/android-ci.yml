@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      NOVA_PACKET_FIXTURES: ${{ github.workspace }}/test-fixtures/packet_metadata_vectors.tsv
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -30,7 +32,7 @@ jobs:
             -I native/metadata \
             native/metadata/packet_metadata.c \
             native/metadata/packet_metadata_test.c \
-            -o /tmp/nova-packet-metadata-test
+            -o /tmp/nova-packet-metadata-test test-fixtures/packet_metadata_vectors.tsv
           /tmp/nova-packet-metadata-test
       - name: Run native packet metadata sanitizer tests
         run: |
@@ -39,7 +41,7 @@ jobs:
             -I native/metadata \
             native/metadata/packet_metadata.c \
             native/metadata/packet_metadata_test.c \
-            -o /tmp/nova-packet-metadata-sanitized
+            -o /tmp/nova-packet-metadata-sanitized test-fixtures/packet_metadata_vectors.tsv
           /tmp/nova-packet-metadata-sanitized
       - name: Run metric unit tests
         run: gradle :app:testDebugUnitTest
