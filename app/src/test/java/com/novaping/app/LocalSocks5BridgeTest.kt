@@ -97,6 +97,66 @@ class LocalSocks5BridgeTest {
     }
 
     @Test
+    fun tcpConnectRejectsDomainUntilControlledDnsExists() {
+        val loopback = InetAddress.getLoopbackAddress()
+        var protectCalls = 0
+        val bridge = LocalSocks5Bridge(
+            protectUpstreamSocket = {
+                protectCalls++
+                true
+            },
+            bindAddress = loopback
+        )
+        try {
+            Socket(loopback, bridge.start()).use { client ->
+                client.soTimeout = 3_000
+                val input = DataInputStream(client.getInputStream())
+                val output = DataOutputStream(client.getOutputStream())
+                val credentials = bridge.credentials
+                val username = credentials.username.toByteArray(Charsets.UTF_8)
+                val password = credentials.password.toByteArray(Charsets.UTF_8)
+
+                output.write(byteArrayOf(5, 1, 2))
+                output.flush()
+                assertEquals(5, input.readUnsignedByte())
+                assertEquals(2, input.readUnsignedByte())
+                output.writeByte(1)
+                output.writeByte(username.size)
+                output.write(username)
+                output.writeByte(password.size)
+                output.write(password)
+                output.flush()
+                assertEquals(1, input.readUnsignedByte())
+                assertEquals(0, input.readUnsignedByte())
+
+                val domain = "example.com".toByteArray(Charsets.US_ASCII)
+                output.writeByte(5)
+                output.writeByte(1)
+                output.writeByte(0)
+                output.writeByte(3)
+                output.writeByte(domain.size)
+                output.write(domain)
+                output.writeShort(443)
+                output.flush()
+
+                assertEquals(5, input.readUnsignedByte())
+                assertEquals(8, input.readUnsignedByte())
+                assertEquals(0, input.readUnsignedByte())
+                val replyType = input.readUnsignedByte()
+                val replyAddressLength = when (replyType) {
+                    1 -> 4
+                    4 -> 16
+                    else -> error("Unexpected SOCKS5 reply address type: $replyType")
+                }
+                input.skipBytes(replyAddressLength + 2)
+            }
+            assertEquals("Domain requests must not invoke an unprotected system resolver or upstream socket", 0, protectCalls)
+        } finally {
+            bridge.close()
+        }
+    }
+
+    @Test
     fun bridgeBindsOnlyToLoopbackAndStops() {
         val loopback = InetAddress.getLoopbackAddress()
         val bridge = LocalSocks5Bridge({ true }, loopback)
