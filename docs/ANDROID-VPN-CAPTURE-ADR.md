@@ -100,3 +100,10 @@ Le résolveur contrôlé utilise une adresse de résolveur fournie sous forme d'
 Le résolveur utilise le cache positif existant. Il ne fait aucun fallback vers le résolveur système. Le transport est couvert par des tests de boucle locale UDP, de repli TCP et de refus lorsque la protection échoue.
 
 **Limites restantes :** le résolveur n'est pas encore branché au pont SOCKS5 ; les destinations par nom de domaine restent donc bloquées. La prise en charge des chaînes CNAME, des réponses DNS négatives et d'EDNS n'est pas implémentée. Aucun résolveur public n'est présélectionné : l'adresse doit être fournie explicitement par la configuration future.
+
+
+## Intégration DNS au pont SOCKS5
+
+Le résolveur contrôlé expose maintenant une résolution d'adresse qui interroge A puis AAAA et utilise le cache positif. Le pont SOCKS5 accepte ce résolveur comme dépendance optionnelle et l'utilise pour les destinations de domaine en TCP CONNECT et UDP ASSOCIATE. Si le résolveur n'est pas configuré ou si la résolution échoue, la connexion échoue ; aucun appel au résolveur système n'est effectué. Les destinations IP numériques continuent d'utiliser le chemin direct protégé.
+
+**Configuration non terminée :** l'application n'instancie pas encore ce résolveur avec une adresse numérique de serveur DNS choisie et des callbacks raccordés à VpnService.protect(). Cette intégration doit être faite dans le futur service VPN, avec consentement explicite. Aucun domaine ne doit être présenté comme pris en charge en production avant cette configuration et les tests de bout en bout.
