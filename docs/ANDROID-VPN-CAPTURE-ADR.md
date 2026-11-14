@@ -307,3 +307,10 @@ Le commit `11cc13b` ajoute au prototype C une vue de lecture en segments, indép
 La CI `43622324319` a validé les tests C, les tests sous ASan/UBSan, la compilation pour les quatre ABI Android, les tests Kotlin, Android Lint et les builds Debug/Release.
 
 **Limite :** cette primitive ne dépend pas de lwIP et n'est pas encore un adaptateur `pbuf`. Elle ne parse pas encore directement un paquet segmenté et n'est pas appelée depuis HEV. Le prochain travail doit fournir une interface de lecture incrémentale pour le parseur, capable de valider la longueur IP totale sans copier la charge utile, puis un adaptateur lwIP utilisant une copie partielle bornée. Le raccordement aux hooks HEV reste bloqué jusqu'à preuve de la cardinalité des producteurs et tests de non-régression du transfert.
+
+
+### Tests supplémentaires du lecteur segmenté — 14 novembre 2026
+
+Le lecteur générique `np_packet_reader_copy()` est maintenant testé avec toutes les paires de frontières possibles sur un paquet IPv4/TCP de test, y compris les segments vides. Les tests vérifient aussi les lectures qui traversent les frontières, les plages hors limites, les longueurs agrégées incohérentes et les tableaux de segments absents.
+
+Cette primitive est un composant de base uniquement : elle n'est pas encore branchée sur les `pbuf` HEV et ne produit pas encore de métadonnées directement depuis une chaîne. Le parseur existant continue d'exiger un paquet complet. L'étape suivante reste la conception d'un parseur à longueur totale déclarée et préfixe d'en-têtes capturé, afin de ne jamais copier la charge utile.
