@@ -321,7 +321,7 @@ Une réponse HTTPS vers un service cloud n'est pas le ping du serveur de jeu. Un
 - [x] Ajouter l'encodage des requêtes DNS A/AAAA et la validation stricte des réponses, identifiants, questions, longueurs et TTL.
 - [x] Ajouter un cache positif en mémoire, borné par TTL, avec copies défensives et sans cache des réponses vides/TTL nul.
 - [x] Ajouter des tests unitaires du codec DNS et du cache.
-- [ ] Ajouter le transport DNS contrôlé UDP/TCP avec sockets protégés, délais et validation sur réponse locale simulée.
+- [x] Ajouter le transport DNS contrôlé UDP avec socket protégé, délai borné et validation de réponse.
 - [ ] Brancher la résolution contrôlée sur TCP CONNECT et UDP ASSOCIATE sans fallback système.
 - [ ] Intégrer le pont à un moteur TUN après validation du point d'observation non bloquant.
 
