@@ -196,4 +196,58 @@ class LocalSocks5BridgeTest {
             echo.close()
         }
     }
+
+    @Test
+    fun udpRelayRejectsDatagramsFromUnadvertisedClientPort() {
+        val loopback = InetAddress.getLoopbackAddress()
+        val echo = DatagramSocket(null).apply {
+            bind(InetSocketAddress(loopback, 0))
+            soTimeout = 5_000
+        }
+        val echoThread = thread(isDaemon = true) {
+            val bytes = ByteArray(1024)
+            val packet = DatagramPacket(bytes, bytes.size)
+            echo.receive(packet)
+            echo.send(DatagramPacket(packet.data, packet.offset, packet.length, packet.address, packet.port))
+        }
+        DatagramSocket(null).use { allowedClient ->
+            DatagramSocket(null).use { unadvertisedClient ->
+                allowedClient.bind(InetSocketAddress(loopback, 0))
+                unadvertisedClient.bind(InetSocketAddress(loopback, 0))
+                val relay = LocalSocks5UdpRelay({ true }, loopback)
+                try {
+                    val relayPort = relay.start(loopback, allowedClient.localPort)
+                    val frame = Socks5Codec.encodeUdpDatagram(
+                        Socks5UdpDatagram(
+                            Socks5Endpoint(Socks5Address.Ipv4(loopback.address), echo.localPort),
+                            "PIN".toByteArray(Charsets.US_ASCII)
+                        )
+                    )
+                    unadvertisedClient.soTimeout = 300
+                    unadvertisedClient.send(DatagramPacket(frame, frame.size, loopback, relayPort))
+                    val unexpected = DatagramPacket(ByteArray(128), 128)
+                    try {
+                        unadvertisedClient.receive(unexpected)
+                        throw AssertionError("Datagram from an unadvertised UDP port must be rejected")
+                    } catch (_: java.net.SocketTimeoutException) {
+                        // Expected: the relay must not forward this source endpoint.
+                    }
+
+                    allowedClient.soTimeout = 5_000
+                    allowedClient.send(DatagramPacket(frame, frame.size, loopback, relayPort))
+                    val response = DatagramPacket(ByteArray(512), 512)
+                    allowedClient.receive(response)
+                    val decoded = Socks5Codec.parseUdpDatagram(
+                        response.data.copyOfRange(response.offset, response.offset + response.length)
+                    )
+                    assertTrue(decoded != null)
+                    assertArrayEquals("PIN".toByteArray(Charsets.US_ASCII), decoded!!.payload)
+                } finally {
+                    relay.close()
+                }
+            }
+        }
+        echoThread.join(2_000)
+        echo.close()
+    }
 }
