@@ -13,6 +13,14 @@
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <service
+            android:name=".NovaVpnService"
+            android:permission="android.permission.BIND_VPN_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+        </service>
+        <service
             android:name=".NetworkMonitorService"
             android:exported="false"
             android:foregroundServiceType="specialUse">
