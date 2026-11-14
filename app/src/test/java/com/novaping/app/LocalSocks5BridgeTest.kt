@@ -97,7 +97,7 @@ class LocalSocks5BridgeTest {
     }
 
     @Test
-    fun tcpConnectRejectsDomainUntilControlledDnsExists() {
+    fun tcpConnectRejectsDomainWhenProtectedResolverIsNotConfigured() {
         val loopback = InetAddress.getLoopbackAddress()
         var protectCalls = 0
         val bridge = LocalSocks5Bridge(
@@ -140,7 +140,7 @@ class LocalSocks5BridgeTest {
                 output.flush()
 
                 assertEquals(5, input.readUnsignedByte())
-                assertEquals(8, input.readUnsignedByte())
+                assertEquals(4, input.readUnsignedByte())
                 assertEquals(0, input.readUnsignedByte())
                 val replyType = input.readUnsignedByte()
                 val replyAddressLength = when (replyType) {
@@ -150,7 +150,7 @@ class LocalSocks5BridgeTest {
                 }
                 input.skipBytes(replyAddressLength + 2)
             }
-            assertEquals("Domain requests must not invoke an unprotected system resolver or upstream socket", 0, protectCalls)
+            assertEquals("Without a configured protected resolver, no upstream socket may be opened", 0, protectCalls)
         } finally {
             bridge.close()
         }
