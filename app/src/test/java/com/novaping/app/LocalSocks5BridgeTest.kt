@@ -42,9 +42,20 @@ class LocalSocks5BridgeTest {
                 val input = DataInputStream(client.getInputStream())
                 val output = DataOutputStream(client.getOutputStream())
 
-                output.write(byteArrayOf(5, 1, 0))
+                val credentials = bridge.credentials
+                val username = credentials.username.toByteArray(Charsets.UTF_8)
+                val password = credentials.password.toByteArray(Charsets.UTF_8)
+                output.write(byteArrayOf(5, 1, 2))
                 output.flush()
                 assertEquals(5, input.readUnsignedByte())
+                assertEquals(2, input.readUnsignedByte())
+                output.writeByte(1)
+                output.writeByte(username.size)
+                output.write(username)
+                output.writeByte(password.size)
+                output.write(password)
+                output.flush()
+                assertEquals(1, input.readUnsignedByte())
                 assertEquals(0, input.readUnsignedByte())
 
                 val address = loopback.address
