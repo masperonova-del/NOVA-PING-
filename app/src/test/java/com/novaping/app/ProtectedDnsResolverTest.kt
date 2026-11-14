@@ -19,7 +19,7 @@ class ProtectedDnsResolverTest {
     private val loopback = InetAddress.getLoopbackAddress()
 
     private fun answer(query: ByteArray, address: ByteArray): ByteArray {
-        val response = query.copyOf(query.size + 16 + address.size)
+        val response = query.copyOf(query.size + 12 + address.size)
         response[2] = 0x81.toByte()
         response[3] = 0x80.toByte()
         response[6] = 0
