@@ -32,8 +32,8 @@ jobs:
             -I native/metadata \
             native/metadata/packet_metadata.c \
             native/metadata/packet_metadata_test.c \
-            -o /tmp/nova-packet-metadata-test test-fixtures/packet_metadata_vectors.tsv
-          /tmp/nova-packet-metadata-test
+            -o /tmp/nova-packet-metadata-test
+          /tmp/nova-packet-metadata-test test-fixtures/packet_metadata_vectors.tsv
       - name: Run native packet metadata sanitizer tests
         run: |
           cc -std=c11 -Wall -Wextra -Werror -pedantic \
@@ -41,8 +41,8 @@ jobs:
             -I native/metadata \
             native/metadata/packet_metadata.c \
             native/metadata/packet_metadata_test.c \
-            -o /tmp/nova-packet-metadata-sanitized test-fixtures/packet_metadata_vectors.tsv
-          /tmp/nova-packet-metadata-sanitized
+            -o /tmp/nova-packet-metadata-sanitized
+          /tmp/nova-packet-metadata-sanitized test-fixtures/packet_metadata_vectors.tsv
       - name: Run metric unit tests
         run: gradle :app:testDebugUnitTest
       - name: Run Android Lint
