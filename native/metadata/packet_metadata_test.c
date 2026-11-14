@@ -76,6 +76,11 @@ static void test_ipv6_outbound_udp(void)
     assert(result.transport == NP_TRANSPORT_UDP);
     assert(result.remote_port == 443);
     assert(result.direction == NP_DIRECTION_OUTBOUND);
+
+    /* ORCHIDv2 2001:20::/28 is not a public endpoint candidate. */
+    packet[24] = 0x20; packet[25] = 0x01;
+    packet[26] = 0x00; packet[27] = 0x20;
+    assert(!np_parse_packet_metadata(packet, sizeof(packet), &local, 1, &result));
 }
 
 static void test_reject_malformed_and_private_remote(void)
