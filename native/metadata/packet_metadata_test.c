@@ -308,6 +308,50 @@ static void test_shared_packet_metadata_vectors(const char *path)
 }
 
 
+static void test_packet_reader_all_split_points(void)
+{
+    const uint8_t packet[] = {
+        0x45, 0x00, 0x00, 0x28, 0x00, 0x01, 0x00, 0x00,
+        0x40, 0x06, 0x00, 0x00, 10, 0, 0, 2,
+        1, 1, 1, 1, 0x9c, 0x40, 0x01, 0xbb,
+        0, 0, 0, 1, 0, 0, 0, 0, 0x50, 0x18, 0x10, 0,
+        0, 0, 0, 0
+    };
+    uint8_t copied[sizeof(packet)];
+    size_t first;
+    size_t second;
+
+    /* Exercise every pair of segment boundaries, including empty segments. */
+    for (first = 0u; first <= sizeof(packet); ++first) {
+        for (second = first; second <= sizeof(packet); ++second) {
+            np_packet_segment_t segments[3] = {
+                { packet, first },
+                { packet + first, second - first },
+                { packet + second, sizeof(packet) - second }
+            };
+            np_packet_reader_t reader = {
+                segments, 3u, sizeof(packet)
+            };
+            memset(copied, 0, sizeof(copied));
+            assert(np_packet_reader_copy(&reader, 0u, copied, sizeof(packet)));
+            assert(memcmp(copied, packet, sizeof(packet)) == 0);
+            assert(np_packet_reader_copy(&reader, 20u, copied, 20u));
+            assert(memcmp(copied, packet + 20u, 20u) == 0);
+        }
+    }
+
+    /* Null segment arrays and arithmetic/range violations fail closed. */
+    {
+        const np_packet_reader_t invalid = { NULL, 1u, sizeof(packet) };
+        assert(!np_packet_reader_copy(&invalid, 0u, copied, 1u));
+    }
+    {
+        const np_packet_segment_t segment = { packet, sizeof(packet) };
+        const np_packet_reader_t reader = { &segment, 1u, sizeof(packet) };
+        assert(!np_packet_reader_copy(&reader, SIZE_MAX, copied, 1u));
+    }
+}
+
 static void test_packet_reader_crosses_segments_without_copying_payload(void)
 {
     const uint8_t first[] = { 0x45, 0x00, 0x00 };
@@ -358,6 +402,7 @@ int main(int argc, char **argv)
     test_first_fragment_flag();
     test_bounded_spsc_queue();
     test_packet_reader_crosses_segments_without_copying_payload();
+    test_packet_reader_all_split_points();
     if (argc > 1) test_shared_packet_metadata_vectors(argv[1]);
     puts("NOVA native packet metadata tests: PASS");
     return 0;
