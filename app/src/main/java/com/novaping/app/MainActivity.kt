@@ -241,13 +241,13 @@ class MainActivity : Activity() {
             } else {
                 "RÉFÉRENCE OFFICIELLE DE CONNECTIVITÉ DISPONIBLE — AUCUNE IP DE MATCH CONFIRMÉE"
             }
-            gameNetworkReferenceDetails.text = references.joinToString("\\n\\n") { reference ->
-                val portLines = reference.ports.joinToString("\\n") { port ->
+            gameNetworkReferenceDetails.text = references.joinToString("\n\n") { reference ->
+                val portLines = reference.ports.joinToString("\n") { port ->
                     "${port.protocol} ${port.displayRange()} — ${port.purpose}"
                 }
-                "${reference.sourceTitle} (${reference.platform})\\n" +
-                    "Consultée le ${reference.checkedOn}\\n" +
-                    portLines + "\\nSource : ${reference.sourceUrl}\\n" +
+                "${reference.sourceTitle} (${reference.platform})\n" +
+                    "Consultée le ${reference.checkedOn}\n" +
+                    portLines + "\nSource : ${reference.sourceUrl}\n" +
                     "Cette documentation décrit des ports, pas des adresses IP. Elle ne prouve pas qu'un hôte est un serveur de partie et ne fournit pas un ping CODM."
             }
         }
