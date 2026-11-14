@@ -19,11 +19,11 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.CountDownLatch
 
 /**
- * Loopback-only SOCKS5 TCP CONNECT bridge.
+ * Loopback-only SOCKS5 bridge with authenticated TCP CONNECT and UDP ASSOCIATE.
  *
- * The caller supplies a socket protector (for example VpnService.protect).
- * No VPN is started by this class. UDP ASSOCIATE is deliberately rejected until
- * its datagram lifecycle and DNS behavior are implemented and tested.
+ * The caller supplies protectors for upstream TCP and UDP sockets (for example
+ * VpnService.protect). UDP domain destinations are rejected until controlled DNS
+ * resolution is available. No VPN is started by this class.
  */
 internal data class Socks5BridgeCredentials(val username: String, val password: String)
 
