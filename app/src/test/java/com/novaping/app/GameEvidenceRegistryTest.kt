@@ -30,7 +30,7 @@ class GameEvidenceRegistryTest {
 
     @Test fun acceptsValidIpv4AndInternationalizedHostnames() {
         assertTrue(GameEvidenceRegistry.isUsable(evidence(endpointHost = "192.0.2.10"), now))
-        assertTrue(GameEvidenceRegistry.isUsable(evidence(endpointHost = "serveur.exemple.fr"), now))
+        assertTrue(GameEvidenceRegistry.isUsable(evidence(endpointHost = "serveur.éxemple.fr"), now))
     }
 
     @Test fun rejectsExpiredEvidence() {
