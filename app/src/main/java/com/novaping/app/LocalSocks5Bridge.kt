@@ -153,12 +153,17 @@ internal class LocalSocks5Bridge(
             }
             val destinationPort = input.readUnsignedShort()
             if (command == 0x03) {
+                // RFC 1928 permits an unspecified endpoint or the client's own TCP peer address.
+                if (!host.isAnyLocalAddress && host != client.inetAddress) {
+                    writeReply(output, 0x02)
+                    return
+                }
                 val relay = LocalSocks5UdpRelay(
                     protectUpstreamDatagramSocket = protectUpstreamDatagramSocket,
                     bindAddress = bindAddress
                 )
                 try {
-                    relay.start(client.inetAddress)
+                    relay.start(client.inetAddress, destinationPort.takeIf { it != 0 })
                     writeReply(output, 0x00, relay.localAddress, relay.localPort)
                     client.soTimeout = 0
                     // RFC 1928: the UDP association ends when its TCP control connection closes.
