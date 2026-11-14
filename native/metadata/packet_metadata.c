@@ -288,6 +288,58 @@ bool np_parse_packet_metadata(const uint8_t *packet,
     return false;
 }
 
+
+bool np_packet_reader_copy(const np_packet_reader_t *reader,
+                           size_t offset,
+                           uint8_t *destination,
+                           size_t length)
+{
+    size_t calculated_total = 0u;
+    size_t remaining = length;
+    size_t segment_offset = offset;
+    size_t copied = 0u;
+    size_t i;
+
+    if (reader == NULL || (length > 0u && destination == NULL) ||
+        (reader->segment_count > 0u && reader->segments == NULL) ||
+        offset > reader->total_length ||
+        length > reader->total_length - offset)
+        return false;
+
+    /* Validate the complete chain and its declared aggregate length first. */
+    for (i = 0u; i < reader->segment_count; ++i) {
+        const np_packet_segment_t *segment = &reader->segments[i];
+        if ((segment->length > 0u && segment->data == NULL) ||
+            segment->length > SIZE_MAX - calculated_total)
+            return false;
+        calculated_total += segment->length;
+    }
+    if (calculated_total != reader->total_length)
+        return false;
+    if (length == 0u)
+        return true;
+
+    for (i = 0u; i < reader->segment_count && remaining > 0u; ++i) {
+        const np_packet_segment_t *segment = &reader->segments[i];
+        size_t available;
+        size_t take;
+
+        if (segment_offset >= segment->length) {
+            segment_offset -= segment->length;
+            continue;
+        }
+
+        available = segment->length - segment_offset;
+        take = available < remaining ? available : remaining;
+        memcpy(destination + copied, segment->data + segment_offset, take);
+        copied += take;
+        remaining -= take;
+        segment_offset = 0u;
+    }
+
+    return remaining == 0u;
+}
+
 void np_metadata_queue_init(np_metadata_queue_t *queue)
 {
     if (queue == NULL)
