@@ -687,10 +687,44 @@ class MainActivity : Activity() {
                     routeResults.addView(detail)
                 }
 
+                val boostAssessment = if (networkIssue == null) {
+                    NovaBoostEngine.assess(
+                        context = context,
+                        aggregates = aggregates,
+                        gameProfile = GameCatalog.findByDisplayName(gameSpinner.selectedItem?.toString() ?: "Autre jeu")
+                    )
+                } else null
+
                 routeResults.addView(label(
-                    "RECOMMANDATIONS DU DECISION ENGINE", 13f, accentColor, true, Gravity.START
+                    "NOVA BOOST — ÉVALUATION", 13f, accentColor, true, Gravity.START
                 ).apply { setPadding(0, dp(12), 0, dp(6)) })
-                recommendations.forEach { recommendation ->
+
+                if (boostAssessment != null) {
+                    val boostCard = card()
+                    boostCard.addView(label(
+                        "ÉTAT : ${boostAssessment.mode}",
+                        14f, Color.WHITE, true, Gravity.START
+                    ))
+                    boostCard.addView(label(
+                        boostAssessment.summary,
+                        12f, mutedColor, false, Gravity.START
+                    ).apply { setPadding(0, dp(6), 0, dp(6)) })
+                    boostCard.addView(label(
+                        "Jeu : ${boostAssessment.gameProfile.displayName}\nRoutage automatique : non disponible\nVPN démarré : non",
+                        11f, accentColor, false, Gravity.START
+                    ).apply { setPadding(0, dp(4), 0, dp(4)) })
+                    boostAssessment.limitations.forEach { limitation ->
+                        boostCard.addView(label(
+                            "• $limitation", 11f, mutedColor, false, Gravity.START
+                        ).apply { setPadding(0, dp(3), 0, dp(3)) })
+                    }
+                    routeResults.addView(boostCard)
+                }
+
+                routeResults.addView(label(
+                    "RECOMMANDATIONS FONDÉES SUR LES MESURES", 13f, accentColor, true, Gravity.START
+                ).apply { setPadding(0, dp(12), 0, dp(6)) })
+                (boostAssessment?.recommendations ?: recommendations).forEach { recommendation ->
                     val item = card()
                     item.addView(label(recommendation.title, 14f, Color.WHITE, true, Gravity.START))
                     item.addView(label(recommendation.explanation, 12f, mutedColor, false, Gravity.START)
