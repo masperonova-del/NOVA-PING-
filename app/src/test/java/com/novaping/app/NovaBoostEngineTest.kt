@@ -34,7 +34,7 @@ class NovaBoostEngineTest {
 
         assertEquals(BoostMode.OBSERVE, result.mode)
         assertTrue(result.recommendations.any { it.title == "Résolution DNS à vérifier" })
-        assertTrue(result.summary.contains("restent en observation"))
+        assertTrue(result.summary.contains("reste en observation"))
         assertFalse(result.routingAvailable)
         assertFalse(result.vpnConsentRequired)
     }
