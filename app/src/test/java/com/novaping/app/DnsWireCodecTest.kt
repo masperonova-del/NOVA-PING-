@@ -9,7 +9,7 @@ import org.junit.Test
 class DnsWireCodecTest {
     private fun response(type: DnsRecordType, data: ByteArray, ttl: Int = 120): ByteArray {
         val query = DnsWireCodec.encodeQuery("example.com", type, 0x4a21)
-        val result = query.copyOf(query.size + 16 + data.size)
+        val result = query.copyOf(query.size + 12 + data.size)
         result[2] = 0x81.toByte()
         result[3] = 0x80.toByte()
         result[6] = 0
@@ -41,8 +41,8 @@ class DnsWireCodecTest {
         val aaaa = DnsWireCodec.encodeQuery("example.com", DnsRecordType.AAAA, 0x5678)
         assertEquals(0x12, a[0].toInt() and 0xff)
         assertEquals(0x34, a[1].toInt() and 0xff)
-        assertEquals(1, a[a.size - 4].toInt() and 0xff)
-        assertEquals(28, aaaa[aaaa.size - 4].toInt() and 0xff)
+        assertEquals(1, a[a.size - 3].toInt() and 0xff)
+        assertEquals(28, aaaa[aaaa.size - 3].toInt() and 0xff)
         assertEquals("example.com", DnsWireCodec.normalizeHostname("Example.COM."))
     }
 
