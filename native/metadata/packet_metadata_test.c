@@ -263,6 +263,7 @@ static void test_shared_packet_metadata_vectors(const char *path)
 
         if (line[0] == '#' || line[0] == '\n' || line[0] == '\r')
             continue;
+        line[strcspn(line, "\r\n")] = '\0';
         for (i = 0; i < 11u; ++i) {
             char *separator;
             fields[i] = cursor;
