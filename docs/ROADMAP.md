@@ -287,3 +287,18 @@ Une réponse HTTPS vers un service cloud n'est pas le ping du serveur de jeu. Un
 - [ ] Relier les seules métadonnées admissibles au registre local des observations.
 
 **Limite :** le décodeur est testé sur des paquets fournis aux tests unitaires. Il ne capture encore aucun trafic réel et ne mesure pas le ping CODM. Le moteur WireGuard embarqué ne remplace pas un adaptateur générique de capture et de transfert.
+
+
+## Version 1.25.0-dev — Décision d'architecture capture Android
+
+- [x] Vérifier les obligations Android de consentement système, TUN, protection des sockets et cycle de vie VPN.
+- [x] Évaluer un moteur tun2socks compatible Android et documenter ses contraintes SOCKS5.
+- [x] Identifier le risque de double lecture du descripteur TUN et exiger un point d'observation dans le chemin natif.
+- [x] Définir les critères d'activation et les contrôles anti-interruption du trafic.
+- [ ] Implémenter un pont SOCKS5 local avec TCP CONNECT, UDP ASSOCIATE et sockets protégés.
+- [ ] Ajouter un point d'observation non bloquant au moteur de transfert sélectionné.
+- [ ] Implémenter le service Android avec consentement et filtrage exact du package.
+- [ ] Vérifier les flux TCP/UDP/DNS IPv4/IPv6, l'arrêt, la révocation et la reprise du réseau.
+- [ ] Relier les métadonnées locales au registre et à l'interface Game Intelligence.
+
+**Limite :** aucune capture Android en direct n'est activée. HEV reste un candidat d'intégration jusqu'à validation du pont SOCKS5 et du point d'observation. Voir `docs/ANDROID-VPN-CAPTURE-ADR.md`.

@@ -51,7 +51,7 @@ The existing WireGuard dependency is a WireGuard tunnel backend, not a generic p
 
 WireGuard Android embedding reference: https://github.com/WireGuard/wireguard-android
 
-## Required next implementation stage
+## Android capture architecture decision\n\nThe forwarding-engine evaluation and activation gate are documented in [ADR-001](ANDROID-VPN-CAPTURE-ADR.md). HEV tun2socks is a candidate forwarding component, not yet integrated: it needs a SOCKS5 endpoint and has no documented per-packet callback. A separate reader on the same TUN descriptor is unsafe because it can consume packets that should be forwarded. The next implementation must solve the metadata tap and direct-connect SOCKS5 bridge before live capture is enabled.\n\n## Required next implementation stage
 
 Before enabling live capture, a separate engineering change must provide:
 
