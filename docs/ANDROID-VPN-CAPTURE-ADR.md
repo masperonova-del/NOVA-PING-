@@ -224,3 +224,20 @@ Avant toute intégration, il faut choisir et vérifier l'une de ces stratégies 
 La présence de quatre ABI dans le script amont ne garantit pas que chaque artefact AAR publié contienne ces quatre ABI : les bibliothèques natives de l'artefact devront être inspectées séparément. La provenance, les ABI réellement empaquetées, le niveau API et la reproductibilité de la construction seront des contrôles CI avant toute distribution.
 
 **Décision :** le commit HEV ci-dessus devient la référence source candidate pour le prototype natif, pas une dépendance intégrée. Aucun AAR n'est ajouté, aucune ABI n'est déclarée validée et le service VPN reste inactif.
+
+## Prototype natif de métadonnées — première tranche isolée
+
+Un premier composant C indépendant du moteur HEV a été ajouté sous `native/metadata/` :
+
+- `packet_metadata.h/.c` définit un enregistrement fixe contenant uniquement version IP, famille/adresse distante, transport, direction, port distant, longueur du paquet et indicateur de fragmentation.
+- Le parseur traite IPv4 et IPv6, les extensions IPv6 Hop-by-Hop, Routing, Destination Options, Fragment et AH, ainsi que les en-têtes TCP/UDP.
+- Les adresses distantes privées, réservées ou non globales sont rejetées ; une seule extrémité doit correspondre à une adresse locale fournie explicitement.
+- Les fragments non initiaux, les longueurs incohérentes, les protocoles non pris en charge et les en-têtes tronqués sont rejetés.
+- Aucune charge utile, aucun contenu applicatif et aucun tampon de paquet ne sont conservés dans le résultat.
+- Une file SPSC de 64 enregistrements fixes utilise des opérations atomiques sans attente active. Si elle est pleine, le nouvel échantillon de télémétrie est abandonné et le compteur de pertes augmente ; le composant ne touche jamais au paquet source.
+
+Des tests natifs couvrent IPv4 UDP sortant, IPv4 TCP entrant, IPv6 UDP sortant, les paquets malformés, le rejet d'une destination privée, le premier fragment et la saturation de la file.
+
+Le workflow Android CI compile ce composant en C11 avec avertissements traités comme erreurs et exécute le binaire de test sur l'hôte Linux.
+
+**Limite explicite :** ce prototype parse des buffers de test fournis par le harnais ; il n'est pas encore branché aux points HEV, ne reçoit aucun paquet de l'appareil et n'est pas appelé par JNI. Le test CI prouve la compilation et le comportement des cas unitaires, pas la sûreté temps réel du chemin de transfert. Le VPN reste inactif et aucune redirection n'est introduite.
