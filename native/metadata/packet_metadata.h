@@ -52,10 +52,18 @@ typedef struct {
     size_t length;
 } np_packet_segment_t;
 
+typedef bool (*np_packet_reader_copy_fn)(void *context,
+                                              size_t offset,
+                                              uint8_t *destination,
+                                              size_t length);
+
 typedef struct {
     const np_packet_segment_t *segments;
     size_t segment_count;
     size_t total_length;
+    /* Optional zero-allocation reader, e.g. an adapter over pbuf_copy_partial. */
+    np_packet_reader_copy_fn copy;
+    void *copy_context;
 } np_packet_reader_t;
 
 /* Copies only the requested byte range; supports headers crossing segments. */
