@@ -201,3 +201,26 @@ L'extraction native doit vérifier les longueurs d'en-tête, IPv4 IHL, extension
 6. Seulement après ces tests, intégrer l'AAR natif au service Android encore inactif.
 
 Aucune instrumentation native ni activation VPN n'est déclarée comme réalisée par cette inspection. Il s'agit du plan d'implémentation fondé sur les points de code vérifiés.
+
+
+## Verrouillage de la source HEV et compatibilité Android — 14 novembre 2026
+
+La vérification de provenance a identifié un commit amont immuable pour la prochaine expérimentation :
+
+- Dépôt : https://github.com/heiher/hev-socks5-tunnel
+- Commit exact consulté : `75dbc1e9ace6c70d3d1b94df7c283efe1de7effc`
+- Révision amont : `HevConfig: Bump up to 2.20.0.`
+- Licence du fichier racine `LICENSE` : MIT. Toute redistribution du code ou d'une portion substantielle devra conserver l'avis de copyright et le texte de permission.
+- Les fichiers Android amont `Android.mk` et `Application.mk` ont été inspectés. La construction amont déclare les ABI `armeabi-v7a`, `arm64-v8a`, `x86` et `x86_64`, ainsi que `APP_PLATFORM := android-29`. Le linkage inclut aussi les options de pages mémoire de 16 Kio.
+
+### Blocage de compatibilité à résoudre avant l'AAR
+
+NOVA PING déclare actuellement `minSdk = 26`, tandis que la configuration Android amont inspectée cible la plateforme 29. Cela ne prouve pas à lui seul une incompatibilité à l'exécution, mais interdit de supposer que l'AAR précompilé fonctionnera sur tous les appareils actuellement pris en charge par NOVA PING.
+
+Avant toute intégration, il faut choisir et vérifier l'une de ces stratégies :
+1. reconstruire HEV avec un niveau NDK compatible avec le `minSdk` retenu, puis tester sur appareil/API minimale ;
+2. ou relever explicitement le `minSdk` de NOVA PING si le produit accepte réellement d'abandonner les appareils plus anciens.
+
+La présence de quatre ABI dans le script amont ne garantit pas que chaque artefact AAR publié contienne ces quatre ABI : les bibliothèques natives de l'artefact devront être inspectées séparément. La provenance, les ABI réellement empaquetées, le niveau API et la reproductibilité de la construction seront des contrôles CI avant toute distribution.
+
+**Décision :** le commit HEV ci-dessus devient la référence source candidate pour le prototype natif, pas une dépendance intégrée. Aucun AAR n'est ajouté, aucune ABI n'est déclarée validée et le service VPN reste inactif.
