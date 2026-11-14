@@ -310,4 +310,214 @@ class LocalSocks5BridgeTest {
         echoThread.join(2_000)
         echo.close()
     }
+
+    @Test
+    fun tcpConnectResolvesDomainThroughInjectedProtectedDnsResolver() {
+        val loopback = InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1))
+        ServerSocket(0, 1, loopback).use { destination ->
+            val echoThread = thread(isDaemon = true) {
+                destination.accept().use { peer ->
+                    val buffer = ByteArray(4)
+                    val count = peer.getInputStream().read(buffer)
+                    if (count > 0) peer.getOutputStream().apply {
+                        write(buffer, 0, count)
+                        flush()
+                    }
+                }
+            }
+            DatagramSocket(null).use { dnsServer ->
+                dnsServer.bind(InetSocketAddress(loopback, 0))
+                val dnsThread = startDnsResponder(dnsServer, loopback.address)
+                var dnsProtected = 0
+                var upstreamProtected = 0
+                val resolver = ProtectedDnsResolver(
+                    resolverAddress = loopback,
+                    protectDatagramSocket = { dnsProtected++; true },
+                    protectTcpSocket = { false },
+                    resolverPort = dnsServer.localPort,
+                    transactionIds = { 0x3210 }
+                )
+                val bridge = LocalSocks5Bridge(
+                    protectUpstreamSocket = { upstreamProtected++; true },
+                    bindAddress = loopback,
+                    protectedDnsResolver = resolver
+                )
+                try {
+                    Socket(loopback, bridge.start()).use { client ->
+                        client.soTimeout = 5_000
+                        val input = DataInputStream(client.getInputStream())
+                        val output = DataOutputStream(client.getOutputStream())
+                        authenticateBridgeClient(input, output, bridge)
+
+                        val domain = "nova-test.invalid".toByteArray(Charsets.US_ASCII)
+                        output.writeByte(5)
+                        output.writeByte(1)
+                        output.writeByte(0)
+                        output.writeByte(3)
+                        output.writeByte(domain.size)
+                        output.write(domain)
+                        output.writeShort(destination.localPort)
+                        output.flush()
+
+                        assertEquals(5, input.readUnsignedByte())
+                        assertEquals(0, input.readUnsignedByte())
+                        assertEquals(0, input.readUnsignedByte())
+                        val replyType = input.readUnsignedByte()
+                        val addressLength = when (replyType) {
+                            1 -> 4
+                            4 -> 16
+                            else -> error("Unexpected SOCKS5 reply address type: $replyType")
+                        }
+                        input.skipBytes(addressLength + 2)
+                        val payload = "DNS!".toByteArray(Charsets.US_ASCII)
+                        output.write(payload)
+                        output.flush()
+                        val echoed = ByteArray(payload.size)
+                        input.readFully(echoed)
+                        assertArrayEquals(payload, echoed)
+                    }
+                    assertTrue("DNS UDP socket must be protected", dnsProtected > 0)
+                    assertTrue("Resolved TCP upstream socket must be protected", upstreamProtected > 0)
+                    dnsThread.join(2_000)
+                    echoThread.join(2_000)
+                } finally {
+                    bridge.close()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun udpAssociateResolvesDomainThroughInjectedProtectedDnsResolver() {
+        val loopback = InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1))
+        DatagramSocket(null).use { echo ->
+            echo.bind(InetSocketAddress(loopback, 0))
+            echo.soTimeout = 5_000
+            val echoThread = thread(isDaemon = true) {
+                val packet = DatagramPacket(ByteArray(512), 512)
+                echo.receive(packet)
+                echo.send(DatagramPacket(packet.data, packet.offset, packet.length, packet.address, packet.port))
+            }
+            DatagramSocket(null).use { dnsServer ->
+                dnsServer.bind(InetSocketAddress(loopback, 0))
+                val dnsThread = startDnsResponder(dnsServer, loopback.address)
+                var dnsProtected = 0
+                var upstreamUdpProtected = 0
+                val resolver = ProtectedDnsResolver(
+                    resolverAddress = loopback,
+                    protectDatagramSocket = { dnsProtected++; true },
+                    protectTcpSocket = { false },
+                    resolverPort = dnsServer.localPort,
+                    transactionIds = { 0x4321 }
+                )
+                val bridge = LocalSocks5Bridge(
+                    protectUpstreamSocket = { true },
+                    bindAddress = loopback,
+                    protectUpstreamDatagramSocket = { upstreamUdpProtected++; true },
+                    protectedDnsResolver = resolver
+                )
+                try {
+                    Socket(loopback, bridge.start()).use { control ->
+                        control.soTimeout = 5_000
+                        val input = DataInputStream(control.getInputStream())
+                        val output = DataOutputStream(control.getOutputStream())
+                        authenticateBridgeClient(input, output, bridge)
+
+                        output.write(byteArrayOf(5, 3, 0, 1, 0, 0, 0, 0, 0, 0))
+                        output.flush()
+                        assertEquals(5, input.readUnsignedByte())
+                        assertEquals(0, input.readUnsignedByte())
+                        assertEquals(0, input.readUnsignedByte())
+                        val replyType = input.readUnsignedByte()
+                        val replyAddressLength = when (replyType) {
+                            1 -> 4
+                            4 -> 16
+                            else -> error("Unexpected SOCKS5 reply address type: $replyType")
+                        }
+                        val relayAddress = InetAddress.getByAddress(ByteArray(replyAddressLength).also(input::readFully))
+                        val relayPort = input.readUnsignedShort()
+
+                        DatagramSocket(null).use { clientUdp ->
+                            clientUdp.bind(InetSocketAddress(loopback, 0))
+                            clientUdp.soTimeout = 5_000
+                            val payload = "DNS-UDP".toByteArray(Charsets.US_ASCII)
+                            val frame = Socks5Codec.encodeUdpDatagram(
+                                Socks5UdpDatagram(
+                                    Socks5Endpoint(Socks5Address.Domain("nova-test.invalid"), echo.localPort),
+                                    payload
+                                )
+                            )
+                            clientUdp.send(DatagramPacket(frame, frame.size, relayAddress, relayPort))
+                            val response = DatagramPacket(ByteArray(1024), 1024)
+                            clientUdp.receive(response)
+                            val decoded = Socks5Codec.parseUdpDatagram(
+                                response.data.copyOfRange(response.offset, response.offset + response.length)
+                            )
+                            assertTrue(decoded != null)
+                            assertArrayEquals(payload, decoded!!.payload)
+                        }
+                        assertTrue("DNS UDP socket must be protected", dnsProtected > 0)
+                        assertTrue("Resolved UDP upstream socket must be protected", upstreamUdpProtected > 0)
+                        dnsThread.join(2_000)
+                        echoThread.join(2_000)
+                    }
+                } finally {
+                    bridge.close()
+                }
+            }
+        }
+    }
+
+    private fun authenticateBridgeClient(
+        input: DataInputStream,
+        output: DataOutputStream,
+        bridge: LocalSocks5Bridge
+    ) {
+        val username = bridge.credentials.username.toByteArray(Charsets.UTF_8)
+        val password = bridge.credentials.password.toByteArray(Charsets.UTF_8)
+        output.write(byteArrayOf(5, 1, 2))
+        output.flush()
+        assertEquals(5, input.readUnsignedByte())
+        assertEquals(2, input.readUnsignedByte())
+        output.writeByte(1)
+        output.writeByte(username.size)
+        output.write(username)
+        output.writeByte(password.size)
+        output.write(password)
+        output.flush()
+        assertEquals(1, input.readUnsignedByte())
+        assertEquals(0, input.readUnsignedByte())
+    }
+
+    private fun startDnsResponder(server: DatagramSocket, address: ByteArray): Thread =
+        thread(isDaemon = true) {
+            val packet = DatagramPacket(ByteArray(512), 512)
+            server.receive(packet)
+            val query = packet.data.copyOfRange(packet.offset, packet.offset + packet.length)
+            val response = query.copyOf(query.size + 16)
+            response[2] = 0x81.toByte()
+            response[3] = 0x80.toByte()
+            response[6] = 0
+            response[7] = 1
+            response[8] = 0
+            response[9] = 0
+            response[10] = 0
+            response[11] = 0
+            var offset = query.size
+            response[offset++] = 0xc0.toByte()
+            response[offset++] = 0x0c
+            response[offset++] = 0
+            response[offset++] = 1
+            response[offset++] = 0
+            response[offset++] = 1
+            response[offset++] = 0
+            response[offset++] = 0
+            response[offset++] = 0
+            response[offset++] = 45
+            response[offset++] = 0
+            response[offset++] = address.size.toByte()
+            address.copyInto(response, offset)
+            server.send(DatagramPacket(response, response.size, packet.address, packet.port))
+        }
+
 }
