@@ -186,7 +186,7 @@ class MainActivity : Activity() {
         renderStabilityHistory()
         root.addView(stabilityCard)
 
-        root.addView(sectionTitle("PROFIL DE JEU"))
+        root.addView(sectionTitle("GAME INTELLIGENCE — SERVEURS DE JEU"))
         val gameCard = card()
         gameCard.addView(label("Sélectionne ton jeu", 14f, Color.WHITE, true, Gravity.START))
         gameSpinner = Spinner(this).apply {
@@ -197,10 +197,48 @@ class MainActivity : Activity() {
             )
         }
         gameCard.addView(gameSpinner)
+        val gameEvidenceStatus = label("", 13f, Color.WHITE, true, Gravity.START).apply {
+            setPadding(0, dp(12), 0, dp(4))
+        }
+        gameCard.addView(gameEvidenceStatus)
+        val gameEvidenceDetails = label("", 12f, mutedColor, false, Gravity.START)
+        gameCard.addView(gameEvidenceDetails)
+        // No endpoint is seeded until its source and game-server role are independently verified.
+        val gameEvidenceRecords = emptyList<GameServerEvidence>()
+        fun refreshGameEvidenceStatus(position: Int) {
+            val profile = GameCatalog.profiles.getOrNull(position) ?: GameCatalog.profiles.last()
+            val usable = GameEvidenceRegistry.usableForGame(
+                gameEvidenceRecords, profile.id, System.currentTimeMillis()
+            )
+            gameEvidenceStatus.text = if (usable.isEmpty()) {
+                "AUCUN SERVEUR DE MATCH VÉRIFIÉ"
+            } else {
+                "\${usable.size} preuve(s) serveur actuellement valide(s)"
+            }
+            gameEvidenceStatus.setTextColor(
+                if (usable.isEmpty()) Color.rgb(255, 190, 110)
+                else Color.rgb(100, 210, 150)
+            )
+            gameEvidenceDetails.text = if (usable.isEmpty()) {
+                "Jeu : \${profile.displayName}\nRégions et adresses : non confirmées\nAucune IP inventée. Les points Google/Cloudflare/Microsoft restent des contrôles Internet, pas des serveurs de match."
+            } else {
+                usable.joinToString("\n") { evidence ->
+                    "\${evidence.region} • \${evidence.endpointHost} • \${evidence.protocol}"
+                }
+            }
+        }
+        gameSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(
+                parent: android.widget.AdapterView<*>?, view: android.view.View?,
+                position: Int, id: Long
+            ) = refreshGameEvidenceStatus(position)
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
+        }
+        refreshGameEvidenceStatus(gameSpinner.selectedItemPosition)
         gameCard.addView(label(
-            "Le profil organise les diagnostics. Les destinations de match ne sont pas considérées comme vérifiées tant que leur origine et leur accessibilité ne sont pas confirmées.",
+            "Une destination ne sera affichée qu'après vérification de sa source, de son rôle de serveur de match et de sa disponibilité de mesure.",
             12f, mutedColor, false, Gravity.START
-        ).apply { setPadding(0, dp(8), 0, 0) })
+        ).apply { setPadding(0, dp(10), 0, 0) })
         root.addView(gameCard)
 
         root.addView(sectionTitle("COMPARAISON DE DESTINATIONS"))
