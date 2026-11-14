@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 import java.net.InetAddress
 
 class GamePacketMetadataParserTest {
@@ -95,6 +96,50 @@ class GamePacketMetadataParserTest {
         val packet = ipv4Udp(localV4, remoteV4, 54000, 7500)
         assertNull(GamePacketMetadataParser.parse(packet, setOf("localhost")))
         assertNull(GamePacketMetadataParser.parse(packet, emptySet()))
+    }
+
+
+    @Test fun matchesSharedPacketMetadataVectors() {
+        val fixturePath = System.getenv("NOVA_PACKET_FIXTURES")
+            ?: "../test-fixtures/packet_metadata_vectors.tsv"
+        val fixture = File(fixturePath)
+        assertTrue("Shared fixture file missing: $fixturePath", fixture.isFile)
+        val vectors = fixture.readLines()
+            .filter { it.isNotBlank() && !it.startsWith("#") }
+        assertTrue("Expected shared packet vectors", vectors.size >= 8)
+
+        vectors.forEach { line ->
+            val fields = line.split('\t')
+            assertEquals("Malformed vector: $line", 11, fields.size)
+            val localBytes = decodeHex(fields[1])
+            val packet = decodeHex(fields[2])
+            val localAddress = InetAddress.getByAddress(localBytes).hostAddress
+            val result = GamePacketMetadataParser.parse(packet, setOf(localAddress))
+
+            if (fields[3] == "reject") {
+                assertNull("Expected rejection: ${fields[0]}", result)
+            } else {
+                assertEquals("Expected acceptance: ${fields[0]}", "accept", fields[3])
+                val metadata = requireNotNull(result) { "Missing result: ${fields[0]}" }
+                val expectedRemote = decodeHex(fields[5])
+                assertEquals(fields[0], fields[4].toInt(), metadata.ipVersion)
+                assertTrue(fields[0], expectedRemote.contentEquals(
+                    InetAddress.getByName(metadata.remoteAddress).address
+                ))
+                assertEquals(fields[0], fields[6].toInt(), metadata.remotePort)
+                assertEquals(fields[0], GameEndpointTransport.valueOf(fields[7]), metadata.transport)
+                assertEquals(fields[0], GamePacketDirection.valueOf(fields[8]), metadata.direction)
+                assertEquals(fields[0], fields[9].toInt(), metadata.packetLengthBytes)
+                assertEquals(fields[0], fields[10].toInt() != 0, metadata.fragmented)
+            }
+        }
+    }
+
+    private fun decodeHex(value: String): ByteArray {
+        require(value.isNotEmpty() && value.length % 2 == 0)
+        return ByteArray(value.length / 2) { index ->
+            value.substring(index * 2, index * 2 + 2).toInt(16).toByte()
+        }
     }
 
     private fun ipv4Udp(
