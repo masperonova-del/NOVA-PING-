@@ -32,6 +32,7 @@ jobs:
             -I native/metadata \
             native/metadata/packet_metadata.c \
             native/metadata/pbuf_reader_adapter.c \
+            native/metadata/metadata_tap.c \
             native/metadata/packet_metadata_test.c \
             -o /tmp/nova-packet-metadata-test
           /tmp/nova-packet-metadata-test test-fixtures/packet_metadata_vectors.tsv
@@ -42,6 +43,7 @@ jobs:
             -I native/metadata \
             native/metadata/packet_metadata.c \
             native/metadata/pbuf_reader_adapter.c \
+            native/metadata/metadata_tap.c \
             native/metadata/packet_metadata_test.c \
             -o /tmp/nova-packet-metadata-sanitized
           /tmp/nova-packet-metadata-sanitized test-fixtures/packet_metadata_vectors.tsv
@@ -65,6 +67,10 @@ jobs:
             "$CLANG" --target="$target" -std=c11 -Wall -Wextra -Werror -pedantic \
               -fPIC -I native/metadata \
               -c native/metadata/pbuf_reader_adapter.c \
+            "$CLANG" --target="$target" -std=c11 -Wall -Wextra -Werror -pedantic \
+              -fPIC -I native/metadata \
+              -c native/metadata/metadata_tap.c \
+              -o "/tmp/nova-metadata-tap-$target.o"
               -o "/tmp/nova-pbuf-reader-adapter-$target.o"
             "$CLANG" --target="$target" -std=c11 -Wall -Wextra -Werror -pedantic \
               -fPIC -I native/metadata \
