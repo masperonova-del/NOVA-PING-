@@ -53,10 +53,10 @@ internal class LocalSocks5UdpRelay(
             val upstream = DatagramSocket(null)
             upstream.reuseAddress = false
             upstream.bind(InetSocketAddress(0))
+            upstreamSocket = upstream
             check(protectUpstreamDatagramSocket(upstream)) {
                 "Impossible de protéger le socket UDP amont du tunnel"
             }
-            upstreamSocket = upstream
             receiver.start()
             upstreamReceiver.start()
             return socket.localPort
@@ -64,6 +64,8 @@ internal class LocalSocks5UdpRelay(
             running.set(false)
             relaySocket?.close()
             relaySocket = null
+            upstreamSocket?.close()
+            upstreamSocket = null
             throw error
         }
     }
