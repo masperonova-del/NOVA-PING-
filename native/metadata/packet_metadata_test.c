@@ -1,5 +1,6 @@
 #include "packet_metadata.h"
 #include "pbuf_reader_adapter.h"
+#include "metadata_tap.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -695,6 +696,52 @@ static void test_pbuf_reader_adapter_rejects_invalid_setup(void)
     assert(!np_pbuf_reader_init(&reader, &context, &marker, 1u, NULL));
 }
 
+
+static void test_metadata_tap_queues_metadata_without_mutating_packet(void)
+{
+    uint8_t packet[40] = {
+        0x45, 0x00, 0x00, 0x28, 0, 1, 0, 0, 64, 17, 0, 0,
+        10, 0, 0, 2, 8, 8, 8, 8,
+        0xc3, 0x50, 0, 53, 0, 20, 0, 0,
+        0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x11, 0x22,
+        0x33, 0x44, 0x55, 0x66
+    };
+    uint8_t original[sizeof(packet)];
+    const np_packet_segment_t segments[] = {
+        { packet, 12u }, { packet + 12u, 8u },
+        { packet + 20u, 20u }
+    };
+    fake_pbuf_t pbuf = {
+        .segments = segments,
+        .segment_count = sizeof(segments) / sizeof(segments[0]),
+        .total_length = sizeof(packet)
+    };
+    np_pbuf_reader_context_t context;
+    np_packet_reader_t reader;
+    const np_local_address_t local = {
+        .family = NP_ADDRESS_IPV4, .bytes = { 10, 0, 0, 2 }
+    };
+    np_metadata_tap_t tap;
+    np_packet_metadata_t result;
+
+    memcpy(original, packet, sizeof(packet));
+    assert(np_metadata_tap_init(&tap));
+    assert(np_pbuf_reader_init(&reader, &context, &pbuf,
+                               pbuf.total_length, fake_pbuf_copy_partial));
+    assert(np_metadata_tap_observe(&tap, &reader, &local, 1u));
+    assert(memcmp(packet, original, sizeof(packet)) == 0);
+    assert(np_metadata_tap_poll(&tap, &result));
+    assert(result.transport == NP_TRANSPORT_UDP);
+    assert(result.remote_port == 53u);
+    assert(result.direction == NP_DIRECTION_OUTBOUND);
+    assert(!np_metadata_tap_poll(&tap, &result));
+
+    /* Invalid input is discarded and never reaches the consumer. */
+    packet[0] = 0x10;
+    assert(!np_metadata_tap_observe(&tap, &reader, &local, 1u));
+    assert(!np_metadata_tap_poll(&tap, &result));
+}
+
 static void test_header_only_reader_parser_rejects_bad_lengths(void)
 {
     uint8_t packet[28] = {
@@ -735,6 +782,7 @@ int main(int argc, char **argv)
     test_callback_reader_rejects_mixed_sources();
     test_pbuf_reader_adapter_over_chained_storage();
     test_pbuf_reader_adapter_rejects_invalid_setup();
+    test_metadata_tap_queues_metadata_without_mutating_packet();
     if (argc > 1) test_shared_packet_metadata_vectors(argv[1]);
     puts("NOVA native packet metadata tests: PASS");
     return 0;
