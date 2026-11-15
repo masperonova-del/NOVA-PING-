@@ -15,6 +15,8 @@ fi
 git -C "${DEST}" checkout --detach "${HEV_REV}"
 git -C "${DEST}" reset --hard "${HEV_REV}"
 git -C "${DEST}" clean -fdx
+git -C "${DEST}" submodule update --init --recursive
+
 mkdir -p "${DEST}/src/nova-metadata"
 cp "${ROOT}"/native/metadata/packet_metadata.[ch] "${DEST}/src/nova-metadata/"
 cp "${ROOT}"/native/metadata/pbuf_reader_adapter.[ch] "${DEST}/src/nova-metadata/"
