@@ -70,8 +70,8 @@ object HevMetadataNative {
         return consumer.submit<List<HevPacketMetadata>> {
             if (!isAvailable()) return@submit emptyList()
             buildList {
-                repeat(limit) {
-                    val raw = nativePoll() ?: return@repeat
+                for (index in 0 until limit) {
+                    val raw = nativePoll() ?: break
                     decode(raw)?.let(::add)
                 }
             }
