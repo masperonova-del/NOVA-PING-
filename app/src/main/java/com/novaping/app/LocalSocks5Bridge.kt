@@ -290,7 +290,8 @@ internal class LocalSocks5Bridge(
         if (!running.getAndSet(false)) return
         try { serverSocket?.close() } catch (_: Exception) { }
         serverSocket = null
-        activeSockets.toList().forEach(::closeSocket)
+        // Concurrent removals can race Kotlin's optimized Collection.toList() iterator.
+        activeSockets.toArray(emptyArray<Socket>()).forEach(::closeSocket)
         workers.shutdownNow()
         try { workers.awaitTermination(2, TimeUnit.SECONDS) } catch (_: InterruptedException) {
             Thread.currentThread().interrupt()
