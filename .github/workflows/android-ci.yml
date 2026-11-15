@@ -44,6 +44,22 @@ jobs:
             NDK_LIBS_OUT="${RUNNER_TEMP}/hev-libs" \
             -j2
 
+      - name: Package HEV native libraries for Android APK
+        shell: bash
+        run: |
+          HEV_LIBS="${RUNNER_TEMP}/hev-libs"
+          NDK="$ANDROID_HOME/ndk/27.2.12479018"
+          READELF="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          mkdir -p app/src/main/jniLibs
+          for abi in arm64-v8a armeabi-v7a x86 x86_64; do
+            source_lib="$HEV_LIBS/$abi/libhev-socks5-tunnel.so"
+            test -s "$source_lib"
+            mkdir -p "app/src/main/jniLibs/$abi"
+            cp "$source_lib" "app/src/main/jniLibs/$abi/"
+            "$READELF" -Ws "$source_lib" | grep -q 'Java_com_novaping_app_HevMetadataNative_nativePoll'
+            "$READELF" -Ws "$source_lib" | grep -q 'hev_socks5_tunnel_metadata_poll'
+          done
+
       - name: Run native packet metadata tests
         run: |
           cc -std=c11 -Wall -Wextra -Werror -pedantic \
