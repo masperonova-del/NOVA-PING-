@@ -13,6 +13,8 @@ else
 fi
 
 git -C "${DEST}" checkout --detach "${HEV_REV}"
+git -C "${DEST}" reset --hard "${HEV_REV}"
+git -C "${DEST}" clean -fdx
 mkdir -p "${DEST}/src/nova-metadata"
 cp "${ROOT}"/native/metadata/packet_metadata.[ch] "${DEST}/src/nova-metadata/"
 cp "${ROOT}"/native/metadata/pbuf_reader_adapter.[ch] "${DEST}/src/nova-metadata/"
