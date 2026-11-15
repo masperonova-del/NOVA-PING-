@@ -85,6 +85,16 @@ internal class NovaVpnService : VpnService() {
                     startTunnel()
                 } catch (error: Exception) {
                     terminalError = error.message ?: "Démarrage VPN impossible"
+                    bridge?.close()
+                    bridge = null
+                    tunDescriptor?.let { fd ->
+                        runCatching { ParcelFileDescriptor.adoptFd(fd).close() }
+                    }
+                    tunDescriptor = null
+                    tunnelEstablished = false
+                    engineStarted = false
+                    engineThread = null
+                    stopping.set(false)
                     publishState("error", terminalError)
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     stopSelf(startId)
@@ -201,7 +211,9 @@ internal class NovaVpnService : VpnService() {
         tunnelEstablished = false
         stopping.set(false)
         stopForeground(STOP_FOREGROUND_REMOVE)
-        publishState("stopped", null)
+        val error = terminalError
+        terminalError = null
+        publishState(if (error == null) "stopped" else "error", error)
         stopSelf()
     }
 
