@@ -188,6 +188,7 @@ internal class NovaVpnService : VpnService() {
     }
 
     private fun stopTunnel() {
+        if (!tunnelEstablished && engineThread == null && bridge == null && tunDescriptor == null) return
         if (!stopping.compareAndSet(false, true)) return
         bridge?.close()
         bridge = null
