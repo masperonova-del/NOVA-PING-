@@ -1,4 +1,5 @@
 #include "packet_metadata.h"
+#include "pbuf_reader_adapter.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -586,6 +587,114 @@ static void test_callback_reader_rejects_mixed_sources(void)
     assert(!np_packet_reader_copy(&reader, 0u, &output, 1u));
 }
 
+
+typedef struct {
+    const np_packet_segment_t *segments;
+    size_t segment_count;
+    uint16_t total_length;
+    uint16_t fail_after;
+    size_t max_read_end;
+} fake_pbuf_t;
+
+/* Test double with the same copy/return contract as lwIP pbuf_copy_partial. */
+static uint16_t fake_pbuf_copy_partial(const void *opaque,
+                                       void *destination,
+                                       uint16_t length,
+                                       uint16_t offset)
+{
+    const fake_pbuf_t *pbuf = opaque;
+    size_t logical_offset = offset;
+    size_t remaining = length;
+    size_t copied = 0u;
+    size_t i;
+
+    if (pbuf == NULL || destination == NULL || offset >= pbuf->total_length)
+        return 0u;
+    if (pbuf->fail_after != 0u) {
+        if (offset >= pbuf->fail_after)
+            return 0u;
+        if (remaining > (size_t)pbuf->fail_after - offset)
+            remaining = (size_t)pbuf->fail_after - offset;
+    }
+
+    for (i = 0u; i < pbuf->segment_count && remaining > 0u; ++i) {
+        const np_packet_segment_t *segment = &pbuf->segments[i];
+        size_t take;
+        if (logical_offset >= segment->length) {
+            logical_offset -= segment->length;
+            continue;
+        }
+        take = segment->length - logical_offset;
+        if (take > remaining)
+            take = remaining;
+        memcpy((uint8_t *)destination + copied,
+               segment->data + logical_offset, take);
+        copied += take;
+        remaining -= take;
+        logical_offset = 0u;
+    }
+
+    if (pbuf->max_read_end < (size_t)offset + copied)
+        ((fake_pbuf_t *)pbuf)->max_read_end = (size_t)offset + copied;
+    return (uint16_t)copied;
+}
+
+static void test_pbuf_reader_adapter_over_chained_storage(void)
+{
+    const uint8_t packet[40] = {
+        0x45, 0x00, 0x00, 0x28, 0, 1, 0, 0, 64, 17, 0, 0,
+        10, 0, 0, 2, 8, 8, 8, 8,
+        0xc3, 0x50, 0, 53, 0, 20, 0, 0,
+        0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x11, 0x22,
+        0x33, 0x44, 0x55, 0x66
+    };
+    const np_packet_segment_t segments[] = {
+        { packet, 11u }, { packet + 11u, 9u },
+        { packet + 20u, 3u }, { packet + 23u, 17u }
+    };
+    fake_pbuf_t pbuf = {
+        .segments = segments,
+        .segment_count = sizeof(segments) / sizeof(segments[0]),
+        .total_length = sizeof(packet)
+    };
+    np_pbuf_reader_context_t context;
+    np_packet_reader_t reader;
+    const np_local_address_t local = {
+        .family = NP_ADDRESS_IPV4, .bytes = { 10, 0, 0, 2 }
+    };
+    np_packet_metadata_t result;
+
+    assert(np_pbuf_reader_init(&reader, &context, &pbuf,
+                               pbuf.total_length, fake_pbuf_copy_partial));
+    assert(np_parse_packet_metadata_reader(&reader, &local, 1u, &result));
+    assert(result.transport == NP_TRANSPORT_UDP);
+    assert(result.remote_port == 53u);
+    assert(pbuf.max_read_end == 28u);
+    assert(pbuf.max_read_end < pbuf.total_length);
+
+    /* A short pbuf_copy_partial result is rejected; no partial header is parsed. */
+    pbuf.max_read_end = 0u;
+    pbuf.fail_after = 27u;
+    assert(!np_parse_packet_metadata_reader(&reader, &local, 1u, &result));
+    assert(pbuf.max_read_end <= 27u);
+}
+
+static void test_pbuf_reader_adapter_rejects_invalid_setup(void)
+{
+    np_packet_reader_t reader;
+    np_pbuf_reader_context_t context;
+    const int marker = 1;
+    assert(!np_pbuf_reader_init(NULL, &context, &marker, 1u,
+                                fake_pbuf_copy_partial));
+    assert(!np_pbuf_reader_init(&reader, NULL, &marker, 1u,
+                                fake_pbuf_copy_partial));
+    assert(!np_pbuf_reader_init(&reader, &context, NULL, 1u,
+                                fake_pbuf_copy_partial));
+    assert(!np_pbuf_reader_init(&reader, &context, &marker, 0u,
+                                fake_pbuf_copy_partial));
+    assert(!np_pbuf_reader_init(&reader, &context, &marker, 1u, NULL));
+}
+
 static void test_header_only_reader_parser_rejects_bad_lengths(void)
 {
     uint8_t packet[28] = {
@@ -624,6 +733,8 @@ int main(int argc, char **argv)
     test_header_only_reader_parser_rejects_bad_lengths();
     test_callback_reader_copies_headers_only();
     test_callback_reader_rejects_mixed_sources();
+    test_pbuf_reader_adapter_over_chained_storage();
+    test_pbuf_reader_adapter_rejects_invalid_setup();
     if (argc > 1) test_shared_packet_metadata_vectors(argv[1]);
     puts("NOVA native packet metadata tests: PASS");
     return 0;
