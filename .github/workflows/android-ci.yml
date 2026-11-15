@@ -125,6 +125,23 @@ jobs:
         run: gradle :app:assembleDebug
       - name: Build release APK
         run: gradle :app:assembleRelease
+      - name: Verify HEV libraries are packaged in debug and release APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for apk in \
+            app/build/outputs/apk/debug/app-debug.apk \
+            app/build/outputs/apk/release/app-release-unsigned.apk; do
+            test -f "$apk"
+            entries="$(unzip -Z1 "$apk")"
+            for abi in arm64-v8a armeabi-v7a x86 x86_64; do
+              expected="lib/$abi/libhev-socks5-tunnel.so"
+              grep -Fxq "$expected" <<< "$entries" || {
+                echo "Missing $expected in $apk" >&2
+                exit 1
+              }
+            done
+          done
       - name: Generate release dependency inventory
         run: gradle :app:dependencies --configuration releaseRuntimeClasspath > dependency-report.txt
       - name: Upload debug and release APKs
