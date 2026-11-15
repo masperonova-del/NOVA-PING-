@@ -61,9 +61,11 @@ jobs:
             "$CLANG" --target="$target" -std=c11 -Wall -Wextra -Werror -pedantic \
               -fPIC -I native/metadata \
               -c native/metadata/packet_metadata.c \
+              -o "/tmp/nova-packet-metadata-$target.o"
+            "$CLANG" --target="$target" -std=c11 -Wall -Wextra -Werror -pedantic \
+              -fPIC -I native/metadata \
               -c native/metadata/pbuf_reader_adapter.c \
               -o "/tmp/nova-pbuf-reader-adapter-$target.o"
-              -o "/tmp/nova-packet-metadata-$target.o"
             "$CLANG" --target="$target" -std=c11 -Wall -Wextra -Werror -pedantic \
               -fPIC -I native/metadata \
               -c native/metadata/packet_metadata_test.c \
