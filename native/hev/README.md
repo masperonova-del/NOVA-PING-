@@ -11,9 +11,12 @@ HEV revision `75dbc1e9ace6c70d3d1b94df7c283efe1de7effc`.
   reads only the IP and transport headers it needs.
 - Builds the local-address list from HEV's configured TUN IPv4/IPv6 addresses,
   never from the internal loopback netif addresses.
+- Uses two independent SPSC queues: one producer queue for TUN input and one
+  for TUN output. This avoids treating two HEV task contexts as one SPSC producer.
 - Drops telemetry on parser failure, unsupported input, non-lock-free atomics,
   or queue saturation. The original pbuf and tunnel result are not changed.
-- Exposes a single-consumer native poll function and a dropped-sample counter.
+- Exposes one native poll function that drains both queues fairly, plus a combined
+  dropped-sample counter. It requires exactly one polling consumer.
   JNI/Kotlin polling is deliberately not wired until one dedicated consumer
   executor is established.
 
