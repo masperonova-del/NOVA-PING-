@@ -6,7 +6,8 @@ index 0000000..0000000 100644
  #include "hev-config-const.h"
  #include "hev-socks5-session-tcp.h"
  #include "hev-socks5-session-udp.h"
-+#include "nova-metadata/nova_metadata_embedded.c"
++#include "nova-metadata/metadata_tap.h"
++#include "nova-metadata/pbuf_reader_adapter.h"
  
  #include "hev-socks5-tunnel.h"
  
