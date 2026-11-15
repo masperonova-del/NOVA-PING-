@@ -65,6 +65,7 @@ internal class NovaVpnService : VpnService() {
     @Volatile private var bridge: LocalSocks5Bridge? = null
     @Volatile private var tunDescriptor: Int? = null
     @Volatile private var tunnelEstablished = false
+    @Volatile private var terminalError: String? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -83,7 +84,8 @@ internal class NovaVpnService : VpnService() {
                     startForeground(NOTIFICATION_ID, buildNotification())
                     startTunnel()
                 } catch (error: Exception) {
-                    publishState("error", error.message ?: "Démarrage VPN impossible")
+                    terminalError = error.message ?: "Démarrage VPN impossible"
+                    publishState("error", terminalError)
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     stopSelf(startId)
                 }
@@ -156,10 +158,14 @@ internal class NovaVpnService : VpnService() {
             try {
                 val result = HevTunnelNative.runBlocking(config, fd)
                 if (!stopping.get() && result != 0) {
-                    publishState("error", "Le moteur HEV s'est arrêté avec le code $result")
+                    terminalError = "Le moteur HEV s'est arrêté avec le code $result"
+                    publishState("error", terminalError)
                 }
             } catch (error: Throwable) {
-                if (!stopping.get()) publishState("error", error.message ?: "Échec du moteur HEV")
+                if (!stopping.get()) {
+                    terminalError = error.message ?: "Échec du moteur HEV"
+                    publishState("error", terminalError)
+                }
             } finally {
                 engineStarted = false
                 tunDescriptor = null
@@ -239,8 +245,8 @@ internal class NovaVpnService : VpnService() {
         )
         return Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_warning)
-            .setContentTitle("NOVA PING — tunnel actif")
-            .setContentText("Diagnostic limité à l'application de jeu choisie")
+            .setContentTitle("NOVA PING — tunnel en démarrage")
+            .setContentText("Initialisation du moteur HEV pour le jeu choisi")
             .setOngoing(true)
             .setCategory(Notification.CATEGORY_SERVICE)
             .addAction(0, "Arrêter", stopPendingIntent)
