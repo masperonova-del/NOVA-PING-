@@ -89,6 +89,8 @@ internal class NovaVpnService : VpnService() {
             }
             ACTION_START -> {
                 if (tunnelEstablished || engineThread?.isAlive == true) return START_NOT_STICKY
+                terminalState = null
+                terminalError = null
                 try {
                     startForeground(NOTIFICATION_ID, buildNotification())
                     startTunnel()
