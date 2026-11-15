@@ -1,13 +1,15 @@
 name: Android CI
 on:
   push:
-    branches: [ "main", "nova-boost-foundation", "fix/session-network-provenance", "feature/nova-ping-1.11-session-compare", "feature/nova-ping-1.12-diagnostic-reliability", "feature/nova-ping-1.13-animated-ui-optimizer-bridge", "feature/nova-ping-1.14-dashboard-experience", "feature/nova-ping-1.15-reliability-engine", "feature/nova-ping-1.16-measurement-integrity", "audit/nova-ping-1.16-certification", "feature/nova-boost-ui-1.17", "feature/nova-ping-1.18-evidence-gating", "feature/nova-ping-1.19-comparison-integrity", "feature/nova-ping-1.20-game-evidence-registry", "feature/nova-ping-1.21-game-discovery", "feature/nova-ping-1.22-public-network-intelligence" ]
+    branches: [ "main", "nova-boost-foundation", "fix/session-network-provenance", "feature/nova-ping-1.11-session-compare", "feature/nova-ping-1.12-diagnostic-reliability", "feature/nova-ping-1.13-animated-ui-optimizer-bridge", "feature/nova-ping-1.14-dashboard-experience", "feature/nova-ping-1.15-reliability-engine", "feature/nova-ping-1.16-measurement-integrity", "audit/nova-ping-1.16-certification", "feature/nova-boost-ui-1.17", "feature/nova-ping-1.18-evidence-gating", "feature/nova-ping-1.19-comparison-integrity", "feature/nova-ping-1.20-game-evidence-registry", "feature/nova-ping-1.21-game-discovery", "feature/nova-ping-1.22-public-network-intelligence", "fix/game-evidence-endpoint-validation" ]
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      NOVA_PACKET_FIXTURES: ${{ github.workspace }}/test-fixtures/packet_metadata_vectors.tsv
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -19,11 +21,65 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: "platform-tools"
+          packages: "platform-tools ndk;27.2.12479018"
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
+      - name: Run native packet metadata tests
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -pedantic \
+            -I native/metadata \
+            native/metadata/packet_metadata.c \
+            native/metadata/pbuf_reader_adapter.c \
+            native/metadata/metadata_tap.c \
+            native/metadata/packet_metadata_test.c \
+            -o /tmp/nova-packet-metadata-test
+          /tmp/nova-packet-metadata-test test-fixtures/packet_metadata_vectors.tsv
+      - name: Run native packet metadata sanitizer tests
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -pedantic \
+            -fsanitize=address,undefined -fno-omit-frame-pointer \
+            -I native/metadata \
+            native/metadata/packet_metadata.c \
+            native/metadata/pbuf_reader_adapter.c \
+            native/metadata/metadata_tap.c \
+            native/metadata/packet_metadata_test.c \
+            -o /tmp/nova-packet-metadata-sanitized
+          /tmp/nova-packet-metadata-sanitized test-fixtures/packet_metadata_vectors.tsv
+      - name: Cross-compile native metadata for Android ABIs
+        shell: bash
+        run: |
+          NDK="$ANDROID_HOME/ndk/27.2.12479018"
+          CLANG="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/clang"
+          test -x "$CLANG"
+          for target in \
+            aarch64-linux-android26 \
+            armv7a-linux-androideabi26 \
+            i686-linux-android26 \
+            x86_64-linux-android26; do
+            abi="${target%-*}"
+            echo "Compiling native metadata for $target"
+            "$CLANG" --target="$target" -std=c11 -Wall -Wextra -Werror -pedantic \
+              -fPIC -I native/metadata \
+              -c native/metadata/packet_metadata.c \
+              -o "/tmp/nova-packet-metadata-$target.o"
+            "$CLANG" --target="$target" -std=c11 -Wall -Wextra -Werror -pedantic \
+              -fPIC -I native/metadata \
+              -c native/metadata/pbuf_reader_adapter.c \
+              -o "/tmp/nova-pbuf-reader-adapter-$target.o"
+            "$CLANG" --target="$target" -std=c11 -Wall -Wextra -Werror -pedantic \
+              -fPIC -I native/metadata \
+              -c native/metadata/metadata_tap.c \
+              -o "/tmp/nova-metadata-tap-$target.o"
+            "$CLANG" --target="$target" -std=c11 -Wall -Wextra -Werror -pedantic \
+              -fPIC -I native/metadata \
+              -c native/metadata/packet_metadata_test.c \
+              -o "/tmp/nova-packet-metadata-test-$target.o"
+            "$CLANG" --target="$target" -std=c11 -Wall -Wextra -Werror -pedantic \
+              native/metadata/android_atomic_abi_probe.c \
+              -o "/tmp/nova-atomic-probe-$target"
+          done
       - name: Run metric unit tests
         run: gradle :app:testDebugUnitTest
       - name: Run Android Lint

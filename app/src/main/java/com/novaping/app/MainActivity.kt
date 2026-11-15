@@ -14,6 +14,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
@@ -36,6 +37,7 @@ private const val MAX_STABILITY_EVENTS = 15
 private const val ACTION_STABILITY_HISTORY_UPDATED = "com.novaping.app.action.STABILITY_HISTORY_UPDATED"
 
 private data class ProbeTarget(val name: String, val endpoint: String)
+private data class InstalledLaunchableApp(val label: String, val packageName: String)
 private data class TargetResult(
     val target: ProbeTarget,
     val metrics: PingMetrics?,
@@ -74,6 +76,12 @@ class MainActivity : Activity() {
     private var stabilityHasEvents = false
     private var pendingCsvExport: String? = null
     private val exportRequestCode = 9104
+    private val vpnConsentRequestCode = 9105
+    private lateinit var vpnGameSpinner: Spinner
+    private lateinit var vpnConsentStatus: TextView
+    private lateinit var vpnConsentButton: Button
+    private var installedGameApps: List<InstalledLaunchableApp> = emptyList()
+    private var selectedVpnGamePackage: String? = null
 
     private val backgroundColor = Color.rgb(10, 15, 27)
     private val panelColor = Color.rgb(21, 29, 47)
@@ -314,6 +322,54 @@ class MainActivity : Activity() {
         routeResults.addView(label("Aucune analyse de phase effectuée.", 13f, mutedColor, false, Gravity.START))
         routeCard.addView(routeResults)
         root.addView(routeCard)
+
+        root.addView(sectionTitle("AUTORISATION VPN — PRÉPARATION"))
+        val vpnConsentCard = card()
+        vpnConsentCard.addView(label(
+            "Choisir une application de jeu installée",
+            15f, Color.WHITE, true, Gravity.START
+        ))
+        vpnConsentCard.addView(label(
+            "Android affichera sa demande système globale. Le jeu choisi sera utilisé pour préparer le futur filtrage par application. Cette étape n'active aucun tunnel et ne redirige aucun trafic.",
+            12f, mutedColor, false, Gravity.START
+        ).apply { setPadding(0, dp(6), 0, dp(10)) })
+        installedGameApps = loadInstalledLaunchableApps()
+        vpnGameSpinner = Spinner(this).apply {
+            adapter = ArrayAdapter(
+                this@MainActivity,
+                android.R.layout.simple_spinner_dropdown_item,
+                installedGameApps.map { it.label }
+            )
+            isEnabled = installedGameApps.isNotEmpty()
+            onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(
+                    parent: android.widget.AdapterView<*>?, view: android.view.View?,
+                    position: Int, id: Long
+                ) {
+                    selectedVpnGamePackage = installedGameApps.getOrNull(position)?.packageName
+                }
+                override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {
+                    selectedVpnGamePackage = null
+                }
+            }
+        }
+        vpnConsentCard.addView(vpnGameSpinner)
+        vpnConsentStatus = label(
+            if (installedGameApps.isEmpty()) "Aucune application de jeu lançable détectée."
+            else "Aucune autorisation demandée. Aucun VPN actif.",
+            12f, accentColor, false, Gravity.START
+        ).apply { setPadding(0, dp(8), 0, dp(8)) }
+        vpnConsentCard.addView(vpnConsentStatus)
+        vpnConsentButton = Button(this).apply {
+            text = "DEMANDER L'AUTORISATION ANDROID"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            background = actionButtonBackground()
+            isEnabled = installedGameApps.isNotEmpty()
+            setOnClickListener { requestVpnConsent() }
+        }
+        vpnConsentCard.addView(vpnConsentButton)
+        root.addView(vpnConsentCard)
 
         root.addView(sectionTitle("MOTEUR DE TUNNEL"))
         val tunnelCard = card()
@@ -1797,6 +1853,32 @@ class MainActivity : Activity() {
     @Deprecated("Deprecated in Android API Activity, retained for compatibility with the current target SDK.")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == vpnConsentRequestCode) {
+            if (resultCode == RESULT_OK) {
+                val selectedPackage = selectedVpnGamePackage
+                if (selectedPackage.isNullOrBlank()) {
+                    vpnConsentStatus.text = "Autorisation accordée, mais aucun jeu valide n'est sélectionné."
+                    vpnConsentStatus.setTextColor(Color.rgb(255, 190, 110))
+                } else {
+                    try {
+                        NovaVpnService.saveSelectedGamePackage(this, selectedPackage)
+                        val selectedLabel = installedGameApps
+                            .firstOrNull { it.packageName == selectedPackage }?.label ?: selectedPackage
+                        vpnConsentStatus.text =
+                            "Autorisation Android accordée. Jeu mémorisé : $selectedLabel. Tunnel non établi ; aucun trafic n'est redirigé."
+                        vpnConsentStatus.setTextColor(Color.rgb(100, 210, 150))
+                    } catch (error: Exception) {
+                        vpnConsentStatus.text =
+                            "Consentement accordé, mais sélection non enregistrée : ${error.message ?: "erreur inconnue"}"
+                        vpnConsentStatus.setTextColor(Color.rgb(255, 190, 110))
+                    }
+                }
+            } else {
+                vpnConsentStatus.text = "Autorisation refusée ou annulée. Aucun VPN actif."
+                vpnConsentStatus.setTextColor(Color.rgb(255, 190, 110))
+            }
+            return
+        }
         if (requestCode != exportRequestCode) return
         val csv = pendingCsvExport
         pendingCsvExport = null
@@ -1809,6 +1891,57 @@ class MainActivity : Activity() {
             Toast.makeText(this, "Export CSV enregistré.", Toast.LENGTH_LONG).show()
         } catch (error: Exception) {
             Toast.makeText(this, "Échec de l'export : ${error.message ?: "erreur inconnue"}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun loadInstalledLaunchableApps(): List<InstalledLaunchableApp> {
+        val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        return packageManager.queryIntentActivities(launchIntent, 0)
+            .mapNotNull { resolveInfo ->
+                val activityInfo = resolveInfo.activityInfo ?: return@mapNotNull null
+                val appInfo = activityInfo.applicationInfo
+                if (activityInfo.packageName == packageName) return@mapNotNull null
+                if ((appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0) {
+                    return@mapNotNull null
+                }
+                if (appInfo.category != android.content.pm.ApplicationInfo.CATEGORY_GAME) {
+                    return@mapNotNull null
+                }
+                InstalledLaunchableApp(
+                    label = resolveInfo.loadLabel(packageManager).toString(),
+                    packageName = activityInfo.packageName
+                )
+            }
+            .distinctBy { it.packageName }
+            .sortedBy { it.label.lowercase(Locale.getDefault()) }
+    }
+
+    private fun requestVpnConsent() {
+        val selectedPackage = selectedVpnGamePackage
+        if (selectedPackage.isNullOrBlank()) {
+            vpnConsentStatus.text = "Sélectionne d'abord une application installée."
+            return
+        }
+        val consentIntent = VpnService.prepare(this)
+        if (consentIntent == null) {
+            try {
+                NovaVpnService.saveSelectedGamePackage(this, selectedPackage)
+                vpnConsentStatus.text =
+                    "Autorisation Android déjà accordée. Jeu mémorisé. Tunnel non établi : aucun trafic n'est redirigé."
+                vpnConsentStatus.setTextColor(Color.rgb(100, 210, 150))
+            } catch (error: Exception) {
+                vpnConsentStatus.text =
+                    "Impossible d'enregistrer ce jeu : ${error.message ?: "erreur inconnue"}"
+                vpnConsentStatus.setTextColor(Color.rgb(255, 190, 110))
+            }
+            return
+        }
+        try {
+            startActivityForResult(consentIntent, vpnConsentRequestCode)
+            vpnConsentStatus.text = "En attente de la décision dans la fenêtre système Android…"
+        } catch (error: Exception) {
+            vpnConsentStatus.text =
+                "Impossible d'ouvrir la demande Android : ${error.message ?: "erreur inconnue"}"
         }
     }
 

@@ -257,3 +257,75 @@ Une réponse HTTPS vers un service cloud n'est pas le ping du serveur de jeu. Un
 **Limite :** la documentation Activision publie des ports mais pas les IP des serveurs de match. Les ports ne permettent pas, seuls, d'identifier un hôte distant, de distinguer à coup sûr un serveur de lobby d'un serveur de partie, ni de mesurer le ping CODM. La table doit être revalidée sur la source officielle avant toute nouvelle certification.
 
 **Source officielle consultée le 14 novembre 2026 :** https://support.activision.com/fr/articles/ports-used-for-call-of-duty-games
+
+
+## Version 1.23.0-dev — Modèle d'observation des endpoints de jeu
+
+- [x] Ajouter un modèle d'observation des IP/ports distants associés à une application de jeu explicitement sélectionnée.
+- [x] Exiger un état de consentement explicite et l'identité exacte du package attendu.
+- [x] Valider les adresses IP numériques publiques sans résolution DNS.
+- [x] Agréger les observations par jeu, package, IP, port et transport.
+- [x] Distinguer les observations répétées sur plusieurs sessions des répétitions au sein d'une seule session.
+- [x] Ne jamais assimiler une observation à la preuve d'un serveur de match.
+- [x] Ajouter les tests unitaires du filtrage, de la validation IP et de l'agrégation.
+- [ ] Implémenter une collecte Android réellement consentie, limitée à l'application choisie, sans perturber son trafic.
+- [ ] Connecter les candidats observés à l'interface et à l'historique local.
+- [ ] Confirmer le rôle de serveur de match par une preuve indépendante avant toute mesure dédiée.
+
+**Limite :** cette version ajoute le modèle et les règles d'agrégation, pas encore la capture réseau Android. L'architecture de capture doit traiter correctement l'interface TUN et le transfert des paquets avant toute activation. Voir `docs/GAME-ENDPOINT-DISCOVERY.md`.
+
+
+## Version 1.24.0-dev — Décodeur de métadonnées IP
+
+- [x] Ajouter un décodeur pur Kotlin pour les paquets IPv4 et IPv6.
+- [x] Extraire uniquement l'adresse distante, le port TCP/UDP, la version IP et le sens du paquet.
+- [x] Traiter les en-têtes d'extension IPv6 pris en charge et ignorer les fragments non initiaux.
+- [x] Rejeter les paquets tronqués, incohérents, ambigus, les protocoles non TCP/UDP et les plages IP privées ou réservées.
+- [x] Ajouter les tests unitaires IPv4, IPv6, TCP, UDP, fragments et paquets mal formés.
+- [ ] Construire l'adaptateur Android de capture avec consentement système et filtrage strict par package.
+- [ ] Fournir un transfert complet des paquets et vérifier qu'aucune connexion du jeu n'est interrompue.
+- [ ] Relier les seules métadonnées admissibles au registre local des observations.
+
+**Limite :** le décodeur est testé sur des paquets fournis aux tests unitaires. Il ne capture encore aucun trafic réel et ne mesure pas le ping CODM. Le moteur WireGuard embarqué ne remplace pas un adaptateur générique de capture et de transfert.
+
+
+## Version 1.25.0-dev — Décision d'architecture capture Android
+
+- [x] Vérifier les obligations Android de consentement système, TUN, protection des sockets et cycle de vie VPN.
+- [x] Évaluer un moteur tun2socks compatible Android et documenter ses contraintes SOCKS5.
+- [x] Identifier le risque de double lecture du descripteur TUN et exiger un point d'observation dans le chemin natif.
+- [x] Définir les critères d'activation et les contrôles anti-interruption du trafic.
+- [ ] Implémenter un pont SOCKS5 local avec TCP CONNECT, UDP ASSOCIATE et sockets protégés.
+- [ ] Ajouter un point d'observation non bloquant au moteur de transfert sélectionné.
+- [ ] Implémenter le service Android avec consentement et filtrage exact du package.
+- [ ] Vérifier les flux TCP/UDP/DNS IPv4/IPv6, l'arrêt, la révocation et la reprise du réseau.
+- [ ] Relier les métadonnées locales au registre et à l'interface Game Intelligence.
+
+**Limite :** aucune capture Android en direct n'est activée. HEV reste un candidat d'intégration jusqu'à validation du pont SOCKS5 et du point d'observation. Voir `docs/ANDROID-VPN-CAPTURE-ADR.md`.
+
+
+## Version 1.26.0-dev — Pont SOCKS5 local (TCP)
+
+- [x] Ajouter un serveur SOCKS5 limité à l'interface loopback.
+- [x] Exiger une authentification RFC 1929 avec identifiants aléatoires propres à chaque instance.
+- [x] Implémenter TCP CONNECT pour les adresses IPv4 et IPv6 numériques.
+- [x] Refuser les noms de domaine en TCP CONNECT tant que le DNS contrôlé n'est pas intégré, afin d'éviter une fuite via le résolveur système.
+- [x] Exiger la protection du socket sortant avant toute connexion distante.
+- [x] Relayer les flux TCP dans les deux sens et gérer la fermeture des sockets.
+- [x] Ajouter des tests de relais TCP authentifié et d'arrêt du service.
+- [x] Implémenter UDP ASSOCIATE avec association liée au canal TCP authentifié, relais de datagrammes et verrouillage du premier endpoint UDP du client.
+- [x] Protéger chaque socket UDP sortant via un callback obligatoire avant toute émission.
+- [x] Rejeter les trames SOCKS5 UDP fragmentées, limiter les transferts simultanés et fermer le relais à la fermeture du canal TCP.
+- [x] Ajouter un test local UDP echo pour vérifier l'association, le retour du datagramme et la protection du socket sortant.
+- [x] Respecter le port UDP annoncé par le client et rejeter les datagrammes provenant d'un port source différent.
+- [x] Ajouter l'encodage des requêtes DNS A/AAAA et la validation stricte des réponses, identifiants, questions, longueurs et TTL.
+- [x] Ajouter un cache positif en mémoire, borné par TTL, avec copies défensives et sans cache des réponses vides/TTL nul.
+- [x] Ajouter des tests unitaires du codec DNS et du cache.
+- [x] Ajouter le transport DNS contrôlé UDP avec socket protégé, délai borné et validation de réponse.
+- [x] Ajouter le repli TCP protégé lorsque la réponse UDP est tronquée.
+- [x] Exposer une résolution A puis AAAA via le résolveur contrôlé et son cache.
+- [x] Brancher TCP CONNECT et UDP ASSOCIATE sur ce résolveur optionnel, sans fallback système.
+- [ ] Fournir et valider la configuration Android du résolveur et des callbacks `VpnService.protect()` avant activation.
+- [ ] Intégrer le pont à un moteur TUN après validation du point d'observation non bloquant.
+
+**Limite :** le pont TCP/UDP reste une brique locale, pas un VPN. La résolution de domaines est disponible uniquement si un résolveur DNS contrôlé est explicitement injecté et correctement configuré ; sans lui, les demandes de domaines échouent sans fallback système. Le moteur de transfert, la capture Android et la mesure d'endpoints de jeu en direct restent à construire. Aucun trafic du jeu n'est redirigé à ce stade.
