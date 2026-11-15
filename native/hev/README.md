@@ -18,7 +18,7 @@ HEV revision `75dbc1e9ace6c70d3d1b94df7c283efe1de7effc`.
 - Exposes one native poll function that drains both queues fairly, plus a combined
   dropped-sample counter. It requires exactly one polling consumer.
 - Adds direct JNI exports for one fixed-size metadata record and the dropped counter.
-- Adds a blocking JNI start entry point backed by `hev_socks5_tunnel_main_from_str()` and a stop entry point backed by `hev_socks5_tunnel_quit()`; the JNI layer duplicates the Android TUN descriptor because the HEV Linux backend closes the descriptor it receives.
+- Adds a blocking JNI start entry point backed by `hev_socks5_tunnel_main_from_str()` and a stop entry point backed by `hev_socks5_tunnel_quit()`; the JNI layer duplicates the Android TUN descriptor, passes the duplicate as a borrowed external descriptor, and closes its duplicate after the blocking HEV call returns.
   The Kotlin bridge serializes all queue reads through one dedicated executor and
   rejects malformed native records before exposing them to the app.
 
