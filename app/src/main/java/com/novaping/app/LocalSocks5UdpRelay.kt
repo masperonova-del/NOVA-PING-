@@ -6,9 +6,7 @@ import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.SocketException
-import java.util.concurrent.Executors
-import java.util.concurrent.Semaphore
-import java.util.concurrent.TimeUnit
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -20,24 +18,26 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal class LocalSocks5UdpRelay(
     private val protectUpstreamDatagramSocket: (DatagramSocket) -> Boolean,
     private val bindAddress: InetAddress = InetAddress.getLoopbackAddress(),
-    private val responseTimeoutMillis: Int = 3_000,
     private val protectedDnsResolver: ProtectedDnsResolver? = null
 ) : Closeable {
     private val running = AtomicBoolean(false)
-    private val workers = Executors.newFixedThreadPool(8) { task ->
-        Thread(task, "NovaSocks5UdpWorker").apply { isDaemon = true }
-    }
-    private val permits = Semaphore(16)
     private val endpointLock = Any()
     @Volatile private var relaySocket: DatagramSocket? = null
+    @Volatile private var upstreamSocket: DatagramSocket? = null
+    private val allowedDestinations = ConcurrentHashMap.newKeySet<InetSocketAddress>()
     @Volatile private var allowedClientAddress: InetAddress? = null
     @Volatile private var expectedClientPort: Int? = null
     @Volatile private var clientEndpoint: InetSocketAddress? = null
     private val receiver = Thread(::receiveLoop, "NovaSocks5UdpReceiver").apply { isDaemon = true }
+    private val upstreamReceiver = Thread(::receiveUpstreamLoop, "NovaSocks5UdpUpstreamReceiver").apply { isDaemon = true }
 
     val localAddress: InetAddress get() = relaySocket?.localAddress ?: bindAddress
     val localPort: Int get() = relaySocket?.localPort ?: -1
     val isRunning: Boolean get() = running.get()
+
+    private companion object {
+        const val MAX_DESTINATIONS = 512
+    }
 
     @Synchronized
     fun start(tcpPeerAddress: InetAddress, expectedClientPort: Int? = null): Int {
@@ -50,7 +50,15 @@ internal class LocalSocks5UdpRelay(
             socket.reuseAddress = false
             socket.bind(InetSocketAddress(bindAddress, 0))
             relaySocket = socket
+            val upstream = DatagramSocket(null)
+            upstream.reuseAddress = false
+            upstream.bind(InetSocketAddress(0))
+            check(protectUpstreamDatagramSocket(upstream)) {
+                "Impossible de protéger le socket UDP amont du tunnel"
+            }
+            upstreamSocket = upstream
             receiver.start()
+            upstreamReceiver.start()
             return socket.localPort
         } catch (error: Exception) {
             running.set(false)
@@ -87,13 +95,14 @@ internal class LocalSocks5UdpRelay(
                     is Socks5Address.Ipv6 -> InetAddress.getByAddress(address.bytes)
                     is Socks5Address.Domain -> protectedDnsResolver?.resolveAddress(address.asciiName) ?: continue
                 }
-                if (datagram.destination.port !in 1..65535 || !permits.tryAcquire()) continue
-                workers.execute {
-                    try {
-                        forwardOne(datagram.payload, destination, datagram.destination.port, endpoint)
-                    } finally {
-                        permits.release()
-                    }
+                if (datagram.destination.port !in 1..65535 || datagram.payload.isEmpty()) continue
+                val remote = InetSocketAddress(destination, datagram.destination.port)
+                if (!allowedDestinations.contains(remote) && allowedDestinations.size >= MAX_DESTINATIONS) continue
+                allowedDestinations.add(remote)
+                try {
+                    upstreamSocket?.send(DatagramPacket(datagram.payload, datagram.payload.size, remote))
+                } catch (_: Exception) {
+                    // A failed datagram is isolated; the association remains available.
                 }
             } catch (_: SocketException) {
                 if (running.get()) close()
@@ -103,40 +112,32 @@ internal class LocalSocks5UdpRelay(
         }
     }
 
-    private fun forwardOne(
-        payload: ByteArray,
-        destination: InetAddress,
-        destinationPort: Int,
-        client: InetSocketAddress
-    ) {
-        if (!running.get() || payload.isEmpty()) return
-        try {
-            DatagramSocket(null).use { upstream ->
-                upstream.bind(InetSocketAddress(0))
-                if (!protectUpstreamDatagramSocket(upstream)) return
-                // Connecting the UDP socket pins replies to the requested peer and filters spoofed sources.
-                upstream.connect(InetSocketAddress(destination, destinationPort))
-                upstream.soTimeout = responseTimeoutMillis
-                upstream.send(DatagramPacket(payload, payload.size))
-                val responseBytes = ByteArray(65_507)
-                val response = DatagramPacket(responseBytes, responseBytes.size)
-                upstream.receive(response)
-                if (!running.get()) return
-
-                val sourceAddress = when (val bytes = response.address.address) {
-                    else -> if (bytes.size == 4) Socks5Address.Ipv4(bytes)
-                    else Socks5Address.Ipv6(bytes)
+    private fun receiveUpstreamLoop() {
+        val buffer = ByteArray(65_507)
+        while (running.get()) {
+            try {
+                val packet = DatagramPacket(buffer, buffer.size)
+                upstreamSocket?.receive(packet) ?: break
+                val remote = InetSocketAddress(packet.address, packet.port)
+                if (!allowedDestinations.contains(remote)) continue
+                val endpoint = clientEndpoint ?: continue
+                val sourceAddress = if (packet.address.address.size == 4) {
+                    Socks5Address.Ipv4(packet.address.address)
+                } else {
+                    Socks5Address.Ipv6(packet.address.address)
                 }
                 val encoded = Socks5Codec.encodeUdpDatagram(
                     Socks5UdpDatagram(
-                        Socks5Endpoint(sourceAddress, response.port),
-                        response.data.copyOfRange(response.offset, response.offset + response.length)
+                        Socks5Endpoint(sourceAddress, packet.port),
+                        packet.data.copyOfRange(packet.offset, packet.offset + packet.length)
                     )
                 )
-                relaySocket?.send(DatagramPacket(encoded, encoded.size, client))
+                relaySocket?.send(DatagramPacket(encoded, encoded.size, endpoint))
+            } catch (_: SocketException) {
+                if (running.get()) close()
+            } catch (_: Exception) {
+                // Ignore malformed or transient upstream datagrams.
             }
-        } catch (_: Exception) {
-            // UDP is best-effort; a failed request must not stop the relay.
         }
     }
 
@@ -145,11 +146,8 @@ internal class LocalSocks5UdpRelay(
         if (!running.getAndSet(false)) return
         relaySocket?.close()
         relaySocket = null
-        workers.shutdownNow()
-        try {
-            workers.awaitTermination(1, TimeUnit.SECONDS)
-        } catch (_: InterruptedException) {
-            Thread.currentThread().interrupt()
-        }
+        upstreamSocket?.close()
+        upstreamSocket = null
+        allowedDestinations.clear()
     }
 }
