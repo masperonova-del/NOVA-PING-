@@ -10,7 +10,7 @@ index 0000000..0000000 100644
  
  #include "hev-socks5-tunnel.h"
  
-@@ -61,5 +62,78 @@ static HevTask *task_lwip_timer;
+@@ -61,5 +62,79 @@ static HevTask *task_lwip_timer;
  static HevList session_set;
  
 +/*
@@ -19,7 +19,7 @@ index 0000000..0000000 100644
 + * must never change the original pbuf or the tunnel return value.
 + */
 +static np_metadata_tap_t nova_metadata_tap_input;
-static np_metadata_tap_t nova_metadata_tap_output;
++static np_metadata_tap_t nova_metadata_tap_output;
 +static unsigned int nova_metadata_poll_cursor;
 +static np_local_address_t nova_metadata_local_addresses[2];
 +static size_t nova_metadata_local_address_count;
