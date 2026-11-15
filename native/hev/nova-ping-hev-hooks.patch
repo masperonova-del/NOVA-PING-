@@ -1,0 +1,139 @@
+diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
+index 0000000..0000000 100644
+--- a/src/hev-socks5-tunnel.c
++++ b/src/hev-socks5-tunnel.c
+@@ -35,6 +35,7 @@
+ #include "hev-config-const.h"
+ #include "hev-socks5-session-tcp.h"
+ #include "hev-socks5-session-udp.h"
++#include "nova-metadata/nova_metadata_embedded.c"
+ 
+ #include "hev-socks5-tunnel.h"
+ 
+@@ -61,6 +62,75 @@ static HevTask *task_lwip_timer;
+ static HevList session_set;
+ 
++/*
++ * NOVA PING observes headers synchronously while the pbuf is valid.
++ * The metadata queue is diagnostic-only: a rejected sample or full queue
++ * must never change the original pbuf or the tunnel return value.
++ */
++static np_metadata_tap_t nova_metadata_tap;
++static np_local_address_t nova_metadata_local_addresses[2];
++static size_t nova_metadata_local_address_count;
++
++static uint16_t
++nova_pbuf_copy_partial (const void *opaque, void *destination,
++                        uint16_t length, uint16_t offset)
++{
++    const struct pbuf *p = opaque;
++
++    if (!p)
++        return 0;
++
++    return pbuf_copy_partial (p, destination, length, offset);
++}
++
++static void
++nova_metadata_init (void)
++{
++    const char *ipv4;
++    const char *ipv6;
++    struct in_addr addr4;
++    struct in6_addr addr6;
++
++    nova_metadata_local_address_count = 0;
++    memset (nova_metadata_local_addresses, 0,
++            sizeof (nova_metadata_local_addresses));
++
++    if (!np_metadata_tap_init (&nova_metadata_tap))
++        return;
++
++    ipv4 = hev_config_get_tunnel_ipv4_address ();
++    if (ipv4 && inet_pton (AF_INET, ipv4, &addr4) == 1) {
++        np_local_address_t *local =
++            &nova_metadata_local_addresses[nova_metadata_local_address_count++];
++        local->family = NP_ADDRESS_IPV4;
++        memcpy (local->bytes, &addr4, sizeof (addr4));
++    }
++
++    ipv6 = hev_config_get_tunnel_ipv6_address ();
++    if (ipv6 && inet_pton (AF_INET6, ipv6, &addr6) == 1) {
++        np_local_address_t *local =
++            &nova_metadata_local_addresses[nova_metadata_local_address_count++];
++        local->family = NP_ADDRESS_IPV6;
++        memcpy (local->bytes, &addr6, sizeof (addr6));
++    }
++}
++
++static void
++nova_metadata_observe (const struct pbuf *p)
++{
++    np_packet_reader_t reader;
++    np_pbuf_reader_context_t context;
++
++    if (!nova_metadata_tap.ready || !p ||
++        !nova_metadata_local_address_count)
++        return;
++
++    if (!np_pbuf_reader_init (&reader, &context, p, p->tot_len,
++                              nova_pbuf_copy_partial))
++        return;
++
++    (void)np_metadata_tap_observe (&nova_metadata_tap, &reader,
++                                   nova_metadata_local_addresses,
++                                   nova_metadata_local_address_count);
++}
++
+ static int
+ task_io_yielder (HevTaskYieldType type, void *data)
+ {
+@@ -89,6 +159,8 @@ netif_output_handler (struct netif *netif, struct pbuf *p)
+ {
+     ssize_t s;
+ 
++    nova_metadata_observe (p);
++
+     s = hev_tunnel_write (tun_fd, p);
+     if (s <= 0) {
+         if (errno == EAGAIN)
+@@ -307,6 +379,8 @@ lwip_io_task_entry (void *data)
+         stat_tx_packets++;
+         stat_tx_bytes += buf->tot_len;
+ 
++        nova_metadata_observe (buf);
++
+         buf = tunnel_compact_pbuf (buf);
+ 
+         data = buf->payload;
+@@ -682,6 +756,8 @@ hev_socks5_tunnel_init (int tun_fd)
+     res = tunnel_init (tun_fd);
+     if (res < 0)
+         goto exit;
+ 
++    /* Failure disables telemetry only; it does not fail tunnel startup. */
++    nova_metadata_init ();
++
+     res = gateway_init ();
+     if (res < 0)
+         goto exit;
+@@ -860,3 +936,23 @@ hev_socks5_tunnel_stats (size_t *tx_packets, size_t *tx_bytes,
+     if (rx_bytes)
+         *rx_bytes = stat_rx_bytes;
+ }
++
++/*
++ * One consumer must drain this queue. JNI integration should call this from
++ * one dedicated polling executor, never from multiple UI or worker threads.
++ */
++EXPORT_SYMBOL int
++hev_socks5_tunnel_metadata_poll (np_packet_metadata_t *record)
++{
++    return np_metadata_tap_poll (&nova_metadata_tap, record) ? 1 : 0;
++}
++
++EXPORT_SYMBOL uint32_t
++hev_socks5_tunnel_metadata_dropped (void)
++{
++    return np_metadata_tap_dropped (&nova_metadata_tap);
++}
