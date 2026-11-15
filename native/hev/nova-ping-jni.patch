@@ -10,6 +10,7 @@ diff --git a/src/hev-jni.c b/src/hev-jni.c
  #include <stdatomic.h>
 @@ -19,6 +19,7 @@
  #include <string.h>
++#include <unistd.h>
  
  #include "hev-main.h"
 +#include "hev-socks5-tunnel.h"
@@ -84,6 +85,49 @@ diff --git a/src/hev-jni.c b/src/hev-jni.c
 +Java_com_novaping_app_HevMetadataNative_nativeDropped (JNIEnv *env, jobject thiz)
 +{
 +    return (jlong)hev_socks5_tunnel_metadata_dropped ();
++}
+
++
++JNIEXPORT jint JNICALL
++Java_com_novaping_app_HevTunnelNative_nativeStart (JNIEnv *env, jobject thiz,
++                                                   jstring config, jint tun_fd)
++{
++    const char *config_bytes;
++    jsize config_len;
++    int owned_tun_fd;
++    int result;
++
++    if (!config || tun_fd < 0)
++        return -1;
++
++    config_bytes = (*env)->GetStringUTFChars (env, config, NULL);
++    if (!config_bytes)
++        return -1;
++
++    config_len = (*env)->GetStringUTFLength (env, config);
++    if (config_len <= 0) {
++        (*env)->ReleaseStringUTFChars (env, config, config_bytes);
++        return -1;
++    }
++
++    /* HEV closes the descriptor it receives; duplicate the Android-owned fd. */
++    owned_tun_fd = dup (tun_fd);
++    if (owned_tun_fd < 0) {
++        (*env)->ReleaseStringUTFChars (env, config, config_bytes);
++        return -1;
++    }
++
++    result = hev_socks5_tunnel_main_from_str (
++        (const unsigned char *)config_bytes, (unsigned int)config_len,
++        owned_tun_fd);
++    (*env)->ReleaseStringUTFChars (env, config, config_bytes);
++    return result;
++}
++
++JNIEXPORT void JNICALL
++Java_com_novaping_app_HevTunnelNative_nativeStop (JNIEnv *env, jobject thiz)
++{
++    hev_socks5_tunnel_quit ();
 +}
 +
  #endif /* ANDROID */
