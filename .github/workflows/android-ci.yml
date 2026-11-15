@@ -28,6 +28,22 @@ jobs:
           gradle-version: "8.9"
       - name: Validate pinned HEV metadata integration patch
         run: bash scripts/prepare-hev-metadata.sh "${RUNNER_TEMP}/hev-socks5-tunnel"
+      - name: Build patched HEV Android native libraries
+        shell: bash
+        run: |
+          NDK="$ANDROID_HOME/ndk/27.2.12479018"
+          test -x "$NDK/ndk-build"
+          HEV_DIR="${RUNNER_TEMP}/hev-socks5-tunnel"
+          "$NDK/ndk-build" \
+            NDK_PROJECT_PATH="$HEV_DIR" \
+            APP_BUILD_SCRIPT="$HEV_DIR/Android.mk" \
+            NDK_APPLICATION_MK="$HEV_DIR/Application.mk" \
+            APP_ABI="arm64-v8a armeabi-v7a x86 x86_64" \
+            APP_PLATFORM=android-29 \
+            NDK_OUT="${RUNNER_TEMP}/hev-obj" \
+            NDK_LIBS_OUT="${RUNNER_TEMP}/hev-libs" \
+            -j2
+
       - name: Run native packet metadata tests
         run: |
           cc -std=c11 -Wall -Wextra -Werror -pedantic \
