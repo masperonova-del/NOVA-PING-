@@ -10,7 +10,7 @@ index 0000000..0000000 100644
  
  #include "hev-socks5-tunnel.h"
  
-@@ -61,6 +62,75 @@ static HevTask *task_lwip_timer;
+@@ -61,5 +62,78 @@ static HevTask *task_lwip_timer;
  static HevList session_set;
  
 +/*
@@ -18,7 +18,9 @@ index 0000000..0000000 100644
 + * The metadata queue is diagnostic-only: a rejected sample or full queue
 + * must never change the original pbuf or the tunnel return value.
 + */
-+static np_metadata_tap_t nova_metadata_tap;
++static np_metadata_tap_t nova_metadata_tap_input;
+static np_metadata_tap_t nova_metadata_tap_output;
++static unsigned int nova_metadata_poll_cursor;
 +static np_local_address_t nova_metadata_local_addresses[2];
 +static size_t nova_metadata_local_address_count;
 +
@@ -46,8 +48,8 @@ index 0000000..0000000 100644
 +    memset (nova_metadata_local_addresses, 0,
 +            sizeof (nova_metadata_local_addresses));
 +
-+    if (!np_metadata_tap_init (&nova_metadata_tap))
-+        return;
++    (void)np_metadata_tap_init (&nova_metadata_tap_input);
++    (void)np_metadata_tap_init (&nova_metadata_tap_output);
 +
 +    ipv4 = hev_config_get_tunnel_ipv4_address ();
 +    if (ipv4 && inet_pton (AF_INET, ipv4, &addr4) == 1) {
@@ -67,12 +69,12 @@ index 0000000..0000000 100644
 +}
 +
 +static void
-+nova_metadata_observe (const struct pbuf *p)
++nova_metadata_observe (const struct pbuf *p, np_metadata_tap_t *tap)
 +{
 +    np_packet_reader_t reader;
 +    np_pbuf_reader_context_t context;
 +
-+    if (!nova_metadata_tap.ready || !p ||
++    if (!tap || !tap->ready || !p ||
 +        !nova_metadata_local_address_count)
 +        return;
 +
@@ -80,7 +82,7 @@ index 0000000..0000000 100644
 +                              nova_pbuf_copy_partial))
 +        return;
 +
-+    (void)np_metadata_tap_observe (&nova_metadata_tap, &reader,
++    (void)np_metadata_tap_observe (tap, &reader,
 +                                   nova_metadata_local_addresses,
 +                                   nova_metadata_local_address_count);
 +}
@@ -92,7 +94,7 @@ index 0000000..0000000 100644
  {
      ssize_t s;
  
-+    nova_metadata_observe (p);
++    nova_metadata_observe (p, &nova_metadata_tap_output);
 +
      s = hev_tunnel_write (tun_fd, p);
      if (s <= 0) {
@@ -101,12 +103,12 @@ index 0000000..0000000 100644
          stat_tx_packets++;
          stat_tx_bytes += buf->tot_len;
  
-+        nova_metadata_observe (buf);
++        nova_metadata_observe (buf, &nova_metadata_tap_input);
 +
          buf = tunnel_compact_pbuf (buf);
  
          data = buf->payload;
-@@ -682,6 +756,8 @@ hev_socks5_tunnel_init (int tun_fd)
+@@ -682,7 +756,10 @@ hev_socks5_tunnel_init (int tun_fd)
      res = tunnel_init (tun_fd);
      if (res < 0)
          goto exit;
@@ -117,7 +119,7 @@ index 0000000..0000000 100644
      res = gateway_init ();
      if (res < 0)
          goto exit;
-@@ -860,3 +936,23 @@ hev_socks5_tunnel_stats (size_t *tx_packets, size_t *tx_bytes,
+@@ -860,3 +936,31 @@ hev_socks5_tunnel_stats (size_t *tx_packets, size_t *tx_bytes,
      if (rx_bytes)
          *rx_bytes = stat_rx_bytes;
  }
@@ -129,11 +131,23 @@ index 0000000..0000000 100644
 +EXPORT_SYMBOL int
 +hev_socks5_tunnel_metadata_poll (np_packet_metadata_t *record)
 +{
-+    return np_metadata_tap_poll (&nova_metadata_tap, record) ? 1 : 0;
++    if (!record)
++        return 0;
++    if (nova_metadata_poll_cursor == 0) {
++        nova_metadata_poll_cursor = 1;
++        if (np_metadata_tap_poll (&nova_metadata_tap_input, record))
++            return 1;
++        return np_metadata_tap_poll (&nova_metadata_tap_output, record) ? 1 : 0;
++    }
++    nova_metadata_poll_cursor = 0;
++    if (np_metadata_tap_poll (&nova_metadata_tap_output, record))
++        return 1;
++    return np_metadata_tap_poll (&nova_metadata_tap_input, record) ? 1 : 0;
 +}
 +
 +EXPORT_SYMBOL uint32_t
 +hev_socks5_tunnel_metadata_dropped (void)
 +{
-+    return np_metadata_tap_dropped (&nova_metadata_tap);
++    return np_metadata_tap_dropped (&nova_metadata_tap_input) +
++           np_metadata_tap_dropped (&nova_metadata_tap_output);
 +}
