@@ -24,8 +24,8 @@ cp "${ROOT}/native/hev/nova_metadata_embedded.c" "${DEST}/src/nova-metadata/"
 git -C "${DEST}" apply --check "${ROOT}/native/hev/nova-ping-hev-hooks.patch"
 git -C "${DEST}" apply "${ROOT}/native/hev/nova-ping-hev-hooks.patch"
 
-grep -q 'nova_metadata_observe (buf)' "${DEST}/src/hev-socks5-tunnel.c"
-grep -q 'nova_metadata_observe (p)' "${DEST}/src/hev-socks5-tunnel.c"
+grep -q 'nova_metadata_observe (buf, &nova_metadata_tap_input)' "${DEST}/src/hev-socks5-tunnel.c"
+grep -q 'nova_metadata_observe (p, &nova_metadata_tap_output)' "${DEST}/src/hev-socks5-tunnel.c"
 grep -q 'hev_socks5_tunnel_metadata_poll' "${DEST}/src/hev-socks5-tunnel.c"
 
 printf 'HEV metadata patch applied at %s\n' "${HEV_REV}"
