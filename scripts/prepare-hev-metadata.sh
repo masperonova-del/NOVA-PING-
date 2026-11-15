@@ -21,7 +21,6 @@ mkdir -p "${DEST}/src/nova-metadata"
 cp "${ROOT}"/native/metadata/packet_metadata.[ch] "${DEST}/src/nova-metadata/"
 cp "${ROOT}"/native/metadata/pbuf_reader_adapter.[ch] "${DEST}/src/nova-metadata/"
 cp "${ROOT}"/native/metadata/metadata_tap.[ch] "${DEST}/src/nova-metadata/"
-cp "${ROOT}/native/hev/nova_metadata_embedded.c" "${DEST}/src/nova-metadata/"
 
 git -C "${DEST}" apply --check "${ROOT}/native/hev/nova-ping-hev-hooks.patch"
 git -C "${DEST}" apply "${ROOT}/native/hev/nova-ping-hev-hooks.patch"
