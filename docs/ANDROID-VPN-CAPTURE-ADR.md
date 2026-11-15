@@ -351,3 +351,18 @@ Cette conclusion est strictement liée à cette version et à ce cycle de vie :
 - le contrôle runtime atomic_is_lock_free() reste obligatoire sur l'appareil avant utilisation.
 
 Cette revue lève le doute de concurrence entre les deux hooks pour la version épinglée ; elle n'implémente toujours aucun hook. Le parseur segmenté, la file et le lecteur de segments restent des composants de test isolés. Aucun pbuf n'est encore observé en production, aucun callback JNI n'est ajouté et aucun VPN n'est activé.
+## Adaptateur de lecture pbuf non propriétaire — 15 novembre 2026
+
+Un adaptateur C isolé a été ajouté sous native/metadata/pbuf_reader_adapter.h et .c.
+
+- Il accepte un pointeur pbuf opaque, sa longueur totale u16 et une fonction de copie compatible avec la signature et le comportement de pbuf_copy_partial().
+- Il expose ce stockage au parseur d'en-têtes par l'interface callback déjà testée ; les lectures sont limitées à la longueur totale et aux bornes uint16.
+- Une copie partielle est considérée comme un échec : le parseur ne doit pas utiliser un en-tête incomplet.
+- Le contexte et le pbuf restent la propriété de l'appelant et doivent vivre jusqu'au retour du parseur. L'adaptateur ne conserve pas le pbuf, ne le modifie pas et ne change pas ses références.
+- Aucun en-tête lwIP n'est inclus dans cette couche portable. Le futur hook HEV devra fournir un petit wrapper typé autour de pbuf_copy_partial(const struct pbuf *, ...), puis appeler le parseur de façon synchrone pendant que le pbuf est valide.
+
+Les tests utilisent une chaîne pbuf simulée avec plusieurs segments et vérifient : extraction UDP correcte, lecture arrêtée à la fin des en-têtes (28 octets dans le vecteur IPv4/UDP), refus d'une copie partielle et refus d'une initialisation invalide.
+
+Le workflow CI compile maintenant ce nouvel adaptateur dans les tests natifs, les tests avec sanitizers et les quatre cibles Android.
+
+**Limite importante :** cet adaptateur n'est pas encore appelé depuis hev-socks5-tunnel.c. Aucun patch HEV, aucune compilation AAR, aucun callback JNI et aucun hook d'entrée/sortie TUN ne sont inclus dans cette étape. Il s'agit du pont de lecture portable et testable qui prépare ce raccordement. Aucun VPN n'est activé.
