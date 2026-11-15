@@ -79,7 +79,7 @@ object HevMetadataNative {
     }
 
     /** Reads the native queue's aggregate dropped-sample counter. */
-    fun droppedSamples(): Future<Long> = consumer.submit {
+    fun droppedSamples(): Future<Long> = consumer.submit<Long> {
         if (isAvailable()) nativeDropped() else 0L
     }
 
