@@ -366,3 +366,23 @@ Les tests utilisent une chaîne pbuf simulée avec plusieurs segments et vérifi
 Le workflow CI compile maintenant ce nouvel adaptateur dans les tests natifs, les tests avec sanitizers et les quatre cibles Android.
 
 **Limite importante :** cet adaptateur n'est pas encore appelé depuis hev-socks5-tunnel.c. Aucun patch HEV, aucune compilation AAR, aucun callback JNI et aucun hook d'entrée/sortie TUN ne sont inclus dans cette étape. Il s'agit du pont de lecture portable et testable qui prépare ce raccordement. Aucun VPN n'est activé.
+## File de télémétrie et façade d'observation — 15 novembre 2026
+
+Un composant isolé native/metadata/metadata_tap.h/.c orchestre maintenant les briques validées :
+- initialisation de la file SPSC de taille fixe et vérification runtime de ses atomiques lock-free sur l'ABI courante ;
+- observation synchrone par parseur reader, sans allocation dynamique ;
+- mise en file d'un enregistrement de métadonnées fixe uniquement ;
+- lecture par un seul consommateur via np_metadata_tap_poll(), en dehors du chemin de transfert ;
+- exposition du compteur d'échantillons perdus lorsque la file est pleine.
+
+Le test natif assemble le faux pbuf segmenté, l'adaptateur de copie et la façade de télémétrie. Il vérifie la métadonnée UDP attendue, l'absence de modification du paquet source, la lecture des seuls en-têtes et le rejet des entrées malformées.
+
+### Contrat nécessaire au futur raccordement HEV
+
+Les hooks devront appeler np_metadata_tap_observe() pendant que le pbuf est encore valide, en lui passant les adresses locales réellement configurées sur le TUN. Attention : le netif lwIP interne de HEV est initialisé avec les adresses loopback 127.0.0.1 et ::1 ; elles ne représentent pas l'adresse locale du TUN Android. Les adresses doivent être dérivées des valeurs de configuration retournées par hev_config_get_tunnel_ipv4_address() et hev_config_get_tunnel_ipv6_address(), et analysées/validées explicitement. Le fichier conf/main.yml amont montre des exemples d'adresses TUN dédiées, distinctes des adresses loopback du netif interne.
+
+Le hook d'entrée TUN représente le sens sortant depuis l'application ; le hook de sortie TUN représente le sens entrant. Le parseur déduit toutefois le sens avec les adresses locales fournies, il ne doit pas se fier à l'adresse du netif lwIP interne.
+
+Le producteur unique reste le thread du scheduler HEV épinglé ; le futur consommateur JNI devra être sérialisé sur un seul thread. Aucun appel JNI synchrone ne doit être ajouté au transfert. La file n'est pas MPMC et ne doit pas être appelée depuis un producteur externe concurrent.
+
+**Limite actuelle :** la façade et les tests sont dans NOVA PING, mais les hooks ne sont pas encore ajoutés à HEV. Le moteur amont n'est ni vendored ni compilé dans cette étape ; aucun AAR n'est produit, aucun service VPN n'est démarré et aucun trafic n'est redirigé.
