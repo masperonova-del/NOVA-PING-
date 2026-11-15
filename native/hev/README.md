@@ -18,6 +18,7 @@ HEV revision `75dbc1e9ace6c70d3d1b94df7c283efe1de7effc`.
 - Exposes one native poll function that drains both queues fairly, plus a combined
   dropped-sample counter. It requires exactly one polling consumer.
 - Adds direct JNI exports for one fixed-size metadata record and the dropped counter.
+- Adds a blocking JNI start entry point backed by `hev_socks5_tunnel_main_from_str()` and a stop entry point backed by `hev_socks5_tunnel_quit()`; the JNI layer duplicates the Android TUN descriptor because the HEV Linux backend closes the descriptor it receives.
   The Kotlin bridge serializes all queue reads through one dedicated executor and
   rejects malformed native records before exposing them to the app.
 
@@ -45,7 +46,8 @@ x86 and x86_64, verifies the JNI and metadata symbols, stages each library in
 the app's generated jniLibs directory, and packages them into the debug/release
 APKs. The generated native libraries are build outputs, not committed binaries.
 
-The Kotlin bridge is passive: loading the library does not start HEV, establish
-a TUN interface, request VPN consent, or route traffic. The app's VPN lifecycle
-must be implemented and explicitly authorized separately before live packet
-metadata can appear. Device-level validation remains required.
+The Kotlin metadata bridge is passive: loading the library does not start HEV, establish
+a TUN interface, request VPN consent, or route traffic. The native start/stop ABI is now available, but the Android service
+must still coordinate explicit user consent, TUN establishment, protected SOCKS5
+upstream sockets, foreground lifecycle, and reliable shutdown before any traffic
+is routed. Device-level validation remains required.
