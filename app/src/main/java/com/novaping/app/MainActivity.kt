@@ -83,6 +83,34 @@ class MainActivity : Activity() {
     private var installedGameApps: List<InstalledLaunchableApp> = emptyList()
     private var selectedVpnGamePackage: String? = null
     private var vpnTunnelStartRequested = false
+    private var vpnStateReceiverRegistered = false
+    private val vpnStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != NovaVpnService.ACTION_STATE) return
+            val state = intent.getStringExtra(NovaVpnService.EXTRA_STATE) ?: return
+            val error = intent.getStringExtra(NovaVpnService.EXTRA_ERROR)
+            when (state) {
+                "starting" -> {
+                    vpnTunnelStartRequested = true
+                    vpnConsentButton.text = "ARRÊTER LE TUNNEL"
+                    vpnConsentStatus.text = "Interface Android établie ; démarrage du moteur HEV."
+                    vpnConsentStatus.setTextColor(Color.rgb(100, 210, 150))
+                }
+                "stopped" -> {
+                    vpnTunnelStartRequested = false
+                    vpnConsentButton.text = "DÉMARRER LE TUNNEL VPN"
+                    vpnConsentStatus.text = "Tunnel arrêté. Aucun trafic n'est redirigé."
+                    vpnConsentStatus.setTextColor(mutedColor)
+                }
+                "error" -> {
+                    vpnTunnelStartRequested = false
+                    vpnConsentButton.text = "RÉESSAYER LE TUNNEL VPN"
+                    vpnConsentStatus.text = "Échec du tunnel : ${error ?: "erreur inconnue"}"
+                    vpnConsentStatus.setTextColor(Color.rgb(255, 150, 130))
+                }
+            }
+        }
+    }
 
     private val backgroundColor = Color.rgb(10, 15, 27)
     private val panelColor = Color.rgb(21, 29, 47)
@@ -633,9 +661,24 @@ class MainActivity : Activity() {
             stabilityReceiverRegistered = true
         }
         refreshStabilityMonitorUi()
+        if (!vpnStateReceiverRegistered) {
+            val vpnFilter = IntentFilter(NovaVpnService.ACTION_STATE)
+            if (Build.VERSION.SDK_INT >= 33) {
+                registerReceiver(vpnStateReceiver, vpnFilter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("DEPRECATION")
+                @SuppressLint("UnspecifiedRegisterReceiverFlag")
+                registerReceiver(vpnStateReceiver, vpnFilter)
+            }
+            vpnStateReceiverRegistered = true
+        }
     }
 
     override fun onPause() {
+        if (vpnStateReceiverRegistered) {
+            unregisterReceiver(vpnStateReceiver)
+            vpnStateReceiverRegistered = false
+        }
         if (stabilityReceiverRegistered) {
             unregisterReceiver(stabilityHistoryReceiver)
             stabilityReceiverRegistered = false
