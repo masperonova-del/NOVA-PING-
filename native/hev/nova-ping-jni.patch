@@ -1,0 +1,102 @@
+diff --git a/src/hev-jni.c b/src/hev-jni.c
+--- a/src/hev-jni.c
++++ b/src/hev-jni.c
+@@ -19,6 +19,7 @@
+ #include <string.h>
+ 
+ #include "hev-main.h"
++#include "hev-socks5-tunnel.h"
+ 
+ #include "hev-jni.h"
+ 
+@@ -83,13 +84,16 @@
+         return JNI_ERR;
+ 
+     klass = (*env)->FindClass (env, STR (PKGNAME) "/" STR (CLSNAME));
+-    if (!klass)
+-        return JNI_ERR;
+-    res = (*env)->RegisterNatives (env, klass, native_methods,
+-                                   N_ELEMENTS (native_methods));
+-    (*env)->DeleteLocalRef (env, klass);
+-    if (res < 0)
+-        return JNI_ERR;
++    if (klass) {
++        res = (*env)->RegisterNatives (env, klass, native_methods,
++                                       N_ELEMENTS (native_methods));
++        (*env)->DeleteLocalRef (env, klass);
++        if (res < 0)
++            return JNI_ERR;
++    } else {
++        /* NOVA PING uses direct JNI exports, not the optional TProxyService. */
++        (*env)->ExceptionClear (env);
++    }
+ 
+     pthread_key_create (&current_jni_env, detach_current_thread);
+     pthread_mutex_init (&mutex, NULL);
+@@ -210,4 +214,46 @@
+     return res;
+ }
+ 
++
++JNIEXPORT jlongArray JNICALL
++Java_com_novaping_app_HevMetadataNative_nativePoll (JNIEnv *env, jobject thiz)
++{
++    np_packet_metadata_t record;
++    jlong values[9];
++    uint64_t address_hi = 0;
++    uint64_t address_lo = 0;
++    jlongArray result;
++    size_t i;
++
++    if (!hev_socks5_tunnel_metadata_poll (&record))
++        return NULL;
++
++    for (i = 0; i < 8; i++)
++        address_hi = (address_hi << 8) | record.remote_address[i];
++    for (i = 8; i < 16; i++)
++        address_lo = (address_lo << 8) | record.remote_address[i];
++
++    values[0] = record.ip_version;
++    values[1] = record.address_length;
++    values[2] = record.transport;
++    values[3] = record.direction;
++    values[4] = (jlong)address_hi;
++    values[5] = (jlong)address_lo;
++    values[6] = record.remote_port;
++    values[7] = record.packet_length_bytes;
++    values[8] = record.fragmented;
++
++    result = (*env)->NewLongArray (env, 9);
++    if (!result)
++        return NULL;
++    (*env)->SetLongArrayRegion (env, result, 0, 9, values);
++    return result;
++}
++
++JNIEXPORT jlong JNICALL
++Java_com_novaping_app_HevMetadataNative_nativeDropped (JNIEnv *env, jobject thiz)
++{
++    return (jlong)hev_socks5_tunnel_metadata_dropped ();
++}
++
+ #endif /* ANDROID */
+diff --git a/src/hev-socks5-tunnel.h b/src/hev-socks5-tunnel.h
+--- a/src/hev-socks5-tunnel.h
++++ b/src/hev-socks5-tunnel.h
+@@ -11,6 +11,7 @@
+ #define __HEV_SOCKS5_TUNNEL_H__
+ 
+ #include "hev-list.h"
++#include "nova-metadata/packet_metadata.h"
+ 
+ int hev_socks5_tunnel_init (int tun_fd);
+ void hev_socks5_tunnel_fini (void);
+@@ -23,4 +24,8 @@
+ 
+ void hev_socks5_tunnel_update_session (HevListNode *node);
+ 
++/* One consumer polls both bounded metadata queues. */
++int hev_socks5_tunnel_metadata_poll (np_packet_metadata_t *record);
++uint32_t hev_socks5_tunnel_metadata_dropped (void);
++
+ #endif /* __HEV_SOCKS5_TUNNEL_H__ */
