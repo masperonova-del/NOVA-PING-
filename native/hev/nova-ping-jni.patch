@@ -109,7 +109,7 @@ diff --git a/src/hev-jni.c b/src/hev-jni.c
 +        return -1;
 +    }
 +
-+    /* HEV closes the descriptor it receives; duplicate the Android-owned fd. */
++    /* HEV borrows this external fd; duplicate it so JNI can close its copy after return. */
 +    owned_tun_fd = dup (tun_fd);
 +    if (owned_tun_fd < 0) {
 +        (*env)->ReleaseStringUTFChars (env, config, config_bytes);
