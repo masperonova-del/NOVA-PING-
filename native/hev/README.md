@@ -20,10 +20,11 @@ HEV revision `75dbc1e9ace6c70d3d1b94df7c283efe1de7effc`.
   JNI/Kotlin polling is deliberately not wired until one dedicated consumer
   executor is established.
 
-The portable C sources are included through a small unity translation unit
-because this integration is applied to an upstream HEV source tree whose
-Android source manifest is not modified by this patch. This is a build bridge,
-not a claim that an AAR has already been produced.
+The portable C sources are staged as separate translation units under
+`src/nova-metadata/`. The pinned upstream `build.mk` recursively discovers
+C source files below `src/`, so each implementation is compiled exactly once.
+The hook patch includes only the public metadata headers; it does not include
+implementation `.c` files.
 
 ## Apply and validate
 
