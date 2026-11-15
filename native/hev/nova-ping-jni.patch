@@ -41,7 +41,7 @@ diff --git a/src/hev-jni.c b/src/hev-jni.c
  
      pthread_key_create (&current_jni_env, detach_current_thread);
      pthread_mutex_init (&mutex, NULL);
-@@ -210,4 +214,88 @@
+@@ -210,4 +214,89 @@
      return res;
  }
  
@@ -120,6 +120,7 @@ diff --git a/src/hev-jni.c b/src/hev-jni.c
 +    result = hev_socks5_tunnel_main_from_str (
 +        (const unsigned char *)config_bytes, (unsigned int)config_len,
 +        owned_tun_fd);
++    close (owned_tun_fd);
 +    (*env)->ReleaseStringUTFChars (env, config, config_bytes);
 +    return result;
 +}
