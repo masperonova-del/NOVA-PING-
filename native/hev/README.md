@@ -46,8 +46,19 @@ x86 and x86_64, verifies the JNI and metadata symbols, stages each library in
 the app's generated jniLibs directory, and packages them into the debug/release
 APKs. The generated native libraries are build outputs, not committed binaries.
 
-The Kotlin metadata bridge is passive: loading the library does not start HEV, establish
-a TUN interface, request VPN consent, or route traffic. The native start/stop ABI is now available, but the Android service
-must still coordinate explicit user consent, TUN establishment, protected SOCKS5
-upstream sockets, foreground lifecycle, and reliable shutdown before any traffic
-is routed. Device-level validation remains required.
+The Kotlin metadata bridge is passive: loading the library does not start HEV,
+establish a TUN interface, request VPN consent, or route traffic.
+
+The Android service now coordinates explicit Android VPN consent, selected-app
+allowlisting, TUN descriptor handoff, the authenticated loopback SOCKS5 bridge,
+protected upstream TCP/UDP/DNS sockets, a foreground notification with a stop
+action, and orderly engine/resource shutdown. The JNI start call blocks on a
+dedicated engine thread; the stop call requests HEV's native event loop to exit.
+Startup failures release the bridge and TUN descriptor and are surfaced to the app.
+
+CI validates native builds, JNI symbols, Kotlin unit tests, Android Lint,
+debug/release APK builds, and HEV library packaging for all four Android ABIs.
+These checks do not prove runtime connectivity on a physical phone. Device-level
+validation is still required, and the metadata queue is not yet presented as a
+user-facing RTT or game-server measurement. Header metadata alone must not be
+described as measured latency.
