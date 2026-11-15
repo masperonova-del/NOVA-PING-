@@ -15,7 +15,7 @@ index 0000000..0000000 100644
  
 +/*
 + * NOVA PING observes headers synchronously while the pbuf is valid.
-+ * The metadata queue is diagnostic-only: a rejected sample or full queue
++ * The metadata queues are diagnostic-only: a rejected sample or full queue
 + * must never change the original pbuf or the tunnel return value.
 + */
 +static np_metadata_tap_t nova_metadata_tap_input;
@@ -125,7 +125,7 @@ index 0000000..0000000 100644
  }
 +
 +/*
-+ * One consumer must drain this queue. JNI integration should call this from
++ * Exactly one consumer must drain both queues. JNI integration should call this from
 + * one dedicated polling executor, never from multiple UI or worker threads.
 + */
 +EXPORT_SYMBOL int
