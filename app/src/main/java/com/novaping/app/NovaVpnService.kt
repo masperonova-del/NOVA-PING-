@@ -12,7 +12,8 @@ import android.net.VpnService
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.system.Os
+import android.os.ParcelFileDescriptor
+import java.net.InetAddress
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -117,6 +118,7 @@ internal class NovaVpnService : VpnService() {
         )
         val localBridge = LocalSocks5Bridge(
             protectUpstreamSocket = { protect(it) },
+            bindAddress = InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1)),
             protectUpstreamDatagramSocket = { protect(it) },
             protectedDnsResolver = resolver
         )
@@ -161,7 +163,7 @@ internal class NovaVpnService : VpnService() {
             } finally {
                 engineStarted = false
                 tunDescriptor = null
-                runCatching { Os.close(fd) }
+                runCatching { ParcelFileDescriptor.adoptFd(fd).close() }
                 mainHandler.post { finishTunnel() }
             }
         }, "NovaHevEngine").apply { isDaemon = true }
@@ -176,7 +178,7 @@ internal class NovaVpnService : VpnService() {
         if (engineStarted || engineThread?.isAlive == true) {
             HevTunnelNative.requestStop()
         } else {
-            tunDescriptor?.let { runCatching { Os.close(it) } }
+            tunDescriptor?.let { runCatching { ParcelFileDescriptor.adoptFd(it).close() } }
             tunDescriptor = null
             finishTunnel()
         }
@@ -186,7 +188,7 @@ internal class NovaVpnService : VpnService() {
         if (engineThread?.isAlive == true && engineStarted) return
         bridge?.close()
         bridge = null
-        tunDescriptor?.let { runCatching { Os.close(it) } }
+        tunDescriptor?.let { runCatching { ParcelFileDescriptor.adoptFd(it).close() } }
         tunDescriptor = null
         engineThread = null
         engineStarted = false
