@@ -41,7 +41,7 @@ diff --git a/src/hev-jni.c b/src/hev-jni.c
  
      pthread_key_create (&current_jni_env, detach_current_thread);
      pthread_mutex_init (&mutex, NULL);
-@@ -210,5 +214,89 @@
+@@ -210,4 +214,88 @@
      return res;
  }
  
