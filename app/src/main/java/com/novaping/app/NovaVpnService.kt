@@ -31,6 +31,8 @@ internal class NovaVpnService : VpnService() {
         private const val NOTIFICATION_ID = 4201
         private const val VPN_PREFERENCES = "nova_ping_vpn"
         private const val KEY_SELECTED_GAME_PACKAGE = "selected_game_package"
+        private const val KEY_LAST_TUNNEL_STATE = "last_tunnel_state"
+        private const val KEY_LAST_TUNNEL_ERROR = "last_tunnel_error"
         private const val TUN_IPV4 = "198.18.0.1"
         private const val TUN_IPV6 = "fc00::1"
 
@@ -42,6 +44,12 @@ internal class NovaVpnService : VpnService() {
             context.packageManager.getApplicationInfo(validPackage, 0)
             context.getSharedPreferences(VPN_PREFERENCES, Context.MODE_PRIVATE)
                 .edit().putString(KEY_SELECTED_GAME_PACKAGE, validPackage).apply()
+        }
+
+        internal fun readLastTunnelState(context: Context): Pair<String?, String?> {
+            val preferences = context.getSharedPreferences(VPN_PREFERENCES, Context.MODE_PRIVATE)
+            return preferences.getString(KEY_LAST_TUNNEL_STATE, null) to
+                preferences.getString(KEY_LAST_TUNNEL_ERROR, null)
         }
 
         internal fun readSelectedGamePackage(context: Context): String? {
@@ -66,6 +74,7 @@ internal class NovaVpnService : VpnService() {
     @Volatile private var tunDescriptor: Int? = null
     @Volatile private var tunnelEstablished = false
     @Volatile private var terminalError: String? = null
+    @Volatile private var terminalState: String? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -213,12 +222,19 @@ internal class NovaVpnService : VpnService() {
         stopping.set(false)
         stopForeground(STOP_FOREGROUND_REMOVE)
         val error = terminalError
+        val finalState = terminalState ?: if (error == null) "stopped" else "error"
         terminalError = null
-        publishState(if (error == null) "stopped" else "error", error)
+        terminalState = null
+        publishState(finalState, error)
         stopSelf()
     }
 
     override fun onRevoke() {
+        // Android revokes the current VpnService when another VPN takes ownership.
+        // Publish this immediately: the engine may need time to unwind its native thread.
+        terminalState = "replaced"
+        terminalError = null
+        publishState("replaced", "Un autre VPN a pris le relais. Le tunnel NOVA PING est arrêté.")
         stopTunnel()
         super.onRevoke()
     }
@@ -231,6 +247,10 @@ internal class NovaVpnService : VpnService() {
     override fun onBind(intent: Intent?) = super.onBind(intent)
 
     private fun publishState(state: String, error: String?) {
+        getSharedPreferences(VPN_PREFERENCES, Context.MODE_PRIVATE).edit()
+            .putString(KEY_LAST_TUNNEL_STATE, state)
+            .putString(KEY_LAST_TUNNEL_ERROR, error)
+            .commit()
         sendBroadcast(Intent(ACTION_STATE).setPackage(packageName).apply {
             putExtra(EXTRA_STATE, state)
             if (error != null) putExtra(EXTRA_ERROR, error)
