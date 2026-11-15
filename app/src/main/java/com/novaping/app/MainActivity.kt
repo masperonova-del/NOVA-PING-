@@ -141,7 +141,7 @@ class MainActivity : Activity() {
             savedState == "replaced" && !vpnActive -> "stopped"
             savedState == "stopped" && vpnActive -> "other_vpn"
             savedState == null && vpnActive -> "other_vpn"
-            savedState == "starting" && !vpnActive -> "stopped"
+            savedState == "starting" -> "starting"
             savedState == null -> "stopped"
             else -> savedState
         }
