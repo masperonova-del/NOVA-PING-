@@ -56,8 +56,11 @@ jobs:
             test -s "$source_lib"
             mkdir -p "app/src/main/jniLibs/$abi"
             cp "$source_lib" "app/src/main/jniLibs/$abi/"
-            "$READELF" -Ws "$source_lib" | grep -q 'Java_com_novaping_app_HevMetadataNative_nativePoll'
-            "$READELF" -Ws "$source_lib" | grep -q 'hev_socks5_tunnel_metadata_poll'
+            symbols="$("$READELF" -Ws "$source_lib")"
+            grep -q 'Java_com_novaping_app_HevMetadataNative_nativePoll' <<< "$symbols"
+            grep -q 'Java_com_novaping_app_HevMetadataNative_nativeDropped' <<< "$symbols"
+            grep -q 'hev_socks5_tunnel_metadata_poll' <<< "$symbols"
+            grep -q 'hev_socks5_tunnel_metadata_dropped' <<< "$symbols"
           done
 
       - name: Run native packet metadata tests
