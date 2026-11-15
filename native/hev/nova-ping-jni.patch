@@ -1,7 +1,7 @@
 diff --git a/src/hev-jni.c b/src/hev-jni.c
 --- a/src/hev-jni.c
 +++ b/src/hev-jni.c
-@@ -8,7 +8,7 @@
+@@ -10,5 +10,5 @@
 -#ifdef ANDROID
 +#if defined(ANDROID) || defined(__ANDROID__)
  
