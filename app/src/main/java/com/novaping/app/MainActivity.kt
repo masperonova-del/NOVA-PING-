@@ -88,28 +88,64 @@ class MainActivity : Activity() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action != NovaVpnService.ACTION_STATE) return
             val state = intent.getStringExtra(NovaVpnService.EXTRA_STATE) ?: return
-            val error = intent.getStringExtra(NovaVpnService.EXTRA_ERROR)
-            when (state) {
-                "starting" -> {
-                    vpnTunnelStartRequested = true
-                    vpnConsentButton.text = "ARRÊTER LE TUNNEL"
-                    vpnConsentStatus.text = "Interface Android établie ; démarrage du moteur HEV."
-                    vpnConsentStatus.setTextColor(Color.rgb(100, 210, 150))
+            applyVpnUiState(state, intent.getStringExtra(NovaVpnService.EXTRA_ERROR))
+        }
+    }
+
+    private fun applyVpnUiState(state: String, error: String?) {
+        when (state) {
+            "starting" -> {
+                vpnTunnelStartRequested = true
+                vpnConsentButton.text = "ARRÊTER LE TUNNEL"
+                vpnConsentStatus.text = "Interface Android établie ; démarrage du moteur HEV."
+                vpnConsentStatus.setTextColor(Color.rgb(100, 210, 150))
+            }
+            "stopped" -> {
+                vpnTunnelStartRequested = false
+                vpnConsentButton.text = "DÉMARRER LE TUNNEL VPN"
+                vpnConsentStatus.text = "Tunnel arrêté. Aucun trafic n'est redirigé."
+                vpnConsentStatus.setTextColor(mutedColor)
+            }
+            "replaced", "other_vpn" -> {
+                vpnTunnelStartRequested = false
+                vpnConsentButton.text = "DÉMARRER LE TUNNEL VPN"
+                vpnConsentStatus.text = if (state == "replaced") {
+                    "Un autre VPN est actif. Le tunnel NOVA PING a été arrêté."
+                } else {
+                    "Un autre VPN est détecté. NOVA PING n'est pas actif."
                 }
-                "stopped" -> {
-                    vpnTunnelStartRequested = false
-                    vpnConsentButton.text = "DÉMARRER LE TUNNEL VPN"
-                    vpnConsentStatus.text = "Tunnel arrêté. Aucun trafic n'est redirigé."
-                    vpnConsentStatus.setTextColor(mutedColor)
-                }
-                "error" -> {
-                    vpnTunnelStartRequested = false
-                    vpnConsentButton.text = "RÉESSAYER LE TUNNEL VPN"
-                    vpnConsentStatus.text = "Échec du tunnel : ${error ?: "erreur inconnue"}"
-                    vpnConsentStatus.setTextColor(Color.rgb(255, 150, 130))
-                }
+                vpnConsentStatus.setTextColor(Color.rgb(255, 190, 110))
+            }
+            "error" -> {
+                vpnTunnelStartRequested = false
+                vpnConsentButton.text = "RÉESSAYER LE TUNNEL VPN"
+                vpnConsentStatus.text = "Échec du tunnel : ${error ?: "erreur inconnue"}"
+                vpnConsentStatus.setTextColor(Color.rgb(255, 150, 130))
             }
         }
+    }
+
+    private fun hasActiveVpnTransport(): Boolean {
+        val connectivity = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        return connectivity.allNetworks.any { network ->
+            connectivity.getNetworkCapabilities(network)
+                ?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
+        }
+    }
+
+    private fun refreshVpnUiState() {
+        val (savedState, savedError) = NovaVpnService.readLastTunnelState(this)
+        val vpnActive = hasActiveVpnTransport()
+        val state = when {
+            savedState == "replaced" && vpnActive -> "replaced"
+            savedState == "replaced" && !vpnActive -> "stopped"
+            savedState == "stopped" && vpnActive -> "other_vpn"
+            savedState == null && vpnActive -> "other_vpn"
+            savedState == "starting" && !vpnActive -> "stopped"
+            savedState == null -> "stopped"
+            else -> savedState
+        }
+        applyVpnUiState(state, if (state == savedState) savedError else null)
     }
 
     private val backgroundColor = Color.rgb(10, 15, 27)
@@ -672,6 +708,9 @@ class MainActivity : Activity() {
             }
             vpnStateReceiverRegistered = true
         }
+        // Broadcasts are not sticky: reconcile persisted service state whenever the
+        // activity returns, including after another VPN has replaced NOVA PING.
+        refreshVpnUiState()
     }
 
     override fun onPause() {
