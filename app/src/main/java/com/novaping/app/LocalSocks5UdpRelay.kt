@@ -83,7 +83,7 @@ internal class LocalSocks5UdpRelay(
                     continue
                 }
 
-                val endpoint = synchronized(endpointLock) {
+                val endpointCandidate = synchronized(endpointLock) {
                     val current = clientEndpoint
                     if (current == null) {
                         if (expectedClientPort != null && packet.port != expectedClientPort) null
@@ -93,23 +93,27 @@ internal class LocalSocks5UdpRelay(
                     } else {
                         null
                     }
-                } ?: run {
+                }
+                if (endpointCandidate == null) {
                     VpnDiagnostics.tracker.recordUdpDrop()
                     continue
                 }
 
                 val frame = packet.data.copyOfRange(packet.offset, packet.offset + packet.length)
-                val datagram = Socks5Codec.parseUdpDatagram(frame) ?: run {
+                val parsedDatagram = Socks5Codec.parseUdpDatagram(frame)
+                if (parsedDatagram == null) {
                     VpnDiagnostics.tracker.recordUdpDrop()
                     continue
                 }
+                val datagram = parsedDatagram
                 val destination = when (val address = datagram.destination.address) {
                     is Socks5Address.Ipv4 -> InetAddress.getByAddress(address.bytes)
                     is Socks5Address.Ipv6 -> InetAddress.getByAddress(address.bytes)
-                    is Socks5Address.Domain -> protectedDnsResolver?.resolveAddress(address.asciiName) ?: run {
-                        VpnDiagnostics.tracker.recordUdpDrop()
-                        continue
-                    }
+                    is Socks5Address.Domain -> protectedDnsResolver?.resolveAddress(address.asciiName)
+                }
+                if (destination == null) {
+                    VpnDiagnostics.tracker.recordUdpDrop()
+                    continue
                 }
                 if (datagram.destination.port !in 1..65535 || datagram.payload.isEmpty()) {
                     VpnDiagnostics.tracker.recordUdpDrop()
@@ -146,7 +150,8 @@ internal class LocalSocks5UdpRelay(
                     VpnDiagnostics.tracker.recordUdpDrop()
                     continue
                 }
-                val endpoint = clientEndpoint ?: run {
+                val endpoint = clientEndpoint
+                if (endpoint == null) {
                     VpnDiagnostics.tracker.recordUdpDrop()
                     continue
                 }
