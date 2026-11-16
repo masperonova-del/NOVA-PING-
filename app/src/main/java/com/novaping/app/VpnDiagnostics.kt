@@ -28,6 +28,8 @@ internal class VpnDiagnosticTracker {
     private var tcpProtectionFailures = 0
     private var lastTcp = "Non testé"
     private val tcpFailureCategories = linkedMapOf<String, Int>()
+    private val socketProtectionResults = linkedMapOf<String, MutableMap<String, Int>>()
+    private val socketProtectionInvalidPreconditions = linkedMapOf<String, Int>()
 
     private var authSuccesses = 0
     private var authFailures = 0
@@ -60,6 +62,8 @@ internal class VpnDiagnosticTracker {
         tcpProtectionFailures = 0
         lastTcp = "Non testé"
         tcpFailureCategories.clear()
+        socketProtectionResults.clear()
+        socketProtectionInvalidPreconditions.clear()
 
         authSuccesses = 0
         authFailures = 0
@@ -130,6 +134,21 @@ internal class VpnDiagnosticTracker {
     }
 
     @Synchronized
+    fun recordSocketProtection(purpose: String, outcome: String, invalidPrecondition: Boolean) {
+        val safePurpose = safeCategory(purpose)
+        val safeOutcome = when (outcome) {
+            "protected", "rejected", "security_exception", "invalid_socket", "exception" -> outcome
+            else -> "other"
+        }
+        val results = socketProtectionResults.getOrPut(safePurpose) { linkedMapOf() }
+        results[safeOutcome] = (results[safeOutcome] ?: 0) + 1
+        if (invalidPrecondition) {
+            socketProtectionInvalidPreconditions[safePurpose] =
+                (socketProtectionInvalidPreconditions[safePurpose] ?: 0) + 1
+        }
+    }
+
+    @Synchronized
     fun recordAuthentication(success: Boolean) {
         if (success) authSuccesses++ else authFailures++
     }
@@ -181,6 +200,20 @@ internal class VpnDiagnosticTracker {
         appendLine("Dernier TCP : $lastTcp")
         appendLine("Échecs de protection socket : $tcpProtectionFailures")
         appendLine("Catégories TCP : ${formatCategories(tcpFailureCategories)}")
+        appendLine()
+        appendLine("Protection des sockets :")
+        if (socketProtectionResults.isEmpty()) {
+            appendLine("Aucun appel de protection enregistré")
+        } else {
+            socketProtectionResults.forEach { (purpose, results) ->
+                appendLine(
+                    "$purpose : ${results["protected"] ?: 0} protégés / " +
+                        "${results["rejected"] ?: 0} rejetés / " +
+                        "${(results["security_exception"] ?: 0) + (results["invalid_socket"] ?: 0) + (results["exception"] ?: 0)} exceptions / " +
+                        "${socketProtectionInvalidPreconditions[purpose] ?: 0} préconditions invalides"
+                )
+            }
+        }
         appendLine()
         appendLine("Authentification SOCKS5 : $authSuccesses réussites / $authFailures échecs")
         appendLine("Associations UDP : $udpAssociations démarrées / $udpAssociationFailures échecs")
