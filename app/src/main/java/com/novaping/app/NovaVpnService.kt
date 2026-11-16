@@ -13,7 +13,9 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
+import java.net.DatagramSocket
 import java.net.InetAddress
+import java.net.Socket
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -141,13 +143,13 @@ internal class NovaVpnService : VpnService() {
 
         val resolver = ProtectedDnsResolver(
             resolverAddress = dnsServer,
-            protectDatagramSocket = { protect(it) },
-            protectTcpSocket = { protect(it) }
+            protectDatagramSocket = { protectSocket(it, "DNS_UDP") },
+            protectTcpSocket = { protectSocket(it, "DNS_TCP") }
         )
         val localBridge = LocalSocks5Bridge(
-            protectUpstreamSocket = { protect(it) },
+            protectUpstreamSocket = { protectSocket(it, "TCP_CONNECT") },
             bindAddress = InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1)),
-            protectUpstreamDatagramSocket = { protect(it) },
+            protectUpstreamDatagramSocket = { protectSocket(it, "UDP_RELAY") },
             protectedDnsResolver = resolver
         )
         bridge = localBridge
@@ -184,8 +186,8 @@ internal class NovaVpnService : VpnService() {
         publishState("starting", null)
         val thread = Thread({
             engineStarted = true
-            VpnDiagnostics.tracker.setEngineState("Appel natif actif")
-            VpnDiagnostics.tracker.setTunnelState("HEV démarré")
+            VpnDiagnostics.tracker.setEngineState("Initialisation native en cours")
+            VpnDiagnostics.tracker.setTunnelState("Initialisation HEV non confirmée")
             try {
                 val result = HevTunnelNative.runBlocking(config, fd)
                 VpnDiagnostics.tracker.recordEngineExit(result)
@@ -208,6 +210,39 @@ internal class NovaVpnService : VpnService() {
         }, "NovaHevEngine").apply { isDaemon = true }
         engineThread = thread
         thread.start()
+    }
+
+    /**
+     * Records only the outcome and coarse socket precondition. No endpoint or
+     * socket address is retained. Android's protect() boolean is authoritative;
+     * a false result is never bypassed or retried on the same socket.
+     */
+    private fun protectSocket(socket: Socket, purpose: String): Boolean =
+        evaluateSocketProtection(purpose, socket.isClosed || socket.isConnected) {
+            protect(socket)
+        }
+
+    private fun protectSocket(socket: DatagramSocket, purpose: String): Boolean =
+        evaluateSocketProtection(purpose, socket.isClosed || socket.isConnected) {
+            protect(socket)
+        }
+
+    private inline fun evaluateSocketProtection(
+        purpose: String,
+        invalidPrecondition: Boolean,
+        protectCall: () -> Boolean
+    ): Boolean {
+        val outcome = try {
+            if (protectCall()) "protected" else "rejected"
+        } catch (_: SecurityException) {
+            "security_exception"
+        } catch (_: IllegalArgumentException) {
+            "invalid_socket"
+        } catch (_: Exception) {
+            "exception"
+        }
+        VpnDiagnostics.tracker.recordSocketProtection(purpose, outcome, invalidPrecondition)
+        return outcome == "protected"
     }
 
     private fun stopTunnel() {
