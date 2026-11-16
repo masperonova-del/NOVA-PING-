@@ -34,6 +34,19 @@ class VpnDiagnosticTrackerTest {
     }
 
     @Test
+    fun reportSeparatesSocketProtectionRejectionsAndPreconditions() {
+        val tracker = VpnDiagnosticTracker()
+        tracker.beginSession()
+        tracker.recordSocketProtection("TCP_CONNECT", "rejected", false)
+        tracker.recordSocketProtection("DNS_UDP", "security_exception", true)
+
+        val report = tracker.report()
+
+        assertTrue(report.contains("TCP_CONNECT : 0 protégés / 1 rejetés"))
+        assertTrue(report.contains("DNS_UDP : 0 protégés / 0 rejetés / 1 exceptions / 1 préconditions invalides"))
+    }
+
+    @Test
     fun reportDoesNotStoreHostnamesOrPacketPayloads() {
         val tracker = VpnDiagnosticTracker()
         tracker.beginSession()
