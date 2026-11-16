@@ -139,7 +139,7 @@ internal class LocalSocks5UdpRelay(
             } catch (_: SocketException) {
                 if (running.get()) close()
             } catch (_: Exception) {
-                // Malformed datagrams and transient socket errors are dropped.
+                VpnDiagnostics.tracker.recordUdpDrop()
             }
         }
     }
