@@ -177,8 +177,6 @@ internal class LocalSocks5Bridge(
                     while (input.read() != -1) {
                         // No application data is expected on the control channel.
                     }
-                } catch (error: Exception) {
-                    throw error
                 } finally {
                     relay.close()
                 }
