@@ -428,6 +428,35 @@ class MainActivity : Activity() {
         vpnConsentCard.addView(vpnConsentButton)
         root.addView(vpnConsentCard)
 
+        root.addView(sectionTitle("DIAGNOSTIC INTERNE DU TUNNEL"))
+        val vpnDiagnosticCard = card()
+        vpnDiagnosticCard.addView(label(
+            "Rapport technique — DNS / TCP / UDP / HEV",
+            15f, Color.WHITE, true, Gravity.START
+        ))
+        vpnDiagnosticCard.addView(label(
+            "Actualise ce rapport après un essai avec le jeu. Les compteurs sont locaux et agrégés : aucun domaine, aucune adresse IP distante et aucun contenu de paquet n'est conservé.",
+            12f, mutedColor, false, Gravity.START
+        ).apply { setPadding(0, dp(6), 0, dp(10)) })
+        val vpnDiagnosticReport = label(
+            VpnDiagnostics.readReport(this),
+            12f, Color.WHITE, false, Gravity.START
+        ).apply {
+            setTextIsSelectable(true)
+            setPadding(0, dp(6), 0, dp(10))
+        }
+        vpnDiagnosticCard.addView(vpnDiagnosticReport)
+        vpnDiagnosticCard.addView(Button(this).apply {
+            text = "ACTUALISER LE RAPPORT"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            background = actionButtonBackground()
+            setOnClickListener {
+                vpnDiagnosticReport.text = VpnDiagnostics.readReport(this@MainActivity)
+            }
+        })
+        root.addView(vpnDiagnosticCard)
+
         root.addView(sectionTitle("MOTEUR DE TUNNEL"))
         val tunnelCard = card()
         tunnelCard.addView(label(
