@@ -89,6 +89,7 @@ internal class NovaVpnService : VpnService() {
             }
             ACTION_START -> {
                 if (tunnelEstablished || engineThread?.isAlive == true) return START_NOT_STICKY
+                VpnDiagnostics.tracker.beginSession()
                 terminalState = null
                 terminalError = null
                 try {
@@ -96,6 +97,9 @@ internal class NovaVpnService : VpnService() {
                     startTunnel()
                 } catch (error: Exception) {
                     terminalError = error.message ?: "Démarrage VPN impossible"
+                    VpnDiagnostics.tracker.setTunnelState("Échec au démarrage")
+                    VpnDiagnostics.tracker.setBridgeState("Échec ou non démarré")
+                    VpnDiagnostics.tracker.setTunState("Non établi")
                     bridge?.close()
                     bridge = null
                     tunDescriptor?.let { fd ->
@@ -107,6 +111,7 @@ internal class NovaVpnService : VpnService() {
                     engineThread = null
                     stopping.set(false)
                     publishState("error", terminalError)
+                    VpnDiagnostics.finish(this)
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     stopSelf(startId)
                 }
@@ -147,6 +152,7 @@ internal class NovaVpnService : VpnService() {
         )
         bridge = localBridge
         val socksPort = localBridge.start()
+        VpnDiagnostics.tracker.setBridgeState("Prêt")
 
         val builder = Builder()
             .setSession("NOVA PING — diagnostic réseau")
@@ -159,6 +165,8 @@ internal class NovaVpnService : VpnService() {
 
         val pfd = builder.establish()
             ?: throw IllegalStateException("Android n'a pas pu établir l'interface VPN")
+        VpnDiagnostics.tracker.setTunState("Établi")
+        VpnDiagnostics.tracker.setTunnelState("Interface VPN établie")
         val fd = try {
             pfd.detachFd()
         } finally {
@@ -176,13 +184,17 @@ internal class NovaVpnService : VpnService() {
         publishState("starting", null)
         val thread = Thread({
             engineStarted = true
+            VpnDiagnostics.tracker.setEngineState("Appel natif actif")
+            VpnDiagnostics.tracker.setTunnelState("HEV démarré")
             try {
                 val result = HevTunnelNative.runBlocking(config, fd)
+                VpnDiagnostics.tracker.recordEngineExit(result)
                 if (!stopping.get() && result != 0) {
                     terminalError = "Le moteur HEV s'est arrêté avec le code $result"
                     publishState("error", terminalError)
                 }
             } catch (error: Throwable) {
+                VpnDiagnostics.tracker.recordEngineFailure()
                 if (!stopping.get()) {
                     terminalError = error.message ?: "Échec du moteur HEV"
                     publishState("error", terminalError)
@@ -225,6 +237,14 @@ internal class NovaVpnService : VpnService() {
         stopForeground(STOP_FOREGROUND_REMOVE)
         val error = terminalError
         val finalState = terminalState ?: if (error == null) "stopped" else "error"
+        VpnDiagnostics.tracker.setTunnelState(
+            when (finalState) {
+                "replaced" -> "Remplacé par un autre VPN"
+                "error" -> "Arrêt sur erreur"
+                else -> "Arrêté"
+            }
+        )
+        VpnDiagnostics.finish(this)
         terminalError = null
         terminalState = null
         publishState(finalState, error)
