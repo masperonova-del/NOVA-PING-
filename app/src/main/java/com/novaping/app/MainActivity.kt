@@ -136,15 +136,7 @@ class MainActivity : Activity() {
     private fun refreshVpnUiState() {
         val (savedState, savedError) = NovaVpnService.readLastTunnelState(this)
         val vpnActive = hasActiveVpnTransport()
-        val state = when {
-            savedState == "replaced" && vpnActive -> "replaced"
-            savedState == "replaced" && !vpnActive -> "stopped"
-            savedState == "stopped" && vpnActive -> "other_vpn"
-            savedState == null && vpnActive -> "other_vpn"
-            savedState == "starting" -> "starting"
-            savedState == null -> "stopped"
-            else -> savedState
-        }
+        val state = VpnUiStateResolver.resolve(savedState, vpnActive)
         applyVpnUiState(state, if (state == savedState) savedError else null)
     }
 
