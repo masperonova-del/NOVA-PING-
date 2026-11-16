@@ -111,6 +111,7 @@ internal class LocalSocks5Bridge(
                     suppliedPassword.toByteArray(Charsets.UTF_8),
                     credentials.password.toByteArray(Charsets.UTF_8)
                 )
+            VpnDiagnostics.tracker.recordAuthentication(validCredentials)
             output.write(byteArrayOf(1, if (validCredentials) 0 else 1))
             output.flush()
             if (!validCredentials) return
@@ -176,6 +177,9 @@ internal class LocalSocks5Bridge(
                     while (input.read() != -1) {
                         // No application data is expected on the control channel.
                     }
+                } catch (error: Exception) {
+                    VpnDiagnostics.tracker.recordUdpAssociationFailure()
+                    throw error
                 } finally {
                     relay.close()
                 }
@@ -186,25 +190,32 @@ internal class LocalSocks5Bridge(
                 return
             }
 
+            VpnDiagnostics.tracker.recordTcpAttempt()
             upstream = Socket()
             activeSockets.add(upstream)
             if (!protectUpstreamSocket(upstream)) {
+                VpnDiagnostics.tracker.recordTcpFailure("protect_rejected")
                 writeReply(output, 0x01)
                 return
             }
             try {
                 upstream.connect(java.net.InetSocketAddress(host, destinationPort), connectTimeoutMillis)
                 upstream.tcpNoDelay = true
+                VpnDiagnostics.tracker.recordTcpSuccess()
             } catch (_: java.net.ConnectException) {
+                VpnDiagnostics.tracker.recordTcpFailure("connect_refused")
                 writeReply(output, 0x05)
                 return
             } catch (_: java.net.UnknownHostException) {
+                VpnDiagnostics.tracker.recordTcpFailure("unknown_host")
                 writeReply(output, 0x04)
                 return
             } catch (_: java.net.SocketTimeoutException) {
+                VpnDiagnostics.tracker.recordTcpFailure("connect_timeout")
                 writeReply(output, 0x04)
                 return
             } catch (_: Exception) {
+                VpnDiagnostics.tracker.recordTcpFailure("connect_io_error")
                 writeReply(output, 0x03)
                 return
             }
