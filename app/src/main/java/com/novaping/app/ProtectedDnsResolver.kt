@@ -36,21 +36,43 @@ internal class ProtectedDnsResolver(
     fun resolve(hostname: String, type: DnsRecordType): List<DnsAnswer>? {
         val normalized = runCatching { DnsWireCodec.normalizeHostname(hostname) }.getOrNull()
             ?: return null
-        cache.get(normalized, type)?.let { return it }
+        cache.get(normalized, type)?.let {
+            VpnDiagnostics.tracker.recordDnsSuccess()
+            return it
+        }
+        VpnDiagnostics.tracker.recordDnsAttempt()
 
         val id = runCatching { transactionIds().also { require(it in 0..65_535) } }
-            .getOrNull() ?: return null
+            .getOrNull() ?: run {
+                VpnDiagnostics.tracker.recordDnsFailure("invalid_transaction_id")
+                return null
+            }
         val query = runCatching { DnsWireCodec.encodeQuery(normalized, type, id) }.getOrNull()
-            ?: return null
+            ?: run {
+                VpnDiagnostics.tracker.recordDnsFailure("invalid_query")
+                return null
+            }
 
-        val udpResponse = queryUdp(query) ?: return null
+        val udpResult = queryUdp(query)
+        val udpResponse = udpResult.response ?: run {
+            VpnDiagnostics.tracker.recordDnsFailure(udpResult.failureCategory ?: "dns_udp_failed")
+            return null
+        }
         val response = if (DnsWireCodec.isTruncatedResponse(udpResponse, id)) {
-            queryTcp(query) ?: return null
+            val tcpResult = queryTcp(query)
+            tcpResult.response ?: run {
+                VpnDiagnostics.tracker.recordDnsFailure(tcpResult.failureCategory ?: "dns_tcp_failed")
+                return null
+            }
         } else {
             udpResponse
         }
-        val answers = DnsWireCodec.parseResponse(response, normalized, type, id) ?: return null
+        val answers = DnsWireCodec.parseResponse(response, normalized, type, id) ?: run {
+            VpnDiagnostics.tracker.recordDnsFailure("invalid_dns_response")
+            return null
+        }
         cache.put(normalized, type, answers)
+        VpnDiagnostics.tracker.recordDnsSuccess()
         return answers
     }
 
@@ -64,38 +86,60 @@ internal class ProtectedDnsResolver(
         return ipv6?.let { runCatching { InetAddress.getByAddress(it) }.getOrNull() }
     }
 
-    private fun queryUdp(query: ByteArray): ByteArray? = runCatching {
+    private data class DnsQueryResult(
+        val response: ByteArray?,
+        val failureCategory: String? = null
+    )
+
+    private fun queryUdp(query: ByteArray): DnsQueryResult = try {
         DatagramSocket(null).use { socket ->
             socket.reuseAddress = false
             socket.bind(InetSocketAddress(0))
-            if (!protectDatagramSocket(socket)) return null
-            socket.soTimeout = timeoutMillis
-            socket.connect(InetSocketAddress(resolverAddress, resolverPort))
-            socket.send(DatagramPacket(query, query.size))
-            val buffer = ByteArray(MAX_DNS_MESSAGE_SIZE)
-            val packet = DatagramPacket(buffer, buffer.size)
-            socket.receive(packet)
-            packet.data.copyOfRange(packet.offset, packet.offset + packet.length)
+            if (!protectDatagramSocket(socket)) {
+                DnsQueryResult(null, "protect_udp_rejected")
+            } else {
+                socket.soTimeout = timeoutMillis
+                socket.connect(InetSocketAddress(resolverAddress, resolverPort))
+                socket.send(DatagramPacket(query, query.size))
+                val buffer = ByteArray(MAX_DNS_MESSAGE_SIZE)
+                val packet = DatagramPacket(buffer, buffer.size)
+                socket.receive(packet)
+                DnsQueryResult(packet.data.copyOfRange(packet.offset, packet.offset + packet.length))
+            }
         }
-    }.getOrNull()
+    } catch (_: java.net.SocketTimeoutException) {
+        DnsQueryResult(null, "udp_timeout")
+    } catch (_: Exception) {
+        DnsQueryResult(null, "udp_io_error")
+    }
 
-    private fun queryTcp(query: ByteArray): ByteArray? = runCatching {
+    private fun queryTcp(query: ByteArray): DnsQueryResult = try {
         Socket().use { socket ->
-            if (!protectTcpSocket(socket)) return null
-            socket.soTimeout = timeoutMillis
-            socket.tcpNoDelay = true
-            socket.connect(InetSocketAddress(resolverAddress, resolverPort), timeoutMillis)
-            val output = DataOutputStream(socket.getOutputStream())
-            output.writeShort(query.size)
-            output.write(query)
-            output.flush()
+            if (!protectTcpSocket(socket)) {
+                DnsQueryResult(null, "protect_tcp_rejected")
+            } else {
+                socket.soTimeout = timeoutMillis
+                socket.tcpNoDelay = true
+                socket.connect(InetSocketAddress(resolverAddress, resolverPort), timeoutMillis)
+                val output = DataOutputStream(socket.getOutputStream())
+                output.writeShort(query.size)
+                output.write(query)
+                output.flush()
 
-            val input = DataInputStream(socket.getInputStream())
-            val responseLength = input.readUnsignedShort()
-            if (responseLength !in DNS_HEADER_SIZE..MAX_DNS_MESSAGE_SIZE) return null
-            ByteArray(responseLength).also(input::readFully)
+                val input = DataInputStream(socket.getInputStream())
+                val responseLength = input.readUnsignedShort()
+                if (responseLength !in DNS_HEADER_SIZE..MAX_DNS_MESSAGE_SIZE) {
+                    DnsQueryResult(null, "invalid_tcp_response_length")
+                } else {
+                    DnsQueryResult(ByteArray(responseLength).also(input::readFully))
+                }
+            }
         }
-    }.getOrNull()
+    } catch (_: java.net.SocketTimeoutException) {
+        DnsQueryResult(null, "tcp_timeout")
+    } catch (_: Exception) {
+        DnsQueryResult(null, "tcp_io_error")
+    }
 
     private companion object {
         const val DNS_HEADER_SIZE = 12
