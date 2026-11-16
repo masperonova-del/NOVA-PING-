@@ -126,8 +126,13 @@ internal class LocalSocks5UdpRelay(
                 }
                 allowedDestinations.add(remote)
                 try {
-                    upstreamSocket?.send(DatagramPacket(datagram.payload, datagram.payload.size, remote))
-                    VpnDiagnostics.tracker.recordUdpOutbound()
+                    val socket = upstreamSocket
+                    if (socket == null) {
+                        VpnDiagnostics.tracker.recordUdpSendFailure()
+                    } else {
+                        socket.send(DatagramPacket(datagram.payload, datagram.payload.size, remote))
+                        VpnDiagnostics.tracker.recordUdpOutbound()
+                    }
                 } catch (_: Exception) {
                     VpnDiagnostics.tracker.recordUdpSendFailure()
                 }
@@ -166,8 +171,13 @@ internal class LocalSocks5UdpRelay(
                         packet.data.copyOfRange(packet.offset, packet.offset + packet.length)
                     )
                 )
-                relaySocket?.send(DatagramPacket(encoded, encoded.size, endpoint))
-                VpnDiagnostics.tracker.recordUdpInbound()
+                val clientSocket = relaySocket
+                if (clientSocket == null) {
+                    VpnDiagnostics.tracker.recordUdpDrop()
+                } else {
+                    clientSocket.send(DatagramPacket(encoded, encoded.size, endpoint))
+                    VpnDiagnostics.tracker.recordUdpInbound()
+                }
             } catch (_: SocketException) {
                 if (running.get()) close()
             } catch (_: Exception) {
