@@ -178,7 +178,6 @@ internal class LocalSocks5Bridge(
                         // No application data is expected on the control channel.
                     }
                 } catch (error: Exception) {
-                    VpnDiagnostics.tracker.recordUdpAssociationFailure()
                     throw error
                 } finally {
                     relay.close()
