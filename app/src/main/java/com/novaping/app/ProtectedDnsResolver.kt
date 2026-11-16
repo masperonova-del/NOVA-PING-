@@ -34,13 +34,16 @@ internal class ProtectedDnsResolver(
      * or null for transport, protection, or validation failure.
      */
     fun resolve(hostname: String, type: DnsRecordType): List<DnsAnswer>? {
+        VpnDiagnostics.tracker.recordDnsAttempt()
         val normalized = runCatching { DnsWireCodec.normalizeHostname(hostname) }.getOrNull()
-            ?: return null
+            ?: run {
+                VpnDiagnostics.tracker.recordDnsFailure("invalid_hostname")
+                return null
+            }
         cache.get(normalized, type)?.let {
             VpnDiagnostics.tracker.recordDnsSuccess()
             return it
         }
-        VpnDiagnostics.tracker.recordDnsAttempt()
 
         val id = runCatching { transactionIds().also { require(it in 0..65_535) } }
             .getOrNull() ?: run {
