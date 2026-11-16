@@ -82,6 +82,63 @@ class MainActivity : Activity() {
     private lateinit var vpnConsentButton: Button
     private var installedGameApps: List<InstalledLaunchableApp> = emptyList()
     private var selectedVpnGamePackage: String? = null
+    private var vpnTunnelStartRequested = false
+    private var vpnStateReceiverRegistered = false
+    private val vpnStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != NovaVpnService.ACTION_STATE) return
+            val state = intent.getStringExtra(NovaVpnService.EXTRA_STATE) ?: return
+            applyVpnUiState(state, intent.getStringExtra(NovaVpnService.EXTRA_ERROR))
+        }
+    }
+
+    private fun applyVpnUiState(state: String, error: String?) {
+        when (state) {
+            "starting" -> {
+                vpnTunnelStartRequested = true
+                vpnConsentButton.text = "ARRÊTER LE TUNNEL"
+                vpnConsentStatus.text = "Interface Android établie ; démarrage du moteur HEV."
+                vpnConsentStatus.setTextColor(Color.rgb(100, 210, 150))
+            }
+            "stopped" -> {
+                vpnTunnelStartRequested = false
+                vpnConsentButton.text = "DÉMARRER LE TUNNEL VPN"
+                vpnConsentStatus.text = "Tunnel arrêté. Aucun trafic n'est redirigé."
+                vpnConsentStatus.setTextColor(mutedColor)
+            }
+            "replaced", "other_vpn" -> {
+                vpnTunnelStartRequested = false
+                vpnConsentButton.text = "DÉMARRER LE TUNNEL VPN"
+                vpnConsentStatus.text = if (state == "replaced") {
+                    "Un autre VPN est actif. Le tunnel NOVA PING a été arrêté."
+                } else {
+                    "Un autre VPN est détecté. NOVA PING n'est pas actif."
+                }
+                vpnConsentStatus.setTextColor(Color.rgb(255, 190, 110))
+            }
+            "error" -> {
+                vpnTunnelStartRequested = false
+                vpnConsentButton.text = "RÉESSAYER LE TUNNEL VPN"
+                vpnConsentStatus.text = "Échec du tunnel : ${error ?: "erreur inconnue"}"
+                vpnConsentStatus.setTextColor(Color.rgb(255, 150, 130))
+            }
+        }
+    }
+
+    private fun hasActiveVpnTransport(): Boolean {
+        val connectivity = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        return connectivity.allNetworks.any { network ->
+            connectivity.getNetworkCapabilities(network)
+                ?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
+        }
+    }
+
+    private fun refreshVpnUiState() {
+        val (savedState, savedError) = NovaVpnService.readLastTunnelState(this)
+        val vpnActive = hasActiveVpnTransport()
+        val state = VpnUiStateResolver.resolve(savedState, vpnActive)
+        applyVpnUiState(state, if (state == savedState) savedError else null)
+    }
 
     private val backgroundColor = Color.rgb(10, 15, 27)
     private val panelColor = Color.rgb(21, 29, 47)
@@ -323,14 +380,14 @@ class MainActivity : Activity() {
         routeCard.addView(routeResults)
         root.addView(routeCard)
 
-        root.addView(sectionTitle("AUTORISATION VPN — PRÉPARATION"))
+        root.addView(sectionTitle("TUNNEL VPN — APPLICATION DE JEU"))
         val vpnConsentCard = card()
         vpnConsentCard.addView(label(
             "Choisir une application de jeu installée",
             15f, Color.WHITE, true, Gravity.START
         ))
         vpnConsentCard.addView(label(
-            "Android affichera sa demande système globale. Le jeu choisi sera utilisé pour préparer le futur filtrage par application. Cette étape n'active aucun tunnel et ne redirige aucun trafic.",
+            "Après ton accord, NOVA PING démarre un tunnel limité au jeu choisi. Android affiche sa demande officielle ; une notification permanente permet de l'arrêter.",
             12f, mutedColor, false, Gravity.START
         ).apply { setPadding(0, dp(6), 0, dp(10)) })
         installedGameApps = loadInstalledLaunchableApps()
@@ -356,49 +413,78 @@ class MainActivity : Activity() {
         vpnConsentCard.addView(vpnGameSpinner)
         vpnConsentStatus = label(
             if (installedGameApps.isEmpty()) "Aucune application de jeu lançable détectée."
-            else "Aucune autorisation demandée. Aucun VPN actif.",
+            else "Aucun tunnel actif. Choisis un jeu puis démarre le diagnostic.",
             12f, accentColor, false, Gravity.START
         ).apply { setPadding(0, dp(8), 0, dp(8)) }
         vpnConsentCard.addView(vpnConsentStatus)
         vpnConsentButton = Button(this).apply {
-            text = "DEMANDER L'AUTORISATION ANDROID"
+            text = "DÉMARRER LE TUNNEL VPN"
             isAllCaps = false
             setTextColor(Color.WHITE)
             background = actionButtonBackground()
             isEnabled = installedGameApps.isNotEmpty()
-            setOnClickListener { requestVpnConsent() }
+            setOnClickListener { if (vpnTunnelStartRequested) stopGameTunnel() else requestVpnConsent() }
         }
         vpnConsentCard.addView(vpnConsentButton)
         root.addView(vpnConsentCard)
 
+        root.addView(sectionTitle("DIAGNOSTIC INTERNE DU TUNNEL"))
+        val vpnDiagnosticCard = card()
+        vpnDiagnosticCard.addView(label(
+            "Rapport technique — DNS / TCP / UDP / HEV",
+            15f, Color.WHITE, true, Gravity.START
+        ))
+        vpnDiagnosticCard.addView(label(
+            "Actualise ce rapport après un essai avec le jeu. DNS désigne la résolution de noms du pont SOCKS5 ; les éventuels DNS directs sont inclus dans les totaux UDP. Ce sont des compteurs de transport, pas un ping de serveur de match. Aucun domaine, aucune adresse IP distante et aucun contenu de paquet n'est conservé.",
+            12f, mutedColor, false, Gravity.START
+        ).apply { setPadding(0, dp(6), 0, dp(10)) })
+        val vpnDiagnosticReport = label(
+            VpnDiagnostics.readReport(this),
+            12f, Color.WHITE, false, Gravity.START
+        ).apply {
+            setTextIsSelectable(true)
+            setPadding(0, dp(6), 0, dp(10))
+        }
+        vpnDiagnosticCard.addView(vpnDiagnosticReport)
+        vpnDiagnosticCard.addView(Button(this).apply {
+            text = "ACTUALISER LE RAPPORT"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            background = actionButtonBackground()
+            setOnClickListener {
+                vpnDiagnosticReport.text = VpnDiagnostics.readReport(this@MainActivity)
+            }
+        })
+        root.addView(vpnDiagnosticCard)
+
         root.addView(sectionTitle("MOTEUR DE TUNNEL"))
         val tunnelCard = card()
         tunnelCard.addView(label(
-            "Moteur WireGuard intégré",
+            "Moteur HEV natif",
             15f, Color.WHITE, true, Gravity.START
         ))
         val tunnelEngineStatus = label(
-            "Vérification du moteur…",
+            "Vérification du moteur HEV…",
             12f, accentColor, false, Gravity.START
         ).apply { setPadding(0, dp(6), 0, 0) }
         tunnelCard.addView(tunnelEngineStatus)
         tunnelCard.addView(label(
-            "Cette vérification charge le moteur local. Aucun VPN n'est démarré et aucun trafic n'est redirigé : le relais NOVA n'est pas encore configuré.",
+            "Le moteur HEV utilise le relais SOCKS5 local authentifié. Le tunnel ne démarre qu'après consentement Android et action explicite.",
             12f, mutedColor, false, Gravity.START
         ).apply { setPadding(0, dp(6), 0, 0) })
         root.addView(tunnelCard)
         executor.execute {
             val engineResult = runCatching {
-                WireGuardEngine.detectVersion(this@MainActivity)
+                HevTunnelNative.isAvailable()
             }
             runOnUiThread {
                 if (!isFinishing && !isDestroyed) {
                     tunnelEngineStatus.text = engineResult.fold(
-                        onSuccess = { "Moteur chargé — WireGuard $it" },
+                        onSuccess = { if (it) "Bibliothèque HEV chargée" else "Bibliothèque HEV indisponible" },
                         onFailure = { "Moteur non chargé : ${it.message ?: "erreur inconnue"}" }
                     )
                     tunnelEngineStatus.setTextColor(
-                        if (engineResult.isSuccess) Color.rgb(100, 210, 150)
+                        if (engineResult.getOrNull() == true) Color.rgb(100, 210, 150)
                         else Color.rgb(255, 150, 130)
                     )
                 }
@@ -632,9 +718,27 @@ class MainActivity : Activity() {
             stabilityReceiverRegistered = true
         }
         refreshStabilityMonitorUi()
+        if (!vpnStateReceiverRegistered) {
+            val vpnFilter = IntentFilter(NovaVpnService.ACTION_STATE)
+            if (Build.VERSION.SDK_INT >= 33) {
+                registerReceiver(vpnStateReceiver, vpnFilter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("DEPRECATION")
+                @SuppressLint("UnspecifiedRegisterReceiverFlag")
+                registerReceiver(vpnStateReceiver, vpnFilter)
+            }
+            vpnStateReceiverRegistered = true
+        }
+        // Broadcasts are not sticky: reconcile persisted service state whenever the
+        // activity returns, including after another VPN has replaced NOVA PING.
+        refreshVpnUiState()
     }
 
     override fun onPause() {
+        if (vpnStateReceiverRegistered) {
+            unregisterReceiver(vpnStateReceiver)
+            vpnStateReceiverRegistered = false
+        }
         if (stabilityReceiverRegistered) {
             unregisterReceiver(stabilityHistoryReceiver)
             stabilityReceiverRegistered = false
@@ -1864,9 +1968,9 @@ class MainActivity : Activity() {
                         NovaVpnService.saveSelectedGamePackage(this, selectedPackage)
                         val selectedLabel = installedGameApps
                             .firstOrNull { it.packageName == selectedPackage }?.label ?: selectedPackage
-                        vpnConsentStatus.text =
-                            "Autorisation Android accordée. Jeu mémorisé : $selectedLabel. Tunnel non établi ; aucun trafic n'est redirigé."
+                        vpnConsentStatus.text = "Autorisation Android accordée. Démarrage de $selectedLabel…"
                         vpnConsentStatus.setTextColor(Color.rgb(100, 210, 150))
+                        startGameTunnel()
                     } catch (error: Exception) {
                         vpnConsentStatus.text =
                             "Consentement accordé, mais sélection non enregistrée : ${error.message ?: "erreur inconnue"}"
@@ -1926,9 +2030,9 @@ class MainActivity : Activity() {
         if (consentIntent == null) {
             try {
                 NovaVpnService.saveSelectedGamePackage(this, selectedPackage)
-                vpnConsentStatus.text =
-                    "Autorisation Android déjà accordée. Jeu mémorisé. Tunnel non établi : aucun trafic n'est redirigé."
+                vpnConsentStatus.text = "Autorisation Android déjà accordée. Démarrage du tunnel…"
                 vpnConsentStatus.setTextColor(Color.rgb(100, 210, 150))
+                startGameTunnel()
             } catch (error: Exception) {
                 vpnConsentStatus.text =
                     "Impossible d'enregistrer ce jeu : ${error.message ?: "erreur inconnue"}"
@@ -1942,6 +2046,32 @@ class MainActivity : Activity() {
         } catch (error: Exception) {
             vpnConsentStatus.text =
                 "Impossible d'ouvrir la demande Android : ${error.message ?: "erreur inconnue"}"
+        }
+    }
+
+    private fun startGameTunnel() {
+        try {
+            startForegroundService(
+                Intent(this, NovaVpnService::class.java).setAction(NovaVpnService.ACTION_START)
+            )
+            vpnTunnelStartRequested = true
+            vpnConsentButton.text = "ARRÊTER LE TUNNEL"
+            vpnConsentStatus.text = "Demande de démarrage envoyée au service VPN…"
+            vpnConsentStatus.setTextColor(Color.rgb(100, 210, 150))
+        } catch (error: Exception) {
+            vpnTunnelStartRequested = false
+            vpnConsentButton.text = "RÉESSAYER LE TUNNEL VPN"
+            vpnConsentStatus.text = "Impossible de démarrer le service : ${error.message ?: "erreur Android"}"
+            vpnConsentStatus.setTextColor(Color.rgb(255, 150, 130))
+        }
+    }
+
+    private fun stopGameTunnel() {
+        try {
+            startService(Intent(this, NovaVpnService::class.java).setAction(NovaVpnService.ACTION_STOP))
+            vpnConsentStatus.text = "Arrêt du tunnel demandé…"
+        } catch (error: Exception) {
+            vpnConsentStatus.text = "Impossible d'arrêter le tunnel : ${error.message ?: "erreur Android"}"
         }
     }
 

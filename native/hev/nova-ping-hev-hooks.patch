@@ -1,0 +1,157 @@
+diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
+--- a/src/hev-socks5-tunnel.c
++++ b/src/hev-socks5-tunnel.c
+@@ -45,6 +45,11 @@
+ #include "hev-socks5-session-tcp.h"
+ #include "hev-socks5-session-udp.h"
+ 
++#include <arpa/inet.h>
++#include <netinet/in.h>
++#include "nova-metadata/metadata_tap.h"
++#include "nova-metadata/pbuf_reader_adapter.h"
++
+ #include "hev-socks5-tunnel.h"
+ 
+ enum
+@@ -79,6 +84,81 @@
+ static HevTask *task_lwip_timer;
+ static HevList session_set;
+ 
++
++/*
++ * NOVA PING observes headers synchronously while the pbuf is valid.
++ * The metadata queues are diagnostic-only: a rejected sample or full queue
++ * must never change the original pbuf or the tunnel return value.
++ */
++static np_metadata_tap_t nova_metadata_tap_input;
++static np_metadata_tap_t nova_metadata_tap_output;
++static unsigned int nova_metadata_poll_cursor;
++static np_local_address_t nova_metadata_local_addresses[2];
++static size_t nova_metadata_local_address_count;
++
++static uint16_t
++nova_pbuf_copy_partial (const void *opaque, void *destination,
++                        uint16_t length, uint16_t offset)
++{
++    const struct pbuf *p = opaque;
++
++    if (!p)
++        return 0;
++
++    return pbuf_copy_partial (p, destination, length, offset);
++}
++
++static void
++nova_metadata_init (void)
++{
++    const char *ipv4;
++    const char *ipv6;
++    struct in_addr addr4;
++    struct in6_addr addr6;
++
++    nova_metadata_local_address_count = 0;
++    memset (nova_metadata_local_addresses, 0,
++            sizeof (nova_metadata_local_addresses));
++
++    (void)np_metadata_tap_init (&nova_metadata_tap_input);
++    (void)np_metadata_tap_init (&nova_metadata_tap_output);
++
++    ipv4 = hev_config_get_tunnel_ipv4_address ();
++    if (ipv4 && inet_pton (AF_INET, ipv4, &addr4) == 1) {
++        np_local_address_t *local =
++            &nova_metadata_local_addresses[nova_metadata_local_address_count++];
++        local->family = NP_ADDRESS_IPV4;
++        memcpy (local->bytes, &addr4, sizeof (addr4));
++    }
++
++    ipv6 = hev_config_get_tunnel_ipv6_address ();
++    if (ipv6 && inet_pton (AF_INET6, ipv6, &addr6) == 1) {
++        np_local_address_t *local =
++            &nova_metadata_local_addresses[nova_metadata_local_address_count++];
++        local->family = NP_ADDRESS_IPV6;
++        memcpy (local->bytes, &addr6, sizeof (addr6));
++    }
++}
++
++static void
++nova_metadata_observe (const struct pbuf *p, np_metadata_tap_t *tap)
++{
++    np_packet_reader_t reader;
++    np_pbuf_reader_context_t context;
++
++    if (!tap || !tap->ready || !p ||
++        !nova_metadata_local_address_count)
++        return;
++
++    if (!np_pbuf_reader_init (&reader, &context, p, p->tot_len,
++                              nova_pbuf_copy_partial))
++        return;
++
++    (void)np_metadata_tap_observe (tap, &reader,
++                                   nova_metadata_local_addresses,
++                                   nova_metadata_local_address_count);
++}
++
+ static int
+ task_io_yielder (HevTaskYieldType type, void *data)
+ {
+@@ -92,6 +172,8 @@
+ {
+     ssize_t s;
+ 
++    nova_metadata_observe (p, &nova_metadata_tap_output);
++
+     s = hev_tunnel_write (tun_fd, p);
+     if (s <= 0) {
+         if (errno == EAGAIN)
+@@ -440,6 +522,8 @@
+         stat_tx_packets++;
+         stat_tx_bytes += buf->tot_len;
+ 
++        nova_metadata_observe (buf, &nova_metadata_tap_input);
++
+         buf = tunnel_compact_pbuf (buf);
+ 
+         data = buf->payload;
+@@ -811,6 +895,9 @@
+     if (res < 0)
+         goto exit;
+ 
++    /* Failure disables telemetry only; it does not fail tunnel startup. */
++    nova_metadata_init ();
++
+     res = gateway_init ();
+     if (res < 0)
+         goto exit;
+@@ -939,3 +1026,31 @@
+     if (rx_bytes)
+         *rx_bytes = stat_rx_bytes;
+ }
++
++/*
++ * Exactly one consumer must drain both queues. JNI integration should call this from
++ * one dedicated polling executor, never from multiple UI or worker threads.
++ */
++EXPORT_SYMBOL int
++hev_socks5_tunnel_metadata_poll (np_packet_metadata_t *record)
++{
++    if (!record)
++        return 0;
++    if (nova_metadata_poll_cursor == 0) {
++        nova_metadata_poll_cursor = 1;
++        if (np_metadata_tap_poll (&nova_metadata_tap_input, record))
++            return 1;
++        return np_metadata_tap_poll (&nova_metadata_tap_output, record) ? 1 : 0;
++    }
++    nova_metadata_poll_cursor = 0;
++    if (np_metadata_tap_poll (&nova_metadata_tap_output, record))
++        return 1;
++    return np_metadata_tap_poll (&nova_metadata_tap_input, record) ? 1 : 0;
++}
++
++EXPORT_SYMBOL uint32_t
++hev_socks5_tunnel_metadata_dropped (void)
++{
++    return np_metadata_tap_dropped (&nova_metadata_tap_input) +
++           np_metadata_tap_dropped (&nova_metadata_tap_output);
++}

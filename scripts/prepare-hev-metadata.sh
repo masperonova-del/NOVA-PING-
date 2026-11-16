@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+HEV_REV="75dbc1e9ace6c70d3d1b94df7c283efe1de7effc"
+DEST="${1:-${ROOT}/.work/hev-socks5-tunnel}"
+
+if [[ -e "${DEST}/.git" ]]; then
+  git -C "${DEST}" fetch --depth 1 origin "${HEV_REV}"
+else
+  mkdir -p "$(dirname "${DEST}")"
+  git clone --filter=blob:none https://github.com/heiher/hev-socks5-tunnel.git "${DEST}"
+fi
+
+git -C "${DEST}" checkout --detach "${HEV_REV}"
+git -C "${DEST}" reset --hard "${HEV_REV}"
+git -C "${DEST}" clean -fdx
+git -C "${DEST}" submodule update --init --recursive
+
+mkdir -p "${DEST}/src/nova-metadata"
+cp "${ROOT}"/native/metadata/packet_metadata.[ch] "${DEST}/src/nova-metadata/"
+cp "${ROOT}"/native/metadata/pbuf_reader_adapter.[ch] "${DEST}/src/nova-metadata/"
+cp "${ROOT}"/native/metadata/metadata_tap.[ch] "${DEST}/src/nova-metadata/"
+
+git -C "${DEST}" apply --check "${ROOT}/native/hev/nova-ping-hev-hooks.patch"
+git -C "${DEST}" apply "${ROOT}/native/hev/nova-ping-hev-hooks.patch"
+git -C "${DEST}" apply --check "${ROOT}/native/hev/nova-ping-jni.patch"
+git -C "${DEST}" apply "${ROOT}/native/hev/nova-ping-jni.patch"
+
+grep -q 'nova_metadata_observe (buf, &nova_metadata_tap_input)' "${DEST}/src/hev-socks5-tunnel.c"
+grep -q 'nova_metadata_observe (p, &nova_metadata_tap_output)' "${DEST}/src/hev-socks5-tunnel.c"
+grep -q 'hev_socks5_tunnel_metadata_poll' "${DEST}/src/hev-socks5-tunnel.c"
+grep -q 'Java_com_novaping_app_HevMetadataNative_nativePoll' "${DEST}/src/hev-jni.c"
+grep -q 'hev_socks5_tunnel_metadata_dropped' "${DEST}/src/hev-socks5-tunnel.h"
+
+printf 'HEV metadata patch applied at %s\n' "${HEV_REV}"
