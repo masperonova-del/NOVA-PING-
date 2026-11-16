@@ -173,7 +173,7 @@ internal class VpnDiagnosticTracker {
         engineExitCode?.let { append(" (code $it)") }
         appendLine()
         appendLine()
-        appendLine("DNS : $dnsSuccesses succès / $dnsAttempts essais / $dnsFailures échecs")
+        appendLine("DNS SOCKS5 (résolution des noms) : $dnsSuccesses succès / $dnsAttempts essais / $dnsFailures échecs")
         appendLine("Dernier DNS : $lastDns")
         appendLine("Catégories DNS : ${formatCategories(dnsFailureCategories)}")
         appendLine()
