@@ -435,7 +435,7 @@ class MainActivity : Activity() {
             15f, Color.WHITE, true, Gravity.START
         ))
         vpnDiagnosticCard.addView(label(
-            "Actualise ce rapport après un essai avec le jeu. Les compteurs sont locaux et agrégés : aucun domaine, aucune adresse IP distante et aucun contenu de paquet n'est conservé.",
+            "Actualise ce rapport après un essai avec le jeu. DNS désigne la résolution de noms du pont SOCKS5 ; les éventuels DNS directs sont inclus dans les totaux UDP. Ce sont des compteurs de transport, pas un ping de serveur de match. Aucun domaine, aucune adresse IP distante et aucun contenu de paquet n'est conservé.",
             12f, mutedColor, false, Gravity.START
         ).apply { setPadding(0, dp(6), 0, dp(10)) })
         val vpnDiagnosticReport = label(
