@@ -26,7 +26,7 @@ class VpnDiagnosticTrackerTest {
         assertTrue(report.contains("Session : active"))
         assertTrue(report.contains("Pont SOCKS5 : Prêt"))
         assertTrue(report.contains("Interface TUN Android : Établi"))
-        assertTrue(report.contains("DNS : 1 succès / 1 essais / 0 échecs"))
+        assertTrue(report.contains("DNS SOCKS5 (résolution des noms) : 1 succès / 1 essais / 0 échecs"))
         assertTrue(report.contains("TCP CONNECT : 0 succès / 1 essais / 1 échecs"))
         assertTrue(report.contains("connect_timeout=1"))
         assertTrue(report.contains("UDP sortants : 1"))
