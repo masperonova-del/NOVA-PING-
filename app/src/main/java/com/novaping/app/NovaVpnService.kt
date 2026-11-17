@@ -125,7 +125,9 @@ internal class NovaVpnService : VpnService() {
     }
 
     private fun startTunnel() {
-        check(VpnService.prepare(this) == null) {
+        val vpnAuthorizationPresent = VpnService.prepare(this) == null
+        VpnDiagnostics.tracker.recordVpnAuthorizationAtStart(vpnAuthorizationPresent)
+        check(vpnAuthorizationPresent) {
             "Le consentement VPN Android est requis avant le démarrage"
         }
         val gamePackage = readSelectedGamePackage(this)
@@ -141,13 +143,13 @@ internal class NovaVpnService : VpnService() {
 
         val resolver = ProtectedDnsResolver(
             resolverAddress = dnsServer,
-            protectDatagramSocket = { protect(it) },
-            protectTcpSocket = { protect(it) }
+            protectDatagramSocket = { protectSocket("UDP") { protect(it) } },
+            protectTcpSocket = { protectSocket("TCP") { protect(it) } }
         )
         val localBridge = LocalSocks5Bridge(
-            protectUpstreamSocket = { protect(it) },
+            protectUpstreamSocket = { protectSocket("TCP") { protect(it) } },
             bindAddress = InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1)),
-            protectUpstreamDatagramSocket = { protect(it) },
+            protectUpstreamDatagramSocket = { protectSocket("UDP") { protect(it) } },
             protectedDnsResolver = resolver
         )
         bridge = localBridge
@@ -252,6 +254,7 @@ internal class NovaVpnService : VpnService() {
     }
 
     override fun onRevoke() {
+        VpnDiagnostics.tracker.recordVpnRevocation()
         // Android revokes the current VpnService when another VPN takes ownership.
         // Publish this immediately: the engine may need time to unwind its native thread.
         terminalState = "replaced"
@@ -259,6 +262,31 @@ internal class NovaVpnService : VpnService() {
         publishState("replaced", "Un autre VPN a pris le relais. Le tunnel NOVA PING est arrêté.")
         stopTunnel()
         super.onRevoke()
+    }
+
+    /**
+     * Records only the socket type, protect() outcome and a boolean authorization
+     * snapshot. No socket endpoint or packet data is retained.
+     */
+    private fun protectSocket(kind: String, operation: () -> Boolean): Boolean {
+        val authorizationPresent = VpnService.prepare(this) == null
+        return try {
+            val accepted = operation()
+            VpnDiagnostics.tracker.recordSocketProtection(
+                kind = kind,
+                accepted = accepted,
+                authorizationPresent = authorizationPresent
+            )
+            accepted
+        } catch (_: Exception) {
+            VpnDiagnostics.tracker.recordSocketProtection(
+                kind = kind,
+                accepted = false,
+                authorizationPresent = authorizationPresent,
+                threw = true
+            )
+            false
+        }
     }
 
     override fun onDestroy() {
