@@ -30,6 +30,10 @@ internal class VpnDiagnosticTracker {
     private val tcpFailureCategories = linkedMapOf<String, Int>()
     private val socketProtectionResults = linkedMapOf<String, MutableMap<String, Int>>()
     private val socketProtectionInvalidPreconditions = linkedMapOf<String, Int>()
+    private val socketProtectionRejectedWithAuthorizationPresent = linkedMapOf<String, Int>()
+    private val socketProtectionRejectedWithAuthorizationMissing = linkedMapOf<String, Int>()
+    private var vpnAuthorizationAtStart = "non vérifiée"
+    private var vpnRevocationEvents = 0
 
     private var authSuccesses = 0
     private var authFailures = 0
@@ -64,6 +68,10 @@ internal class VpnDiagnosticTracker {
         tcpFailureCategories.clear()
         socketProtectionResults.clear()
         socketProtectionInvalidPreconditions.clear()
+        socketProtectionRejectedWithAuthorizationPresent.clear()
+        socketProtectionRejectedWithAuthorizationMissing.clear()
+        vpnAuthorizationAtStart = "non vérifiée"
+        vpnRevocationEvents = 0
 
         authSuccesses = 0
         authFailures = 0
@@ -134,6 +142,32 @@ internal class VpnDiagnosticTracker {
     }
 
     @Synchronized
+    fun recordVpnAuthorizationAtStart(present: Boolean) {
+        vpnAuthorizationAtStart = if (present) "présente" else "absente"
+    }
+
+    @Synchronized
+    fun recordVpnRevocation() {
+        vpnRevocationEvents++
+    }
+
+    @Synchronized
+    fun recordSocketProtectionAuthorization(
+        purpose: String,
+        outcome: String,
+        authorizationPresent: Boolean
+    ) {
+        if (outcome == "protected") return
+        val safePurpose = safeCategory(purpose)
+        val counts = if (authorizationPresent) {
+            socketProtectionRejectedWithAuthorizationPresent
+        } else {
+            socketProtectionRejectedWithAuthorizationMissing
+        }
+        counts[safePurpose] = (counts[safePurpose] ?: 0) + 1
+    }
+
+    @Synchronized
     fun recordSocketProtection(purpose: String, outcome: String, invalidPrecondition: Boolean) {
         val safePurpose = safeCategory(purpose)
         val safeOutcome = when (outcome) {
@@ -191,6 +225,10 @@ internal class VpnDiagnosticTracker {
         append("Moteur HEV : $engineState")
         engineExitCode?.let { append(" (code $it)") }
         appendLine()
+        appendLine("Autorisation VPN au démarrage : $vpnAuthorizationAtStart")
+        appendLine("Événements de révocation Android : $vpnRevocationEvents")
+        appendLine("Refus protect() avec autorisation présente : ${formatCategories(socketProtectionRejectedWithAuthorizationPresent)}")
+        appendLine("Refus protect() avec autorisation absente : ${formatCategories(socketProtectionRejectedWithAuthorizationMissing)}")
         appendLine()
         appendLine("DNS SOCKS5 (résolution des noms) : $dnsSuccesses succès / $dnsAttempts essais / $dnsFailures échecs")
         appendLine("Dernier DNS : $lastDns")
