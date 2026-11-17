@@ -50,16 +50,41 @@ class VpnDiagnosticTrackerTest {
     }
 
     @Test
+    fun reportSeparatesProtectOutcomesAuthorizationSnapshotAndRevocation() {
+        val tracker = VpnDiagnosticTracker()
+        tracker.beginSession()
+        tracker.recordVpnAuthorizationAtStart(true)
+        tracker.recordSocketProtection("TCP", accepted = false, authorizationPresent = true)
+        tracker.recordSocketProtection("TCP", accepted = false, authorizationPresent = false)
+        tracker.recordSocketProtection("TCP", accepted = false, authorizationPresent = true, threw = true)
+        tracker.recordSocketProtection("UDP", accepted = true, authorizationPresent = true)
+        tracker.recordVpnRevocation()
+
+        val report = tracker.report()
+
+        assertTrue(report.contains("Autorisation VPN au démarrage : présente"))
+        assertTrue(report.contains("Événements de révocation Android : 1"))
+        assertTrue(report.contains("Protection sockets TCP : 0 acceptés / 2 refusés / 1 exceptions sur 3 appels"))
+        assertTrue(report.contains("Protection sockets UDP : 1 acceptés / 0 refusés / 0 exceptions sur 1 appels"))
+        assertTrue(report.contains("Refus protect() avec autorisation présente : 2"))
+        assertTrue(report.contains("Refus protect() avec autorisation absente : 1"))
+    }
+
+    @Test
     fun newSessionResetsPreviousCounters() {
         val tracker = VpnDiagnosticTracker()
         tracker.beginSession()
         tracker.recordUdpOutbound()
+        tracker.recordVpnRevocation()
+        tracker.recordSocketProtection("TCP", accepted = false, authorizationPresent = false)
         tracker.finish()
 
         tracker.beginSession()
         val report = tracker.report()
 
         assertTrue(report.contains("UDP sortants : 0"))
+        assertTrue(report.contains("Événements de révocation Android : 0"))
+        assertTrue(report.contains("Protection sockets TCP : 0 acceptés / 0 refusés / 0 exceptions sur 0 appels"))
         assertTrue(report.contains("Session : active"))
     }
 
