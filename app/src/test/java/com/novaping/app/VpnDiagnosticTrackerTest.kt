@@ -47,6 +47,24 @@ class VpnDiagnosticTrackerTest {
     }
 
     @Test
+    fun reportSeparatesProtectRejectionsByAuthorizationSnapshot() {
+        val tracker = VpnDiagnosticTracker()
+        tracker.beginSession()
+        tracker.recordVpnAuthorizationAtStart(true)
+        tracker.recordSocketProtection("TCP_CONNECT", "rejected", false)
+        tracker.recordSocketProtectionAuthorization("TCP_CONNECT", "rejected", true)
+        tracker.recordSocketProtectionAuthorization("DNS_UDP", "security_exception", false)
+        tracker.recordVpnRevocation()
+
+        val report = tracker.report()
+
+        assertTrue(report.contains("Autorisation VPN au démarrage : présente"))
+        assertTrue(report.contains("Événements de révocation Android : 1"))
+        assertTrue(report.contains("Refus protect() avec autorisation présente : TCP_CONNECT=1"))
+        assertTrue(report.contains("Refus protect() avec autorisation absente : DNS_UDP=1"))
+    }
+
+    @Test
     fun reportDoesNotStoreHostnamesOrPacketPayloads() {
         val tracker = VpnDiagnosticTracker()
         tracker.beginSession()
@@ -67,12 +85,18 @@ class VpnDiagnosticTrackerTest {
         val tracker = VpnDiagnosticTracker()
         tracker.beginSession()
         tracker.recordUdpOutbound()
+        tracker.recordVpnAuthorizationAtStart(true)
+        tracker.recordVpnRevocation()
+        tracker.recordSocketProtectionAuthorization("TCP_CONNECT", "rejected", false)
         tracker.finish()
 
         tracker.beginSession()
         val report = tracker.report()
 
         assertTrue(report.contains("UDP sortants : 0"))
+        assertTrue(report.contains("Autorisation VPN au démarrage : non vérifiée"))
+        assertTrue(report.contains("Événements de révocation Android : 0"))
+        assertTrue(report.contains("Refus protect() avec autorisation absente : aucune"))
         assertTrue(report.contains("Session : active"))
     }
 
