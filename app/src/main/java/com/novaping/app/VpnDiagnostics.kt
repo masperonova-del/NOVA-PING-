@@ -15,6 +15,18 @@ internal class VpnDiagnosticTracker {
     private var tunState = "Non établi"
     private var engineState = "Non démarré"
     private var engineExitCode: Int? = null
+    private var vpnAuthorizationAtStart = "non vérifiée"
+    private var vpnRevocationEvents = 0
+    private var tcpProtectAttempts = 0
+    private var tcpProtectAccepted = 0
+    private var tcpProtectRejected = 0
+    private var tcpProtectExceptions = 0
+    private var udpProtectAttempts = 0
+    private var udpProtectAccepted = 0
+    private var udpProtectRejected = 0
+    private var udpProtectExceptions = 0
+    private var rejectedWithAuthorizationPresent = 0
+    private var rejectedWithAuthorizationMissing = 0
 
     private var dnsAttempts = 0
     private var dnsSuccesses = 0
@@ -47,6 +59,18 @@ internal class VpnDiagnosticTracker {
         tunState = "Non établi"
         engineState = "En attente"
         engineExitCode = null
+        vpnAuthorizationAtStart = "non vérifiée"
+        vpnRevocationEvents = 0
+        tcpProtectAttempts = 0
+        tcpProtectAccepted = 0
+        tcpProtectRejected = 0
+        tcpProtectExceptions = 0
+        udpProtectAttempts = 0
+        udpProtectAccepted = 0
+        udpProtectRejected = 0
+        udpProtectExceptions = 0
+        rejectedWithAuthorizationPresent = 0
+        rejectedWithAuthorizationMissing = 0
 
         dnsAttempts = 0
         dnsSuccesses = 0
@@ -76,6 +100,40 @@ internal class VpnDiagnosticTracker {
     @Synchronized fun setBridgeState(value: String) { bridgeState = safeState(value) }
     @Synchronized fun setTunState(value: String) { tunState = safeState(value) }
     @Synchronized fun setEngineState(value: String) { engineState = safeState(value) }
+
+    @Synchronized
+    fun recordVpnAuthorizationAtStart(present: Boolean) {
+        vpnAuthorizationAtStart = if (present) "présente" else "absente"
+    }
+
+    @Synchronized
+    fun recordVpnRevocation() {
+        vpnRevocationEvents++
+    }
+
+    @Synchronized
+    fun recordSocketProtection(
+        kind: String,
+        accepted: Boolean,
+        authorizationPresent: Boolean,
+        threw: Boolean = false
+    ) {
+        if (kind == "UDP") {
+            udpProtectAttempts++
+            if (accepted) udpProtectAccepted++
+            else if (threw) udpProtectExceptions++
+            else udpProtectRejected++
+        } else {
+            tcpProtectAttempts++
+            if (accepted) tcpProtectAccepted++
+            else if (threw) tcpProtectExceptions++
+            else tcpProtectRejected++
+        }
+        if (!accepted) {
+            if (authorizationPresent) rejectedWithAuthorizationPresent++
+            else rejectedWithAuthorizationMissing++
+        }
+    }
 
     @Synchronized
     fun recordEngineExit(code: Int) {
@@ -172,6 +230,12 @@ internal class VpnDiagnosticTracker {
         append("Moteur HEV : $engineState")
         engineExitCode?.let { append(" (code $it)") }
         appendLine()
+        appendLine("Autorisation VPN au démarrage : $vpnAuthorizationAtStart")
+        appendLine("Événements de révocation Android : $vpnRevocationEvents")
+        appendLine("Protection sockets TCP : $tcpProtectAccepted acceptés / $tcpProtectRejected refusés / $tcpProtectExceptions exceptions sur $tcpProtectAttempts appels")
+        appendLine("Protection sockets UDP : $udpProtectAccepted acceptés / $udpProtectRejected refusés / $udpProtectExceptions exceptions sur $udpProtectAttempts appels")
+        appendLine("Refus protect() avec autorisation présente : $rejectedWithAuthorizationPresent")
+        appendLine("Refus protect() avec autorisation absente : $rejectedWithAuthorizationMissing")
         appendLine()
         appendLine("DNS SOCKS5 (résolution des noms) : $dnsSuccesses succès / $dnsAttempts essais / $dnsFailures échecs")
         appendLine("Dernier DNS : $lastDns")
