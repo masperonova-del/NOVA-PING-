@@ -127,7 +127,9 @@ internal class NovaVpnService : VpnService() {
     }
 
     private fun startTunnel() {
-        check(VpnService.prepare(this) == null) {
+        val vpnAuthorizationPresent = VpnService.prepare(this) == null
+        VpnDiagnostics.tracker.recordVpnAuthorizationAtStart(vpnAuthorizationPresent)
+        check(vpnAuthorizationPresent) {
             "Le consentement VPN Android est requis avant le démarrage"
         }
         val gamePackage = readSelectedGamePackage(this)
@@ -241,7 +243,13 @@ internal class NovaVpnService : VpnService() {
         } catch (_: Exception) {
             "exception"
         }
+        val authorizationPresent = VpnService.prepare(this) == null
         VpnDiagnostics.tracker.recordSocketProtection(purpose, outcome, invalidPrecondition)
+        VpnDiagnostics.tracker.recordSocketProtectionAuthorization(
+            purpose = purpose,
+            outcome = outcome,
+            authorizationPresent = authorizationPresent
+        )
         return outcome == "protected"
     }
 
@@ -287,6 +295,7 @@ internal class NovaVpnService : VpnService() {
     }
 
     override fun onRevoke() {
+        VpnDiagnostics.tracker.recordVpnRevocation()
         // Android revokes the current VpnService when another VPN takes ownership.
         // Publish this immediately: the engine may need time to unwind its native thread.
         terminalState = "replaced"
