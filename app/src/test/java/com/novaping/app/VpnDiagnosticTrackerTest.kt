@@ -52,6 +52,33 @@ class VpnDiagnosticTrackerTest {
     }
 
     @Test
+    fun reportShowsPrivacySafeContextForRejectedProtectionCalls() {
+        val tracker = VpnDiagnosticTracker()
+        tracker.beginSession()
+        tracker.recordSocketProtectionContext(
+            purpose = "TCP_CONNECT",
+            outcome = "rejected",
+            authorizationPresentBefore = true,
+            authorizationPresentAfter = true,
+            tunnelEstablished = true,
+            tunDescriptorPresent = true,
+            engineStarted = true,
+            engineThreadAlive = true,
+            stopping = false,
+            socketClosed = false,
+            socketConnected = false,
+            socketBound = false
+        )
+
+        val report = tracker.report()
+
+        assertTrue(report.contains(
+            "TCP_CONNECT auth=oui>oui TUN=oui fd=oui HEV=oui thread=oui " +
+                "arrêt=non socket_closed=non connected=non bound=non : 1"
+        ))
+    }
+
+    @Test
     fun reportSeparatesProtectRejectionsByAuthorizationSnapshot() {
         val tracker = VpnDiagnosticTracker()
         tracker.beginSession()
