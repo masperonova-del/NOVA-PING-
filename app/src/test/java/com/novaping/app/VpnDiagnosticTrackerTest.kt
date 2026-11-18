@@ -81,6 +81,27 @@ class VpnDiagnosticTrackerTest {
     }
 
     @Test
+    fun reportAggregatesHevPacketsWithoutRetainingEndpoints() {
+        val tracker = VpnDiagnosticTracker()
+        tracker.beginSession()
+        tracker.recordHevPacket(6, 1, 100)
+        tracker.recordHevPacket(6, 2, 80)
+        tracker.recordHevPacket(17, 1, 64)
+        tracker.recordHevPacket(17, 2, 60)
+        tracker.setHevMetadataDroppedSamples(3)
+
+        val report = tracker.report()
+
+        assertTrue(report.contains("TCP sortants : 1 paquets / 100 octets"))
+        assertTrue(report.contains("TCP entrants : 1 paquets / 80 octets"))
+        assertTrue(report.contains("UDP sortants : 1 paquets / 64 octets"))
+        assertTrue(report.contains("UDP entrants : 1 paquets / 60 octets"))
+        assertTrue(report.contains("Échantillons HEV abandonnés : 3"))
+        assertFalse(report.contains("198.51.100.4"))
+        assertTrue(report.contains("aucune adresse IP"))
+    }
+
+    @Test
     fun newSessionResetsPreviousCounters() {
         val tracker = VpnDiagnosticTracker()
         tracker.beginSession()
