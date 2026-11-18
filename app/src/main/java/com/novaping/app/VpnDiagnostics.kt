@@ -317,7 +317,7 @@ internal class VpnDiagnosticTracker {
         appendLine("Dernier DNS : $lastDns")
         appendLine("Catégories DNS : ${formatCategories(dnsFailureCategories)}")
         appendLine()
-        appendLine("TCP CONNECT : $tcpSuccesses succès / $tcpAttempts essais / $tcpFailures échecs")
+        appendLine("Demandes SOCKS5 TCP CONNECT : $tcpSuccesses succès / $tcpAttempts demandes / $tcpFailures échecs")
         appendLine("Dernier TCP : $lastTcp")
         appendLine("Appels réels Socket.connect() : $upstreamSocketConnectCalls")
         appendLine("Connexions socket établies : $upstreamSocketConnectSuccesses")
