@@ -45,6 +45,19 @@ internal class VpnDiagnosticTracker {
     private var udpSendFailures = 0
     private var udpDrops = 0
 
+    // HEV metadata is reduced immediately to transport/direction/size totals.
+    // Remote addresses, ports and packet payloads are never stored here.
+    private var hevTcpOutboundPackets = 0L
+    private var hevTcpInboundPackets = 0L
+    private var hevUdpOutboundPackets = 0L
+    private var hevUdpInboundPackets = 0L
+    private var hevTcpOutboundBytes = 0L
+    private var hevTcpInboundBytes = 0L
+    private var hevUdpOutboundBytes = 0L
+    private var hevUdpInboundBytes = 0L
+    private var hevMetadataDroppedSamples = 0L
+    private var hevMetadataPollingFailures = 0L
+
     @Synchronized
     fun beginSession() {
         active = true
@@ -81,6 +94,16 @@ internal class VpnDiagnosticTracker {
         udpInbound = 0
         udpSendFailures = 0
         udpDrops = 0
+        hevTcpOutboundPackets = 0L
+        hevTcpInboundPackets = 0L
+        hevUdpOutboundPackets = 0L
+        hevUdpInboundPackets = 0L
+        hevTcpOutboundBytes = 0L
+        hevTcpInboundBytes = 0L
+        hevUdpOutboundBytes = 0L
+        hevUdpInboundBytes = 0L
+        hevMetadataDroppedSamples = 0L
+        hevMetadataPollingFailures = 0L
     }
 
     @Synchronized fun isSessionActive(): Boolean = active
@@ -206,6 +229,40 @@ internal class VpnDiagnosticTracker {
     fun recordUdpDrop() { udpDrops++ }
 
     @Synchronized
+    fun recordHevPacket(transport: Int, direction: Int, packetLengthBytes: Int) {
+        if (packetLengthBytes <= 0) return
+        val size = packetLengthBytes.toLong()
+        when {
+            transport == 6 && direction == 1 -> {
+                hevTcpOutboundPackets++
+                hevTcpOutboundBytes += size
+            }
+            transport == 6 && direction == 2 -> {
+                hevTcpInboundPackets++
+                hevTcpInboundBytes += size
+            }
+            transport == 17 && direction == 1 -> {
+                hevUdpOutboundPackets++
+                hevUdpOutboundBytes += size
+            }
+            transport == 17 && direction == 2 -> {
+                hevUdpInboundPackets++
+                hevUdpInboundBytes += size
+            }
+        }
+    }
+
+    @Synchronized
+    fun setHevMetadataDroppedSamples(total: Long) {
+        hevMetadataDroppedSamples = total.coerceAtLeast(0L)
+    }
+
+    @Synchronized
+    fun recordHevMetadataPollingFailure() {
+        hevMetadataPollingFailures++
+    }
+
+    @Synchronized
     fun report(): String = render()
 
     @Synchronized
@@ -259,6 +316,14 @@ internal class VpnDiagnosticTracker {
         appendLine("UDP entrants : $udpInbound")
         appendLine("Échecs d'envoi UDP : $udpSendFailures")
         appendLine("Datagrammes ignorés : $udpDrops")
+        appendLine()
+        appendLine("HEV — paquets observés (en-têtes uniquement) :")
+        appendLine("TCP sortants : $hevTcpOutboundPackets paquets / $hevTcpOutboundBytes octets")
+        appendLine("TCP entrants : $hevTcpInboundPackets paquets / $hevTcpInboundBytes octets")
+        appendLine("UDP sortants : $hevUdpOutboundPackets paquets / $hevUdpOutboundBytes octets")
+        appendLine("UDP entrants : $hevUdpInboundPackets paquets / $hevUdpInboundBytes octets")
+        appendLine("Échantillons HEV abandonnés : $hevMetadataDroppedSamples")
+        appendLine("Erreurs de lecture des métadonnées HEV : $hevMetadataPollingFailures")
         appendLine()
         append("Confidentialité : aucun domaine, aucune adresse IP, aucun port distant et aucun contenu de paquet enregistré.")
     }
