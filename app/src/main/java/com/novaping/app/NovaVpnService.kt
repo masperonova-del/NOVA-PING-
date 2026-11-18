@@ -16,6 +16,7 @@ import android.os.ParcelFileDescriptor
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.Socket
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -70,6 +71,8 @@ internal class NovaVpnService : VpnService() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val stopping = AtomicBoolean(false)
+    private val metadataPolling = AtomicBoolean(false)
+    @Volatile private var metadataThread: Thread? = null
     @Volatile private var engineStarted = false
     @Volatile private var engineThread: Thread? = null
     @Volatile private var bridge: LocalSocks5Bridge? = null
@@ -102,6 +105,7 @@ internal class NovaVpnService : VpnService() {
                     VpnDiagnostics.tracker.setTunnelState("Échec au démarrage")
                     VpnDiagnostics.tracker.setBridgeState("Échec ou non démarré")
                     VpnDiagnostics.tracker.setTunState("Non établi")
+                    stopHevMetadataPolling()
                     bridge?.close()
                     bridge = null
                     tunDescriptor?.let { fd ->
@@ -204,6 +208,7 @@ internal class NovaVpnService : VpnService() {
                     publishState("error", terminalError)
                 }
             } finally {
+                stopHevMetadataPolling()
                 engineStarted = false
                 tunDescriptor = null
                 runCatching { ParcelFileDescriptor.adoptFd(fd).close() }
@@ -211,7 +216,64 @@ internal class NovaVpnService : VpnService() {
             }
         }, "NovaHevEngine").apply { isDaemon = true }
         engineThread = thread
+        startHevMetadataPolling()
         thread.start()
+    }
+
+    /**
+     * Reads the native HEV metadata queues on their single supported consumer.
+     * Only protocol, direction and packet size are copied into diagnostics.
+     */
+    private fun startHevMetadataPolling() {
+        if (!HevMetadataNative.isAvailable() ||
+            !metadataPolling.compareAndSet(false, true)
+        ) return
+
+        val poller = Thread({
+            while (metadataPolling.get()) {
+                try {
+                    val records = HevMetadataNative.drainAvailable().get(1, TimeUnit.SECONDS)
+                    records.forEach { record ->
+                        VpnDiagnostics.tracker.recordHevPacket(
+                            transport = record.transport,
+                            direction = record.direction,
+                            packetLengthBytes = record.packetLengthBytes
+                        )
+                    }
+                    val dropped = HevMetadataNative.droppedSamples().get(1, TimeUnit.SECONDS)
+                    VpnDiagnostics.tracker.setHevMetadataDroppedSamples(dropped)
+                    Thread.sleep(200L)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    break
+                } catch (_: Exception) {
+                    VpnDiagnostics.tracker.recordHevMetadataPollingFailure()
+                    try {
+                        Thread.sleep(500L)
+                    } catch (_: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                        break
+                    }
+                }
+            }
+        }, "NovaHevMetadataPoller").apply { isDaemon = true }
+
+        metadataThread = poller
+        poller.start()
+    }
+
+    private fun stopHevMetadataPolling() {
+        metadataPolling.set(false)
+        val poller = metadataThread
+        metadataThread = null
+        poller?.interrupt()
+        if (poller != null && poller !== Thread.currentThread()) {
+            try {
+                poller.join(500L)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+            }
+        }
     }
 
     /**
