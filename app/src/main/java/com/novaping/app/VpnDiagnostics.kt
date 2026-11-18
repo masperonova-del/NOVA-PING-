@@ -34,6 +34,7 @@ internal class VpnDiagnosticTracker {
     private val tcpFailureCategories = linkedMapOf<String, Int>()
     private val socketProtectionResults = linkedMapOf<String, MutableMap<String, Int>>()
     private val socketProtectionInvalidPreconditions = linkedMapOf<String, Int>()
+    private val socketProtectionContexts = linkedMapOf<String, Int>()
     private val socketProtectionRejectedWithAuthorizationPresent = linkedMapOf<String, Int>()
     private val socketProtectionRejectedWithAuthorizationMissing = linkedMapOf<String, Int>()
     private var vpnAuthorizationAtStart = "non vérifiée"
@@ -89,6 +90,7 @@ internal class VpnDiagnosticTracker {
         tcpFailureCategories.clear()
         socketProtectionResults.clear()
         socketProtectionInvalidPreconditions.clear()
+        socketProtectionContexts.clear()
         socketProtectionRejectedWithAuthorizationPresent.clear()
         socketProtectionRejectedWithAuthorizationMissing.clear()
         vpnAuthorizationAtStart = "non vérifiée"
@@ -232,6 +234,31 @@ internal class VpnDiagnosticTracker {
     }
 
     @Synchronized
+    fun recordSocketProtectionContext(
+        purpose: String,
+        outcome: String,
+        authorizationPresentBefore: Boolean,
+        authorizationPresentAfter: Boolean,
+        tunnelEstablished: Boolean,
+        tunDescriptorPresent: Boolean,
+        engineStarted: Boolean,
+        engineThreadAlive: Boolean,
+        stopping: Boolean,
+        socketClosed: Boolean,
+        socketConnected: Boolean,
+        socketBound: Boolean
+    ) {
+        if (outcome != "rejected") return
+        val safePurpose = safeCategory(purpose)
+        val key = "$safePurpose auth=${yesNo(authorizationPresentBefore)}>${yesNo(authorizationPresentAfter)} " +
+            "TUN=${yesNo(tunnelEstablished)} fd=${yesNo(tunDescriptorPresent)} " +
+            "HEV=${yesNo(engineStarted)} thread=${yesNo(engineThreadAlive)} " +
+            "arrêt=${yesNo(stopping)} socket_closed=${yesNo(socketClosed)} " +
+            "connected=${yesNo(socketConnected)} bound=${yesNo(socketBound)}"
+        socketProtectionContexts[key] = (socketProtectionContexts[key] ?: 0) + 1
+    }
+
+    @Synchronized
     fun recordAuthentication(success: Boolean) {
         if (success) authSuccesses++ else authFailures++
     }
@@ -339,6 +366,14 @@ internal class VpnDiagnosticTracker {
                 )
             }
         }
+        appendLine("Contexte agrégé des refus protect() :")
+        if (socketProtectionContexts.isEmpty()) {
+            appendLine("Aucun refus enregistré")
+        } else {
+            socketProtectionContexts.forEach { (context, count) ->
+                appendLine("$context : $count")
+            }
+        }
         appendLine()
         appendLine("Authentification SOCKS5 : $authSuccesses réussites / $authFailures échecs")
         appendLine("Associations UDP : $udpAssociations démarrées / $udpAssociationFailures échecs")
@@ -357,6 +392,8 @@ internal class VpnDiagnosticTracker {
         appendLine()
         append("Confidentialité : aucun domaine, aucune adresse IP, aucun port distant et aucun contenu de paquet enregistré.")
     }
+
+    private fun yesNo(value: Boolean): String = if (value) "oui" else "non"
 
     private fun formatCategories(values: Map<String, Int>): String =
         if (values.isEmpty()) "aucune" else values.entries.joinToString { "${it.key}=${it.value}" }
