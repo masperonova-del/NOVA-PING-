@@ -39,7 +39,8 @@ jobs:
             APP_BUILD_SCRIPT="$HEV_DIR/Android.mk" \
             NDK_APPLICATION_MK="$HEV_DIR/Application.mk" \
             APP_ABI="arm64-v8a armeabi-v7a x86 x86_64" \
-            APP_PLATFORM=android-29 \
+            # Keep the native API floor aligned with app/build.gradle.kts minSdk = 26.
+            APP_PLATFORM=android-26 \
             NDK_OUT="${RUNNER_TEMP}/hev-obj" \
             NDK_LIBS_OUT="${RUNNER_TEMP}/hev-libs" \
             -j2
