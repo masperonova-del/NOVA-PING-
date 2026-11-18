@@ -75,7 +75,9 @@ class MainActivity : Activity() {
     private lateinit var stabilityResults: LinearLayout
     private var stabilityHasEvents = false
     private var pendingCsvExport: String? = null
+    private var pendingTunnelReportExport: String? = null
     private val exportRequestCode = 9104
+    private val tunnelReportExportRequestCode = 9106
     private val vpnConsentRequestCode = 9105
     private lateinit var vpnGameSpinner: Spinner
     private lateinit var vpnConsentStatus: TextView
@@ -453,6 +455,26 @@ class MainActivity : Activity() {
             background = actionButtonBackground()
             setOnClickListener {
                 vpnDiagnosticReport.text = VpnDiagnostics.readReport(this@MainActivity)
+            }
+        })
+        vpnDiagnosticCard.addView(Button(this).apply {
+            text = "EXPORTER LE RAPPORT DU TUNNEL"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            background = actionButtonBackground()
+            setOnClickListener {
+                pendingTunnelReportExport = VpnDiagnostics.readReport(this@MainActivity)
+                val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TITLE, "NOVA-PING-rapport-tunnel.txt")
+                }
+                try {
+                    startActivityForResult(intent, tunnelReportExportRequestCode)
+                } catch (_: Exception) {
+                    pendingTunnelReportExport = null
+                    Toast.makeText(this@MainActivity, "Impossible d'ouvrir le sélecteur de fichiers.", Toast.LENGTH_LONG).show()
+                }
             }
         })
         root.addView(vpnDiagnosticCard)
@@ -1980,6 +2002,20 @@ class MainActivity : Activity() {
             } else {
                 vpnConsentStatus.text = "Autorisation refusée ou annulée. Aucun VPN actif."
                 vpnConsentStatus.setTextColor(Color.rgb(255, 190, 110))
+            }
+            return
+        }
+        if (requestCode == tunnelReportExportRequestCode) {
+            val report = pendingTunnelReportExport
+            pendingTunnelReportExport = null
+            if (resultCode != RESULT_OK || data?.data == null || report == null) return
+            try {
+                contentResolver.openOutputStream(data.data!!)?.use { stream ->
+                    stream.write(report.toByteArray(Charsets.UTF_8))
+                } ?: throw java.io.IOException("Fichier de destination inaccessible")
+                Toast.makeText(this, "Rapport du tunnel exporté.", Toast.LENGTH_LONG).show()
+            } catch (error: Exception) {
+                Toast.makeText(this, "Échec de l'export : ${error.message ?: "erreur inconnue"}", Toast.LENGTH_LONG).show()
             }
             return
         }
