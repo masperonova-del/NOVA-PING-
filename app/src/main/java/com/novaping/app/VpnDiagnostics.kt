@@ -23,6 +23,10 @@ internal class VpnDiagnosticTracker {
     private val dnsFailureCategories = linkedMapOf<String, Int>()
 
     private var tcpAttempts = 0
+    private var upstreamSocketConnectCalls = 0
+    private var upstreamSocketConnectSuccesses = 0
+    private var upstreamSocketConnectFailures = 0
+    private val upstreamSocketConnectFailureCategories = linkedMapOf<String, Int>()
     private var tcpSuccesses = 0
     private var tcpFailures = 0
     private var tcpProtectionFailures = 0
@@ -74,6 +78,10 @@ internal class VpnDiagnosticTracker {
         dnsFailureCategories.clear()
 
         tcpAttempts = 0
+        upstreamSocketConnectCalls = 0
+        upstreamSocketConnectSuccesses = 0
+        upstreamSocketConnectFailures = 0
+        upstreamSocketConnectFailureCategories.clear()
         tcpSuccesses = 0
         tcpFailures = 0
         tcpProtectionFailures = 0
@@ -147,6 +155,24 @@ internal class VpnDiagnosticTracker {
     fun recordTcpAttempt() {
         tcpAttempts++
         lastTcp = "Connexion en cours"
+    }
+
+    @Synchronized
+    fun recordUpstreamSocketConnectAttempt() {
+        upstreamSocketConnectCalls++
+    }
+
+    @Synchronized
+    fun recordUpstreamSocketConnectSuccess() {
+        upstreamSocketConnectSuccesses++
+    }
+
+    @Synchronized
+    fun recordUpstreamSocketConnectFailure(category: String) {
+        upstreamSocketConnectFailures++
+        val safe = safeCategory(category)
+        upstreamSocketConnectFailureCategories[safe] =
+            (upstreamSocketConnectFailureCategories[safe] ?: 0) + 1
     }
 
     @Synchronized
@@ -293,6 +319,10 @@ internal class VpnDiagnosticTracker {
         appendLine()
         appendLine("TCP CONNECT : $tcpSuccesses succès / $tcpAttempts essais / $tcpFailures échecs")
         appendLine("Dernier TCP : $lastTcp")
+        appendLine("Appels réels Socket.connect() : $upstreamSocketConnectCalls")
+        appendLine("Connexions socket établies : $upstreamSocketConnectSuccesses")
+        appendLine("Échecs Socket.connect() : $upstreamSocketConnectFailures")
+        appendLine("Catégories Socket.connect() : ${formatCategories(upstreamSocketConnectFailureCategories)}")
         appendLine("Échecs de protection socket : $tcpProtectionFailures")
         appendLine("Catégories TCP : ${formatCategories(tcpFailureCategories)}")
         appendLine()
