@@ -282,20 +282,44 @@ internal class NovaVpnService : VpnService() {
      * a false result is never bypassed or retried on the same socket.
      */
     private fun protectSocket(socket: Socket, purpose: String): Boolean =
-        evaluateSocketProtection(purpose, socket.isClosed || socket.isConnected) {
+        evaluateSocketProtection(
+            purpose = purpose,
+            invalidPrecondition = socket.isClosed || socket.isConnected,
+            socketClosed = socket.isClosed,
+            socketConnected = socket.isConnected,
+            socketBound = socket.isBound
+        ) {
             protect(socket)
         }
 
     private fun protectSocket(socket: DatagramSocket, purpose: String): Boolean =
-        evaluateSocketProtection(purpose, socket.isClosed || socket.isConnected) {
+        evaluateSocketProtection(
+            purpose = purpose,
+            invalidPrecondition = socket.isClosed || socket.isConnected,
+            socketClosed = socket.isClosed,
+            socketConnected = socket.isConnected,
+            socketBound = socket.isBound
+        ) {
             protect(socket)
         }
 
     private inline fun evaluateSocketProtection(
         purpose: String,
         invalidPrecondition: Boolean,
+        socketClosed: Boolean,
+        socketConnected: Boolean,
+        socketBound: Boolean,
         protectCall: () -> Boolean
     ): Boolean {
+        // Capture the state at the actual call boundary. Permission alone does not
+        // prove that this service still owns a live TUN descriptor.
+        val authorizationPresentBefore = VpnService.prepare(this) == null
+        val tunnelEstablishedAtCall = tunnelEstablished
+        val tunDescriptorPresentAtCall = tunDescriptor != null
+        val engineStartedAtCall = engineStarted
+        val engineThreadAliveAtCall = engineThread?.isAlive == true
+        val stoppingAtCall = stopping.get()
+
         val outcome = try {
             if (protectCall()) "protected" else "rejected"
         } catch (_: SecurityException) {
@@ -305,12 +329,26 @@ internal class NovaVpnService : VpnService() {
         } catch (_: Exception) {
             "exception"
         }
-        val authorizationPresent = VpnService.prepare(this) == null
+        val authorizationPresentAfter = VpnService.prepare(this) == null
         VpnDiagnostics.tracker.recordSocketProtection(purpose, outcome, invalidPrecondition)
         VpnDiagnostics.tracker.recordSocketProtectionAuthorization(
             purpose = purpose,
             outcome = outcome,
-            authorizationPresent = authorizationPresent
+            authorizationPresent = authorizationPresentBefore
+        )
+        VpnDiagnostics.tracker.recordSocketProtectionContext(
+            purpose = purpose,
+            outcome = outcome,
+            authorizationPresentBefore = authorizationPresentBefore,
+            authorizationPresentAfter = authorizationPresentAfter,
+            tunnelEstablished = tunnelEstablishedAtCall,
+            tunDescriptorPresent = tunDescriptorPresentAtCall,
+            engineStarted = engineStartedAtCall,
+            engineThreadAlive = engineThreadAliveAtCall,
+            stopping = stoppingAtCall,
+            socketClosed = socketClosed,
+            socketConnected = socketConnected,
+            socketBound = socketBound
         )
         return outcome == "protected"
     }
