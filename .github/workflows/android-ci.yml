@@ -126,8 +126,31 @@ jobs:
         run: gradle :app:testDebugUnitTest
       - name: Run Android Lint
         run: gradle :app:lintDebug
+
+      # Pull requests do not receive repository secrets. In that case Gradle
+      # falls back to the standard ephemeral debug signing key.
+      - name: Decode persistent NOVA PING debug keystore
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          NOVA_KEYSTORE_BASE64: ${{ secrets.NOVA_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$NOVA_KEYSTORE_BASE64" || {
+            echo "NOVA_KEYSTORE_BASE64 is missing" >&2
+            exit 1
+          }
+          echo "$NOVA_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/nova-ping-debug.jks"
+          test -s "$RUNNER_TEMP/nova-ping-debug.jks"
+          chmod 600 "$RUNNER_TEMP/nova-ping-debug.jks"
+          echo "NOVA_KEYSTORE_PATH=$RUNNER_TEMP/nova-ping-debug.jks" >> "$GITHUB_ENV"
+
       - name: Build debug APK
+        env:
+          NOVA_KEYSTORE_PASSWORD: ${{ secrets.NOVA_KEYSTORE_PASSWORD }}
+          NOVA_KEY_ALIAS: ${{ secrets.NOVA_KEY_ALIAS }}
         run: gradle :app:assembleDebug
+
       - name: Build release APK
         run: gradle :app:assembleRelease
       - name: Verify HEV libraries are packaged in debug and release APKs
