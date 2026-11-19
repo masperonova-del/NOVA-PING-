@@ -3,6 +3,9 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+val persistentDebugKeyPath = System.getenv("NOVA_KEYSTORE_PATH")
+val persistentDebugSigningEnabled = !persistentDebugKeyPath.isNullOrBlank()
+
 android {
     namespace = "com.novaping.app"
     compileSdk = 35
@@ -15,7 +18,26 @@ android {
         versionName = "1.22.0-dev"
     }
 
+    signingConfigs {
+        if (persistentDebugSigningEnabled) {
+            create("persistentDebug") {
+                storeFile = file(persistentDebugKeyPath!!)
+                storeType = "PKCS12"
+                storePassword = System.getenv("NOVA_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("NOVA_KEY_ALIAS")
+                // The key was generated with the same password as the keystore.
+                keyPassword = System.getenv("NOVA_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
+        debug {
+            // Keep the build type as Debug; only make its signing certificate persistent.
+            if (persistentDebugSigningEnabled) {
+                signingConfig = signingConfigs.getByName("persistentDebug")
+            }
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(

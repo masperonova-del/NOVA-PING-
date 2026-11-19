@@ -1,7 +1,7 @@
 name: Android CI
 on:
   push:
-    branches: [ "main", "nova-boost-foundation", "fix/session-network-provenance", "feature/nova-ping-1.11-session-compare", "feature/nova-ping-1.12-diagnostic-reliability", "feature/nova-ping-1.13-animated-ui-optimizer-bridge", "feature/nova-ping-1.14-dashboard-experience", "feature/nova-ping-1.15-reliability-engine", "feature/nova-ping-1.16-measurement-integrity", "audit/nova-ping-1.16-certification", "feature/nova-boost-ui-1.17", "feature/nova-ping-1.18-evidence-gating", "feature/nova-ping-1.19-comparison-integrity", "feature/nova-ping-1.20-game-evidence-registry", "feature/nova-ping-1.21-game-discovery", "feature/nova-ping-1.22-public-network-intelligence", "fix/game-evidence-endpoint-validation", "feature/nova-ping-hev-metadata-hooks" ]
+    branches: [ "main", "nova-boost-foundation", "fix/session-network-provenance", "feature/nova-ping-1.11-session-compare", "feature/nova-ping-1.12-diagnostic-reliability", "feature/nova-ping-1.13-animated-ui-optimizer-bridge", "feature/nova-ping-1.14-dashboard-experience", "feature/nova-ping-1.15-reliability-engine", "feature/nova-ping-1.16-measurement-integrity", "audit/nova-ping-1.16-certification", "feature/nova-boost-ui-1.17", "feature/nova-ping-1.18-evidence-gating", "feature/nova-ping-1.19-comparison-integrity", "feature/nova-ping-1.20-game-evidence-registry", "feature/nova-ping-1.21-game-discovery", "feature/nova-ping-1.22-public-network-intelligence", "fix/game-evidence-endpoint-validation", "feature/nova-ping-hev-metadata-hooks", "fix/nova-ping-socket-protection-diagnostics" ]
   pull_request:
     branches: [ "main", "fix/game-evidence-endpoint-validation" ]
   workflow_dispatch:
@@ -34,12 +34,13 @@ jobs:
           NDK="$ANDROID_HOME/ndk/27.2.12479018"
           test -x "$NDK/ndk-build"
           HEV_DIR="${RUNNER_TEMP}/hev-socks5-tunnel"
+          # Keep the native API floor aligned with app/build.gradle.kts minSdk = 26.
           "$NDK/ndk-build" \
             NDK_PROJECT_PATH="$HEV_DIR" \
             APP_BUILD_SCRIPT="$HEV_DIR/Android.mk" \
             NDK_APPLICATION_MK="$HEV_DIR/Application.mk" \
             APP_ABI="arm64-v8a armeabi-v7a x86 x86_64" \
-            APP_PLATFORM=android-29 \
+            APP_PLATFORM=android-26 \
             NDK_OUT="${RUNNER_TEMP}/hev-obj" \
             NDK_LIBS_OUT="${RUNNER_TEMP}/hev-libs" \
             -j2
@@ -125,8 +126,78 @@ jobs:
         run: gradle :app:testDebugUnitTest
       - name: Run Android Lint
         run: gradle :app:lintDebug
+
+      # Pull requests do not receive repository secrets. In that case Gradle
+      # falls back to the standard ephemeral debug signing key.
+      - name: Decode persistent NOVA PING debug keystore
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          NOVA_KEYSTORE_BASE64: ${{ secrets.NOVA_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$NOVA_KEYSTORE_BASE64" || {
+            echo "NOVA_KEYSTORE_BASE64 is missing" >&2
+            exit 1
+          }
+          echo "$NOVA_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/nova-ping-debug.jks"
+          test -s "$RUNNER_TEMP/nova-ping-debug.jks"
+          echo "Decoded keystore size: $(wc -c < "$RUNNER_TEMP/nova-ping-debug.jks") bytes"
+          echo "Decoded keystore SHA-256: $(sha256sum "$RUNNER_TEMP/nova-ping-debug.jks" | awk '{print $1}')"
+          chmod 600 "$RUNNER_TEMP/nova-ping-debug.jks"
+          echo "NOVA_KEYSTORE_PATH=$RUNNER_TEMP/nova-ping-debug.jks" >> "$GITHUB_ENV"
+
+      - name: Validate persistent debug signing credentials
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          NOVA_KEYSTORE_PASSWORD: ${{ secrets.NOVA_KEYSTORE_PASSWORD }}
+          NOVA_KEY_ALIAS: ${{ secrets.NOVA_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          test -n "${NOVA_KEYSTORE_PASSWORD}" || {
+            echo "NOVA_KEYSTORE_PASSWORD is empty" >&2
+            exit 1
+          }
+          test -n "${NOVA_KEY_ALIAS}" || {
+            echo "NOVA_KEY_ALIAS is empty" >&2
+            exit 1
+          }
+          cat > "${RUNNER_TEMP}/VerifyNovaKeystore.java" <<'JAVA'
+          import java.io.InputStream;
+          import java.nio.file.Files;
+          import java.nio.file.Path;
+          import java.security.Key;
+          import java.security.KeyStore;
+          import java.security.PrivateKey;
+          public class VerifyNovaKeystore {
+              public static void main(String[] args) throws Exception {
+                  char[] password = System.getenv("NOVA_KEYSTORE_PASSWORD").toCharArray();
+                  String alias = System.getenv("NOVA_KEY_ALIAS");
+                  KeyStore store = KeyStore.getInstance("PKCS12");
+                  try (InputStream in = Files.newInputStream(Path.of(System.getenv("NOVA_KEYSTORE_PATH")))) {
+                      store.load(in, password);
+                  }
+                  if (!store.containsAlias(alias)) {
+                      throw new IllegalStateException("The configured alias does not exist in the keystore.");
+                  }
+                  Key key = store.getKey(alias, password);
+                  if (!(key instanceof PrivateKey)) {
+                      throw new IllegalStateException("The configured alias does not provide an accessible private key.");
+                  }
+                  System.out.println("Keystore password, alias, and private-key access are valid.");
+              }
+          }
+          JAVA
+          javac "${RUNNER_TEMP}/VerifyNovaKeystore.java"
+          java -cp "${RUNNER_TEMP}" VerifyNovaKeystore
+
       - name: Build debug APK
+        env:
+          NOVA_KEYSTORE_PASSWORD: ${{ secrets.NOVA_KEYSTORE_PASSWORD }}
+          NOVA_KEY_ALIAS: ${{ secrets.NOVA_KEY_ALIAS }}
         run: gradle :app:assembleDebug
+
       - name: Build release APK
         run: gradle :app:assembleRelease
       - name: Verify HEV libraries are packaged in debug and release APKs

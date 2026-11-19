@@ -13,7 +13,10 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
+import java.net.DatagramSocket
 import java.net.InetAddress
+import java.net.Socket
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -68,6 +71,8 @@ internal class NovaVpnService : VpnService() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val stopping = AtomicBoolean(false)
+    private val metadataPolling = AtomicBoolean(false)
+    @Volatile private var metadataThread: Thread? = null
     @Volatile private var engineStarted = false
     @Volatile private var engineThread: Thread? = null
     @Volatile private var bridge: LocalSocks5Bridge? = null
@@ -100,6 +105,7 @@ internal class NovaVpnService : VpnService() {
                     VpnDiagnostics.tracker.setTunnelState("Échec au démarrage")
                     VpnDiagnostics.tracker.setBridgeState("Échec ou non démarré")
                     VpnDiagnostics.tracker.setTunState("Non établi")
+                    stopHevMetadataPolling()
                     bridge?.close()
                     bridge = null
                     tunDescriptor?.let { fd ->
@@ -125,7 +131,9 @@ internal class NovaVpnService : VpnService() {
     }
 
     private fun startTunnel() {
-        check(VpnService.prepare(this) == null) {
+        val vpnAuthorizationPresent = VpnService.prepare(this) == null
+        VpnDiagnostics.tracker.recordVpnAuthorizationAtStart(vpnAuthorizationPresent)
+        check(vpnAuthorizationPresent) {
             "Le consentement VPN Android est requis avant le démarrage"
         }
         val gamePackage = readSelectedGamePackage(this)
@@ -141,13 +149,13 @@ internal class NovaVpnService : VpnService() {
 
         val resolver = ProtectedDnsResolver(
             resolverAddress = dnsServer,
-            protectDatagramSocket = { protect(it) },
-            protectTcpSocket = { protect(it) }
+            protectDatagramSocket = { protectSocket(it, "DNS_UDP") },
+            protectTcpSocket = { protectSocket(it, "DNS_TCP") }
         )
         val localBridge = LocalSocks5Bridge(
-            protectUpstreamSocket = { protect(it) },
+            protectUpstreamSocket = { protectSocket(it, "TCP_CONNECT") },
             bindAddress = InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1)),
-            protectUpstreamDatagramSocket = { protect(it) },
+            protectUpstreamDatagramSocket = { protectSocket(it, "UDP_RELAY") },
             protectedDnsResolver = resolver
         )
         bridge = localBridge
@@ -184,8 +192,8 @@ internal class NovaVpnService : VpnService() {
         publishState("starting", null)
         val thread = Thread({
             engineStarted = true
-            VpnDiagnostics.tracker.setEngineState("Appel natif actif")
-            VpnDiagnostics.tracker.setTunnelState("HEV démarré")
+            VpnDiagnostics.tracker.setEngineState("Initialisation native en cours")
+            VpnDiagnostics.tracker.setTunnelState("Initialisation HEV non confirmée")
             try {
                 val result = HevTunnelNative.runBlocking(config, fd)
                 VpnDiagnostics.tracker.recordEngineExit(result)
@@ -200,6 +208,7 @@ internal class NovaVpnService : VpnService() {
                     publishState("error", terminalError)
                 }
             } finally {
+                stopHevMetadataPolling()
                 engineStarted = false
                 tunDescriptor = null
                 runCatching { ParcelFileDescriptor.adoptFd(fd).close() }
@@ -207,7 +216,141 @@ internal class NovaVpnService : VpnService() {
             }
         }, "NovaHevEngine").apply { isDaemon = true }
         engineThread = thread
+        startHevMetadataPolling()
         thread.start()
+    }
+
+    /**
+     * Reads the native HEV metadata queues on their single supported consumer.
+     * Only protocol, direction and packet size are copied into diagnostics.
+     */
+    private fun startHevMetadataPolling() {
+        if (!HevMetadataNative.isAvailable() ||
+            !metadataPolling.compareAndSet(false, true)
+        ) return
+
+        val poller = Thread({
+            while (metadataPolling.get()) {
+                try {
+                    val records = HevMetadataNative.drainAvailable().get(1, TimeUnit.SECONDS)
+                    records.forEach { record ->
+                        VpnDiagnostics.tracker.recordHevPacket(
+                            transport = record.transport,
+                            direction = record.direction,
+                            packetLengthBytes = record.packetLengthBytes
+                        )
+                    }
+                    val dropped = HevMetadataNative.droppedSamples().get(1, TimeUnit.SECONDS)
+                    VpnDiagnostics.tracker.setHevMetadataDroppedSamples(dropped)
+                    Thread.sleep(200L)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    break
+                } catch (_: Exception) {
+                    VpnDiagnostics.tracker.recordHevMetadataPollingFailure()
+                    try {
+                        Thread.sleep(500L)
+                    } catch (_: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                        break
+                    }
+                }
+            }
+        }, "NovaHevMetadataPoller").apply { isDaemon = true }
+
+        metadataThread = poller
+        poller.start()
+    }
+
+    private fun stopHevMetadataPolling() {
+        metadataPolling.set(false)
+        val poller = metadataThread
+        metadataThread = null
+        poller?.interrupt()
+        if (poller != null && poller !== Thread.currentThread()) {
+            try {
+                poller.join(500L)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+            }
+        }
+    }
+
+    /**
+     * Records only the outcome and coarse socket precondition. No endpoint or
+     * socket address is retained. Android's protect() boolean is authoritative;
+     * a false result is never bypassed or retried on the same socket.
+     */
+    private fun protectSocket(socket: Socket, purpose: String): Boolean =
+        evaluateSocketProtection(
+            purpose = purpose,
+            invalidPrecondition = socket.isClosed || socket.isConnected,
+            socketClosed = socket.isClosed,
+            socketConnected = socket.isConnected,
+            socketBound = socket.isBound
+        ) {
+            protect(socket)
+        }
+
+    private fun protectSocket(socket: DatagramSocket, purpose: String): Boolean =
+        evaluateSocketProtection(
+            purpose = purpose,
+            invalidPrecondition = socket.isClosed || socket.isConnected,
+            socketClosed = socket.isClosed,
+            socketConnected = socket.isConnected,
+            socketBound = socket.isBound
+        ) {
+            protect(socket)
+        }
+
+    private inline fun evaluateSocketProtection(
+        purpose: String,
+        invalidPrecondition: Boolean,
+        socketClosed: Boolean,
+        socketConnected: Boolean,
+        socketBound: Boolean,
+        protectCall: () -> Boolean
+    ): Boolean {
+        // Capture the state at the actual call boundary. Permission alone does not
+        // prove that this service still owns a live TUN descriptor.
+        val authorizationPresentBefore = VpnService.prepare(this) == null
+        val tunnelEstablishedAtCall = tunnelEstablished
+        val tunDescriptorPresentAtCall = tunDescriptor != null
+        val engineStartedAtCall = engineStarted
+        val engineThreadAliveAtCall = engineThread?.isAlive == true
+        val stoppingAtCall = stopping.get()
+
+        val outcome = try {
+            if (protectCall()) "protected" else "rejected"
+        } catch (_: SecurityException) {
+            "security_exception"
+        } catch (_: IllegalArgumentException) {
+            "invalid_socket"
+        } catch (_: Exception) {
+            "exception"
+        }
+        val authorizationPresentAfter = VpnService.prepare(this) == null
+        VpnDiagnostics.tracker.recordSocketProtection(purpose, outcome, invalidPrecondition)
+        VpnDiagnostics.tracker.recordSocketProtectionAuthorization(
+            purpose = purpose,
+            outcome = outcome,
+            authorizationPresent = authorizationPresentBefore
+        )
+        VpnDiagnostics.tracker.recordSocketProtectionContext(
+            purpose = purpose,
+            outcome = outcome,
+            authorizationPresentBefore = authorizationPresentBefore,
+            authorizationPresentAfter = authorizationPresentAfter,
+            tunnelEstablished = tunnelEstablishedAtCall,
+            tunDescriptorPresent = tunDescriptorPresentAtCall,
+            engineStarted = engineStartedAtCall,
+            engineThreadAlive = engineThreadAliveAtCall,
+            stopping = stoppingAtCall,
+            socketClosed = socketClosed,
+            socketConnected = socketConnected,
+            socketBound = socketBound
+        )
+        return outcome == "protected"
     }
 
     private fun stopTunnel() {
@@ -252,6 +395,7 @@ internal class NovaVpnService : VpnService() {
     }
 
     override fun onRevoke() {
+        VpnDiagnostics.tracker.recordVpnRevocation()
         // Android revokes the current VpnService when another VPN takes ownership.
         // Publish this immediately: the engine may need time to unwind its native thread.
         terminalState = "replaced"

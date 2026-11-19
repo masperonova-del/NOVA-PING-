@@ -97,6 +97,57 @@ class LocalSocks5BridgeTest {
     }
 
     @Test
+    fun rejectedSocketProtectionDoesNotCallUpstreamSocketConnect() {
+        val loopback = InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1))
+        val tracker = VpnDiagnostics.tracker
+        tracker.beginSession()
+        val bridge = LocalSocks5Bridge(
+            protectUpstreamSocket = { false },
+            bindAddress = loopback
+        )
+        try {
+            Socket(loopback, bridge.start()).use { client ->
+                client.soTimeout = 3_000
+                val input = DataInputStream(client.getInputStream())
+                val output = DataOutputStream(client.getOutputStream())
+                authenticateBridgeClient(input, output, bridge)
+
+                output.writeByte(5)
+                output.writeByte(1)
+                output.writeByte(0)
+                output.writeByte(1)
+                output.write(loopback.address)
+                output.writeShort(443)
+                output.flush()
+
+                assertEquals(5, input.readUnsignedByte())
+                assertEquals(1, input.readUnsignedByte())
+                assertEquals(0, input.readUnsignedByte())
+                val replyType = input.readUnsignedByte()
+                val replyAddressLength = when (replyType) {
+                    1 -> 4
+                    4 -> 16
+                    else -> error("Unexpected SOCKS5 reply address type: $replyType")
+                }
+                input.skipBytes(replyAddressLength + 2)
+            }
+
+            val report = tracker.report()
+            assertTrue(report.contains(
+                "Demandes SOCKS5 TCP CONNECT : 0 succès / 1 demandes / 1 échecs"
+            ))
+            assertTrue(report.contains("Appels réels Socket.connect() : 0"))
+            assertTrue(report.contains("Connexions socket établies : 0"))
+            assertTrue(report.contains("Échecs Socket.connect() : 0"))
+            assertTrue(report.contains("Échecs de protection socket : 1"))
+            assertTrue(report.contains("protect_rejected=1"))
+        } finally {
+            bridge.close()
+            tracker.finish()
+        }
+    }
+
+    @Test
     fun tcpConnectRejectsDomainWhenProtectedResolverIsNotConfigured() {
         val loopback = InetAddress.getLoopbackAddress()
         var protectCalls = 0

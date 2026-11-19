@@ -195,23 +195,29 @@ internal class LocalSocks5Bridge(
                 writeReply(output, 0x01)
                 return
             }
+            VpnDiagnostics.tracker.recordUpstreamSocketConnectAttempt()
             try {
                 upstream.connect(java.net.InetSocketAddress(host, destinationPort), connectTimeoutMillis)
                 upstream.tcpNoDelay = true
+                VpnDiagnostics.tracker.recordUpstreamSocketConnectSuccess()
                 VpnDiagnostics.tracker.recordTcpSuccess()
             } catch (_: java.net.ConnectException) {
+                VpnDiagnostics.tracker.recordUpstreamSocketConnectFailure("connect_refused")
                 VpnDiagnostics.tracker.recordTcpFailure("connect_refused")
                 writeReply(output, 0x05)
                 return
             } catch (_: java.net.UnknownHostException) {
+                VpnDiagnostics.tracker.recordUpstreamSocketConnectFailure("unknown_host")
                 VpnDiagnostics.tracker.recordTcpFailure("unknown_host")
                 writeReply(output, 0x04)
                 return
             } catch (_: java.net.SocketTimeoutException) {
+                VpnDiagnostics.tracker.recordUpstreamSocketConnectFailure("connect_timeout")
                 VpnDiagnostics.tracker.recordTcpFailure("connect_timeout")
                 writeReply(output, 0x04)
                 return
             } catch (_: Exception) {
+                VpnDiagnostics.tracker.recordUpstreamSocketConnectFailure("connect_io_error")
                 VpnDiagnostics.tracker.recordTcpFailure("connect_io_error")
                 writeReply(output, 0x03)
                 return
