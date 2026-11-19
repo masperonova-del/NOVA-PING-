@@ -22,6 +22,7 @@ android {
         if (persistentDebugSigningEnabled) {
             create("persistentDebug") {
                 storeFile = file(persistentDebugKeyPath!!)
+                storeType = "PKCS12"
                 storePassword = System.getenv("NOVA_KEYSTORE_PASSWORD")
                 keyAlias = System.getenv("NOVA_KEY_ALIAS")
                 // The key was generated with the same password as the keystore.
