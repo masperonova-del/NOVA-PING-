@@ -145,6 +145,51 @@ jobs:
           chmod 600 "$RUNNER_TEMP/nova-ping-debug.jks"
           echo "NOVA_KEYSTORE_PATH=$RUNNER_TEMP/nova-ping-debug.jks" >> "$GITHUB_ENV"
 
+      - name: Validate persistent debug signing credentials
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          NOVA_KEYSTORE_PASSWORD: ${{ secrets.NOVA_KEYSTORE_PASSWORD }}
+          NOVA_KEY_ALIAS: ${{ secrets.NOVA_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          test -n "${NOVA_KEYSTORE_PASSWORD}" || {
+            echo "NOVA_KEYSTORE_PASSWORD is empty" >&2
+            exit 1
+          }
+          test -n "${NOVA_KEY_ALIAS}" || {
+            echo "NOVA_KEY_ALIAS is empty" >&2
+            exit 1
+          }
+          cat > "${RUNNER_TEMP}/VerifyNovaKeystore.java" <<'JAVA'
+          import java.io.InputStream;
+          import java.nio.file.Files;
+          import java.nio.file.Path;
+          import java.security.Key;
+          import java.security.KeyStore;
+          import java.security.PrivateKey;
+          public class VerifyNovaKeystore {
+              public static void main(String[] args) throws Exception {
+                  char[] password = System.getenv("NOVA_KEYSTORE_PASSWORD").toCharArray();
+                  String alias = System.getenv("NOVA_KEY_ALIAS");
+                  KeyStore store = KeyStore.getInstance("PKCS12");
+                  try (InputStream in = Files.newInputStream(Path.of(System.getenv("NOVA_KEYSTORE_PATH")))) {
+                      store.load(in, password);
+                  }
+                  if (!store.containsAlias(alias)) {
+                      throw new IllegalStateException("The configured alias does not exist in the keystore.");
+                  }
+                  Key key = store.getKey(alias, password);
+                  if (!(key instanceof PrivateKey)) {
+                      throw new IllegalStateException("The configured alias does not provide an accessible private key.");
+                  }
+                  System.out.println("Keystore password, alias, and private-key access are valid.");
+              }
+          }
+          JAVA
+          javac "${RUNNER_TEMP}/VerifyNovaKeystore.java"
+          java -cp "${RUNNER_TEMP}" VerifyNovaKeystore
+
       - name: Build debug APK
         env:
           NOVA_KEYSTORE_PASSWORD: ${{ secrets.NOVA_KEYSTORE_PASSWORD }}
