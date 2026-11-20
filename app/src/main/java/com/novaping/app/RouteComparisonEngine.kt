@@ -71,6 +71,21 @@ object RouteComparisonEngine {
             return insufficient(0, limitations, "Chaque lot doit posséder un identifiant unique.")
         }
 
+        val allBatches = directBatches + candidateBatches
+        if (allBatches.map { it.networkFingerprint }.distinct().size != 1 ||
+            allBatches.map { it.transport }.distinct().size != 1 ||
+            allBatches.map { it.measurementProfile }.distinct().size != 1 ||
+            allBatches.map { it.targetFingerprint }.distinct().size != 1
+        ) {
+            return insufficient(0, limitations, "Le réseau physique, le profil de mesure ou les destinations ont changé entre les paires.")
+        }
+        val chronologicalPairs = (1 until directBatches.size).all { index ->
+            directBatches[index].startedAtEpochMs >= candidateBatches[index - 1].completedAtEpochMs
+        }
+        if (!chronologicalPairs) {
+            return insufficient(0, limitations, "Les lots doivent être capturés dans l'ordre DIRECT puis CANDIDATE pour chacune des trois paires.")
+        }
+
         val paired = directBatches.zip(candidateBatches).filter { (direct, candidate) ->
             isValidBatch(direct) &&
                 isValidBatch(candidate) &&
