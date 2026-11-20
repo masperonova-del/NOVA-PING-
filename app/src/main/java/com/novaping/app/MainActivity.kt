@@ -411,7 +411,7 @@ class MainActivity : Activity() {
             setTextColor(Color.WHITE)
             setHintTextColor(mutedColor)
             textSize = 13f
-            singleLine = true
+            setSingleLine(true)
         }
         routeCard.addView(comparisonCandidateLabelInput)
         comparisonDirectButton = Button(this).apply {
