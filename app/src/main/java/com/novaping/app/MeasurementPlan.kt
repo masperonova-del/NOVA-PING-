@@ -17,6 +17,10 @@ object MeasurementPlan {
     const val MIN_TARGETS_FOR_BOOST_RECOMMENDATION = 2
     const val MIN_COMPLETE_SAMPLES_FOR_BOOST_RECOMMENDATION = 3
 
+    const val ROUTE_COMPARISON_REQUIRED_PAIRS = 3
+    const val ROUTE_COMPARISON_MAX_PAIR_GAP_MS = 30 * 60 * 1000L
+    const val ROUTE_COMPARISON_MATERIAL_CHANGE_PERCENT = 5L
+
     fun isHttpsRankable(successful: Int, attempted: Int): Boolean =
         attempted == HTTPS_TOTAL_REQUESTS &&
             successful >= MIN_SUCCESSFUL_HTTPS_FOR_RANKING
