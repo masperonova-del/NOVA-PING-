@@ -885,7 +885,8 @@ class MainActivity : Activity() {
 
     private fun runRouteAnalysis(
         comparisonPath: RouteComparisonPath? = null,
-        comparisonSnapshot: ComparisonNetworkSnapshot? = null
+        comparisonSnapshot: ComparisonNetworkSnapshot? = null,
+        comparisonCandidateLabel: String? = null
     ) {
         routeButton.isEnabled = false
         comparisonDirectButton.isEnabled = false
@@ -969,7 +970,7 @@ class MainActivity : Activity() {
                     val batch = RouteComparisonBatch(
                         label = comparisonPath.name,
                         transport = comparisonSnapshot.transport,
-                        vpnLabel = if (isCandidate) comparisonCandidateLabelInput.text.toString().trim() else null,
+                        vpnLabel = if (isCandidate) comparisonCandidateLabel else null,
                         aggregates = aggregates,
                         experimentId = routeComparisonRepository.experimentId(),
                         batchId = UUID.randomUUID().toString(),
@@ -1146,9 +1147,10 @@ class MainActivity : Activity() {
             )
             return
         }
-        if (path == RouteComparisonPath.CANDIDATE &&
-            comparisonCandidateLabelInput.text.toString().trim().isBlank()
-        ) {
+        val candidateLabel = if (path == RouteComparisonPath.CANDIDATE) {
+            comparisonCandidateLabelInput.text.toString().trim()
+        } else null
+        if (path == RouteComparisonPath.CANDIDATE && candidateLabel.isNullOrBlank()) {
             showMeasurementDialog(
                 "Nom du candidat requis",
                 "Saisis un nom stable pour ce profil ou serveur candidat. Le même nom devra être conservé pour les trois captures."
@@ -1164,7 +1166,7 @@ class MainActivity : Activity() {
             )
             return
         }
-        runRouteAnalysis(path, snapshot)
+        runRouteAnalysis(path, snapshot, candidateLabel)
     }
 
     private fun currentComparisonNetworkSnapshot(): ComparisonNetworkSnapshot? {
