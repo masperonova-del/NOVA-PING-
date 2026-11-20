@@ -177,6 +177,30 @@ class RouteComparisonEngineTest {
         assertEquals(0, result.validPairs)
     }
 
+    @Test fun rejectsNetworkChangeAcrossOtherwiseMatchedPairs() {
+        val direct = directSeries().mapIndexed { index, batch ->
+            if (index == 2) batch.copy(networkFingerprint = "wifi-underlay-2") else batch
+        }
+        val candidate = candidateSeries().mapIndexed { index, batch ->
+            if (index == 2) batch.copy(networkFingerprint = "wifi-underlay-2") else batch
+        }
+        val result = RouteComparisonEngine.compare(direct, candidate)
+        assertEquals(RouteComparisonVerdict.INSUFFICIENT, result.verdict)
+        assertEquals(0, result.validPairs)
+    }
+
+    @Test fun rejectsPairSeriesCapturedOutOfOrder() {
+        val direct = directSeries()
+        val candidate = candidateSeries().mapIndexed { index, batch ->
+            if (index == 0) batch.copy(
+                startedAtEpochMs = 1_000_000L + 4 * 60_000L,
+                completedAtEpochMs = 1_010_000L + 4 * 60_000L
+            ) else batch
+        }
+        val result = RouteComparisonEngine.compare(direct, candidate)
+        assertEquals(RouteComparisonVerdict.INSUFFICIENT, result.verdict)
+    }
+
     @Test fun rejectsDifferentMeasurementProfiles() {
         val result = RouteComparisonEngine.compare(
             directSeries(),
