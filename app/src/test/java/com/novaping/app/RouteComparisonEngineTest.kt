@@ -2,7 +2,6 @@ package com.novaping.app
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class RouteComparisonEngineTest {
@@ -30,102 +29,187 @@ class RouteComparisonEngineTest {
         return RouteStatistics.aggregate(outcomes)
     }
 
-    private fun batch(label: String, transport: NetworkTransport, ms: Long, successes: Int = 5) =
-        RouteComparisonBatch(
+    private fun batch(
+        label: String,
+        transport: NetworkTransport,
+        ms: Long,
+        successes: Int = 5,
+        pairIndex: Int = 0,
+        candidate: Boolean = label != "Direct",
+        networkFingerprint: String = "wifi-underlay-1",
+        measurementProfile: String = "HTTPS_CONTROL_V1"
+    ): RouteComparisonBatch {
+        val started = 1_000_000L + pairIndex * 120_000L + if (candidate) 20_000L else 0L
+        return RouteComparisonBatch(
             label = label,
             transport = transport,
-            vpnLabel = if (label == "Direct") null else "Proton / serveur test",
-            aggregates = listOf(aggregate("control.example", ms, successes))
+            vpnLabel = if (candidate) "Route candidate A" else null,
+            aggregates = listOf(aggregate("control.example", ms, successes)),
+            experimentId = "experiment-1",
+            batchId = "${if (candidate) "candidate" else "direct"}-$pairIndex",
+            networkFingerprint = networkFingerprint,
+            startedAtEpochMs = started,
+            completedAtEpochMs = started + 10_000L,
+            measurementProfile = measurementProfile
         )
+    }
+
+    private fun directSeries(transport: NetworkTransport = NetworkTransport.WIFI) =
+        (0..2).map { batch("Direct", transport, 100, pairIndex = it, candidate = false) }
+
+    private fun candidateSeries(
+        transport: NetworkTransport = NetworkTransport.WIFI,
+        ms: Long = 60,
+        networkFingerprint: String = "wifi-underlay-1",
+        measurementProfile: String = "HTTPS_CONTROL_V1"
+    ) = (0..2).map {
+        batch(
+            "Candidate", transport, ms, pairIndex = it, candidate = true,
+            networkFingerprint = networkFingerprint,
+            measurementProfile = measurementProfile
+        )
+    }
 
     @Test fun requiresThreeComparablePairs() {
         val result = RouteComparisonEngine.compare(
-            listOf(batch("Direct", NetworkTransport.WIFI, 100)),
-            listOf(batch("VPN", NetworkTransport.WIFI, 80))
+            listOf(batch("Direct", NetworkTransport.WIFI, 100, candidate = false)),
+            listOf(batch("Candidate", NetworkTransport.WIFI, 80))
         )
         assertEquals(RouteComparisonVerdict.INSUFFICIENT, result.verdict)
         assertEquals(0, result.validPairs)
     }
 
     @Test fun rejectsPairsMeasuredOnDifferentTransports() {
-        val direct = (1..3).map { batch("Direct", NetworkTransport.WIFI, 100) }
-        val vpn = (1..3).map { batch("VPN", NetworkTransport.CELLULAR, 80) }
-        val result = RouteComparisonEngine.compare(direct, vpn)
+        val result = RouteComparisonEngine.compare(
+            directSeries(NetworkTransport.WIFI),
+            candidateSeries(NetworkTransport.CELLULAR)
+        )
         assertEquals(RouteComparisonVerdict.INSUFFICIENT, result.verdict)
         assertEquals(0, result.validPairs)
     }
 
     @Test fun identifiesConsistentControlEndpointImprovementOnlyAfterThreePairs() {
-        val direct = (1..3).map { batch("Direct", NetworkTransport.WIFI, 100) }
-        val vpn = (1..3).map { batch("VPN", NetworkTransport.WIFI, 60) }
-        val result = RouteComparisonEngine.compare(direct, vpn)
+        val result = RouteComparisonEngine.compare(directSeries(), candidateSeries())
         assertEquals(RouteComparisonVerdict.PROMISING, result.verdict)
         assertEquals(3, result.validPairs)
         assertTrue(result.limitations.any { it.contains("CODM") })
     }
 
     @Test fun identifiesReliabilityRegression() {
-        val direct = (1..3).map { batch("Direct", NetworkTransport.WIFI, 100, 5) }
-        val vpn = (1..3).map { batch("VPN", NetworkTransport.WIFI, 60, 3) }
-        val result = RouteComparisonEngine.compare(direct, vpn)
+        val direct = (0..2).map {
+            batch("Direct", NetworkTransport.WIFI, 100, 5, pairIndex = it, candidate = false)
+        }
+        val candidate = (0..2).map {
+            batch("Candidate", NetworkTransport.WIFI, 60, 3, pairIndex = it)
+        }
+        val result = RouteComparisonEngine.compare(direct, candidate)
         assertEquals(RouteComparisonVerdict.REGRESSION, result.verdict)
     }
+
     @Test fun rejectsUnequalSeriesCountsInsteadOfSilentlyZipping() {
-        val direct = (1..4).map { batch("Direct", NetworkTransport.WIFI, 100) }
-        val candidate = (1..3).map { batch("VPN", NetworkTransport.WIFI, 80) }
+        val direct = (0..3).map {
+            batch("Direct", NetworkTransport.WIFI, 100, pairIndex = it, candidate = false)
+        }
+        val candidate = candidateSeries()
         val result = RouteComparisonEngine.compare(direct, candidate)
         assertEquals(RouteComparisonVerdict.INSUFFICIENT, result.verdict)
         assertEquals(0, result.validPairs)
     }
 
     @Test fun rejectsDuplicateHostsInsideOneBatch() {
-        val base = batch("Direct", NetworkTransport.WIFI, 100)
-        val candidate = batch("VPN", NetworkTransport.WIFI, 80)
-        val direct = (1..3).map {
-            base.copy(aggregates = listOf(
-                aggregate("control.example", 100),
-                aggregate("control.example", 110)
-            ))
+        val directBase = batch("Direct", NetworkTransport.WIFI, 100, candidate = false)
+        val candidateBase = batch("Candidate", NetworkTransport.WIFI, 80)
+        val direct = (0..2).map {
+            directBase.copy(
+                batchId = "direct-$it",
+                startedAtEpochMs = 1_000_000L + it * 120_000L,
+                completedAtEpochMs = 1_010_000L + it * 120_000L,
+                aggregates = listOf(
+                    aggregate("control.example", 100),
+                    aggregate("control.example", 110)
+                )
+            )
         }
-        val vpn = (1..3).map { candidate }
-        val result = RouteComparisonEngine.compare(direct, vpn)
+        val candidate = (0..2).map {
+            candidateBase.copy(
+                batchId = "candidate-$it",
+                startedAtEpochMs = 1_020_000L + it * 120_000L,
+                completedAtEpochMs = 1_030_000L + it * 120_000L
+            )
+        }
+        val result = RouteComparisonEngine.compare(direct, candidate)
         assertEquals(RouteComparisonVerdict.INSUFFICIENT, result.verdict)
         assertEquals(0, result.validPairs)
     }
 
     @Test fun rejectsSeriesWhenCandidateIdentityChangesBetweenPairs() {
-        val direct = (1..3).map { batch("Direct", NetworkTransport.WIFI, 100) }
-        val candidate = listOf(
-            batch("VPN A", NetworkTransport.WIFI, 80),
-            batch("VPN A", NetworkTransport.WIFI, 80),
-            batch("VPN B", NetworkTransport.WIFI, 80)
-        )
+        val direct = directSeries()
+        val candidate = candidateSeries().mapIndexed { index, batch ->
+            if (index == 2) batch.copy(vpnLabel = "Different candidate") else batch
+        }
         val result = RouteComparisonEngine.compare(direct, candidate)
         assertEquals(RouteComparisonVerdict.INSUFFICIENT, result.verdict)
-        assertEquals(0, result.validPairs)
     }
 
     @Test fun rejectsIncompletePhaseEvidenceEvenWhenFiveSamplesWereAttempted() {
-        val direct = (1..3).map {
-            batch("Direct", NetworkTransport.WIFI, 100, successes = 2)
+        val direct = (0..2).map {
+            batch("Direct", NetworkTransport.WIFI, 100, 2, pairIndex = it, candidate = false)
         }
-        val candidate = (1..3).map {
-            batch("VPN", NetworkTransport.WIFI, 80, successes = 5)
-        }
-        val result = RouteComparisonEngine.compare(direct, candidate)
+        val result = RouteComparisonEngine.compare(direct, candidateSeries())
         assertEquals(RouteComparisonVerdict.INSUFFICIENT, result.verdict)
         assertEquals(0, result.validPairs)
     }
 
     @Test fun rejectsCandidateWhenVpnLabelChangesBetweenPairs() {
-        val direct = (1..3).map { batch("Direct", NetworkTransport.WIFI, 100) }
-        val candidate = (1..3).mapIndexed { index, _ ->
-            batch("VPN", NetworkTransport.WIFI, 80).copy(
-                vpnLabel = if (index == 2) "Autre serveur" else "Proton / serveur test"
+        val candidate = candidateSeries().mapIndexed { index, batch ->
+            if (index == 2) batch.copy(vpnLabel = "Another relay") else batch
+        }
+        val result = RouteComparisonEngine.compare(directSeries(), candidate)
+        assertEquals(RouteComparisonVerdict.INSUFFICIENT, result.verdict)
+    }
+
+    @Test fun rejectsDifferentPhysicalNetworkFingerprints() {
+        val result = RouteComparisonEngine.compare(
+            directSeries(),
+            candidateSeries(networkFingerprint = "another-wifi-underlay")
+        )
+        assertEquals(RouteComparisonVerdict.INSUFFICIENT, result.verdict)
+        assertEquals(0, result.validPairs)
+    }
+
+    @Test fun rejectsDifferentMeasurementProfiles() {
+        val result = RouteComparisonEngine.compare(
+            directSeries(),
+            candidateSeries(measurementProfile = "HTTPS_CONTROL_V2")
+        )
+        assertEquals(RouteComparisonVerdict.INSUFFICIENT, result.verdict)
+    }
+
+    @Test fun rejectsCandidateBatchOutsidePairingWindow() {
+        val direct = directSeries()
+        val candidate = candidateSeries().map { batch ->
+            batch.copy(
+                startedAtEpochMs = batch.startedAtEpochMs + 31L * 60L * 1000L,
+                completedAtEpochMs = batch.completedAtEpochMs + 31L * 60L * 1000L
             )
         }
         val result = RouteComparisonEngine.compare(direct, candidate)
         assertEquals(RouteComparisonVerdict.INSUFFICIENT, result.verdict)
     }
 
+    @Test fun ignoresSmallChangesBelowMaterialityThreshold() {
+        val result = RouteComparisonEngine.compare(
+            directSeries(),
+            candidateSeries(ms = 98)
+        )
+        assertEquals(RouteComparisonVerdict.INCONCLUSIVE, result.verdict)
+    }
+
+    @Test fun rejectsInvalidOrMissingProvenance() {
+        val direct = directSeries().mapIndexed { index, batch ->
+            if (index == 1) batch.copy(networkFingerprint = " ") else batch
+        }
+        val result = RouteComparisonEngine.compare(direct, candidateSeries())
+        assertEquals(RouteComparisonVerdict.INSUFFICIENT, result.verdict)
+    }
 }
