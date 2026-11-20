@@ -35,9 +35,9 @@ Le fingerprint n'est pas un identifiant de serveur ni une preuve cryptographique
 
 - Trois paires DIRECT/CANDIDATE sont nécessaires.
 - Chaque paire doit conserver le même transport physique, le même fingerprint, le même profil de mesure et le même ensemble de destinations.
-- Le lot CANDIDATE doit commencer après le lot DIRECT correspondant, avec un écart maximal de 30 minutes.
+- Le lot CANDIDATE doit commencer après le lot DIRECT correspondant, avec un écart maximal de 30 minutes. Le même libellé de profil ou serveur candidat doit être conservé sur les trois captures.
 - Chaque destination doit avoir cinq échantillons planifiés et au moins trois échantillons complets pour chaque phase.
-- Une amélioration doit atteindre au moins 5 % sur la somme des médianes de phases, sans dégradation du P95 observé ni du nombre de réponses réussies.
+- Une amélioration doit atteindre au moins 5 % sur la somme des médianes de phases, sans dégradation du P95 observé, de la variation ni du nombre de réponses réussies.
 - Une variation plus faible est classée comme inconclusive, pas comme une optimisation.
 - Une baisse de fiabilité ou une dégradation répétée produit un verdict de régression.
 
