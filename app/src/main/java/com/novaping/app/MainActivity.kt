@@ -21,6 +21,7 @@ import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Spinner
@@ -79,6 +80,7 @@ class MainActivity : Activity() {
     private lateinit var comparisonStatusView: TextView
     private lateinit var comparisonDirectButton: Button
     private lateinit var comparisonCandidateButton: Button
+    private lateinit var comparisonCandidateLabelInput: EditText
     private lateinit var stabilityStatus: TextView
     private lateinit var stabilityToggleButton: Button
     private lateinit var stabilityResults: LinearLayout
@@ -404,6 +406,14 @@ class MainActivity : Activity() {
         comparisonStatusView = label("", 12f, Color.WHITE, true, Gravity.START)
             .apply { setPadding(0, dp(4), 0, dp(8)) }
         routeCard.addView(comparisonStatusView)
+        comparisonCandidateLabelInput = EditText(this).apply {
+            hint = "Nom du profil / serveur candidat"
+            setTextColor(Color.WHITE)
+            setHintTextColor(mutedColor)
+            textSize = 13f
+            singleLine = true
+        }
+        routeCard.addView(comparisonCandidateLabelInput)
         comparisonDirectButton = Button(this).apply {
             text = "CAPTURER DIRECT"
             isAllCaps = false
@@ -962,7 +972,7 @@ class MainActivity : Activity() {
                     val batch = RouteComparisonBatch(
                         label = comparisonPath.name,
                         transport = comparisonSnapshot.transport,
-                        vpnLabel = if (isCandidate) "VPN actif — fournisseur non identifié" else null,
+                        vpnLabel = if (isCandidate) comparisonCandidateLabelInput.text.toString().trim() else null,
                         aggregates = aggregates,
                         experimentId = routeComparisonRepository.experimentId(),
                         batchId = UUID.randomUUID().toString(),
@@ -1132,6 +1142,15 @@ class MainActivity : Activity() {
             showMeasurementDialog(
                 "Connexion candidate requise",
                 "Active le chemin candidat déjà configuré, puis relance la capture. Aucun VPN n'est démarré par cette fonction."
+            )
+            return
+        }
+        if (path == RouteComparisonPath.CANDIDATE &&
+            comparisonCandidateLabelInput.text.toString().trim().isBlank()
+        ) {
+            showMeasurementDialog(
+                "Nom du candidat requis",
+                "Saisis un nom stable pour ce profil ou serveur candidat. Le même nom devra être conservé pour les trois captures."
             )
             return
         }
