@@ -400,7 +400,7 @@ class MainActivity : Activity() {
             14f, accentColor, true, Gravity.START
         ).apply { setPadding(0, dp(18), 0, dp(6)) })
         routeCard.addView(label(
-            "Effectue trois paires dans l'ordre : DIRECT, puis CANDIDATE, puis recommence. Pour CANDIDATE, utilise un VPN déjà configuré, distinct du tunnel NOVA PING actuel. Désactive-le avant la capture DIRECT suivante. Les mesures restent des contrôles HTTPS.",
+            "Effectue trois paires dans l'ordre : DIRECT, puis CANDIDATE, puis recommence. Pour CANDIDATE, utilise un VPN déjà configuré, distinct du tunnel NOVA PING actuel, et garde le même nom de profil/serveur. Désactive-le avant la capture DIRECT suivante. Les mesures restent des contrôles HTTPS.",
             12f, mutedColor, false, Gravity.START
         ).apply { setPadding(0, dp(2), 0, dp(8)) })
         comparisonStatusView = label("", 12f, Color.WHITE, true, Gravity.START)
@@ -977,8 +977,12 @@ class MainActivity : Activity() {
                         startedAtEpochMs = sessionStartedAtEpochMs,
                         completedAtEpochMs = sessionEndedAtEpochMs
                     )
-                    routeComparisonRepository.save(comparisonPath, batch)
-                    comparisonCaptureMessage = "Lot ${comparisonPath.name} enregistré : ${routeComparisonRepository.batches(comparisonPath).size}/${MeasurementPlan.ROUTE_COMPARISON_REQUIRED_PAIRS}."
+                    if (RouteComparisonEngine.isBatchEligible(batch)) {
+                        routeComparisonRepository.save(comparisonPath, batch)
+                        comparisonCaptureMessage = "Lot ${comparisonPath.name} enregistré : ${routeComparisonRepository.batches(comparisonPath).size}/${MeasurementPlan.ROUTE_COMPARISON_REQUIRED_PAIRS}."
+                    } else {
+                        comparisonCaptureMessage = "Capture refusée : une ou plusieurs destinations n'ont pas assez de mesures complètes pour une comparaison fiable."
+                    }
                 } else {
                     comparisonCaptureMessage = when {
                         ownNovaTunnelActive ->
