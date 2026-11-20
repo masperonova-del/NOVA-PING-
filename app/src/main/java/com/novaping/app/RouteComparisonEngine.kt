@@ -159,6 +159,8 @@ object RouteComparisonEngine {
         return RouteComparisonResult(verdict, comparablePairs, summary, limitations)
     }
 
+    fun isBatchEligible(batch: RouteComparisonBatch): Boolean = isValidBatch(batch)
+
     private fun materiallyBetter(candidate: Long, baseline: Long): Boolean =
         baseline > 0 && candidate * 100L <= baseline * (100L - MATERIAL_CHANGE_PERCENT)
 
