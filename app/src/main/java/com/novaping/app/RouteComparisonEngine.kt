@@ -37,11 +37,11 @@ data class RouteComparisonResult(
  * the candidate run follows the direct run within the allowed pairing window.
  */
 object RouteComparisonEngine {
-    private const val REQUIRED_PAIRS = 3
+    private const val REQUIRED_PAIRS = MeasurementPlan.ROUTE_COMPARISON_REQUIRED_PAIRS
     private const val REQUIRED_SAMPLES_PER_HOST = MeasurementPlan.ROUTE_SAMPLES_PER_TARGET
     private const val MIN_COMPLETE_SAMPLES = MeasurementPlan.MIN_COMPLETE_SAMPLES_FOR_BOOST_RECOMMENDATION
-    private const val MAX_PAIR_GAP_MS = 30 * 60 * 1000L
-    private const val MATERIAL_CHANGE_PERCENT = 5L
+    private const val MAX_PAIR_GAP_MS = MeasurementPlan.ROUTE_COMPARISON_MAX_PAIR_GAP_MS
+    private const val MATERIAL_CHANGE_PERCENT = MeasurementPlan.ROUTE_COMPARISON_MATERIAL_CHANGE_PERCENT
 
     fun compare(
         directBatches: List<RouteComparisonBatch>,
