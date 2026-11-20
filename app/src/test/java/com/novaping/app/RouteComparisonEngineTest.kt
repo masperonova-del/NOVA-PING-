@@ -205,6 +205,24 @@ class RouteComparisonEngineTest {
         assertEquals(RouteComparisonVerdict.INCONCLUSIVE, result.verdict)
     }
 
+    @Test fun rejectsCandidateWhenVariationMateriallyWorsens() {
+        fun withVariation(batches: List<RouteComparisonBatch>, variation: Long) =
+            batches.map { batch ->
+                batch.copy(aggregates = batch.aggregates.map { aggregate ->
+                    aggregate.copy(
+                        dns = aggregate.dns.copy(meanAbsoluteVariationMs = variation),
+                        tcpAttemptTotal = aggregate.tcpAttemptTotal.copy(meanAbsoluteVariationMs = variation),
+                        tls = aggregate.tls.copy(meanAbsoluteVariationMs = variation),
+                        httpStatusLine = aggregate.httpStatusLine.copy(meanAbsoluteVariationMs = variation)
+                    )
+                })
+            }
+        val direct = withVariation(directSeries(), 1L)
+        val candidate = withVariation(candidateSeries(), 2L)
+        val result = RouteComparisonEngine.compare(direct, candidate)
+        assertEquals(RouteComparisonVerdict.REGRESSION, result.verdict)
+    }
+
     @Test fun rejectsInvalidOrMissingProvenance() {
         val direct = directSeries().mapIndexed { index, batch ->
             if (index == 1) batch.copy(networkFingerprint = " ") else batch
