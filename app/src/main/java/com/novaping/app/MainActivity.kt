@@ -31,6 +31,7 @@ import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 import java.util.concurrent.Executors
 
 private const val MAX_STABILITY_EVENTS = 15
@@ -38,6 +39,11 @@ private const val ACTION_STABILITY_HISTORY_UPDATED = "com.novaping.app.action.ST
 
 private data class ProbeTarget(val name: String, val endpoint: String)
 private data class InstalledLaunchableApp(val label: String, val packageName: String)
+private data class ComparisonNetworkSnapshot(
+    val transport: NetworkTransport,
+    val fingerprint: String,
+    val vpnActive: Boolean
+)
 private data class TargetResult(
     val target: ProbeTarget,
     val metrics: PingMetrics?,
@@ -70,6 +76,9 @@ class MainActivity : Activity() {
     private lateinit var historyText: TextView
     private lateinit var routeButton: Button
     private lateinit var routeResults: LinearLayout
+    private lateinit var comparisonStatusView: TextView
+    private lateinit var comparisonDirectButton: Button
+    private lateinit var comparisonCandidateButton: Button
     private lateinit var stabilityStatus: TextView
     private lateinit var stabilityToggleButton: Button
     private lateinit var stabilityResults: LinearLayout
@@ -147,6 +156,9 @@ class MainActivity : Activity() {
     private val accentColor = Color.rgb(64, 160, 255)
     private val mutedColor = Color.rgb(160, 174, 195)
     private val preferences by lazy { getSharedPreferences("nova_ping_history", Context.MODE_PRIVATE) }
+    private val routeComparisonRepository by lazy {
+        RouteComparisonRepository(getSharedPreferences("nova_route_comparison", Context.MODE_PRIVATE))
+    }
 
     private val targets = listOf(
         ProbeTarget("Google Connectivity", "https://connectivitycheck.gstatic.com/generate_204"),
@@ -380,6 +392,55 @@ class MainActivity : Activity() {
         }
         routeResults.addView(label("Aucune analyse de phase effectuée.", 13f, mutedColor, false, Gravity.START))
         routeCard.addView(routeResults)
+
+        routeCard.addView(label(
+            "COMPARAISON DIRECT / CANDIDATE",
+            14f, accentColor, true, Gravity.START
+        ).apply { setPadding(0, dp(18), 0, dp(6)) })
+        routeCard.addView(label(
+            "Effectue trois paires dans l'ordre : DIRECT, puis CANDIDATE, puis recommence. Pour CANDIDATE, utilise un VPN déjà configuré, distinct du tunnel NOVA PING actuel. Désactive-le avant la capture DIRECT suivante. Les mesures restent des contrôles HTTPS.",
+            12f, mutedColor, false, Gravity.START
+        ).apply { setPadding(0, dp(2), 0, dp(8)) })
+        comparisonStatusView = label("", 12f, Color.WHITE, true, Gravity.START)
+            .apply { setPadding(0, dp(4), 0, dp(8)) }
+        routeCard.addView(comparisonStatusView)
+        comparisonDirectButton = Button(this).apply {
+            text = "CAPTURER DIRECT"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            background = actionButtonBackground()
+            setOnClickListener {
+                NovaMotion.pulse(it)
+                captureRouteComparison(RouteComparisonPath.DIRECT)
+            }
+        }
+        routeCard.addView(comparisonDirectButton)
+        comparisonCandidateButton = Button(this).apply {
+            text = "CAPTURER CANDIDATE (VPN)"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            background = actionButtonBackground()
+            setOnClickListener {
+                NovaMotion.pulse(it)
+                captureRouteComparison(RouteComparisonPath.CANDIDATE)
+            }
+        }
+        routeCard.addView(comparisonCandidateButton)
+        routeCard.addView(Button(this).apply {
+            text = "COMPARER LES SÉRIES"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            background = actionButtonBackground()
+            setOnClickListener { compareRouteComparison() }
+        })
+        routeCard.addView(Button(this).apply {
+            text = "RÉINITIALISER L'EXPÉRIENCE"
+            isAllCaps = false
+            setTextColor(mutedColor)
+            background = actionButtonBackground()
+            setOnClickListener { confirmResetRouteComparison() }
+        })
+        refreshRouteComparisonStatus()
         root.addView(routeCard)
 
         root.addView(sectionTitle("TUNNEL VPN — APPLICATION DE JEU"))
@@ -812,12 +873,21 @@ class MainActivity : Activity() {
         )
     }
 
-    private fun runRouteAnalysis() {
+    private fun runRouteAnalysis(
+        comparisonPath: RouteComparisonPath? = null,
+        comparisonSnapshot: ComparisonNetworkSnapshot? = null
+    ) {
         routeButton.isEnabled = false
+        if (comparisonPath != null) {
+            comparisonDirectButton.isEnabled = false
+            comparisonCandidateButton.isEnabled = false
+        }
         val sessionStartNetwork = currentNetworkObservation()
         val context = currentNetworkContext()
         if (!sessionStartNetwork.isReady || !context.internetValidated) {
             routeButton.isEnabled = true
+            comparisonDirectButton.isEnabled = true
+            comparisonCandidateButton.isEnabled = true
             routeResults.removeAllViews()
             routeResults.addView(label(
                 "Android ne confirme pas l'accès à Internet. Connecte-toi puis relance l'analyse.",
@@ -876,6 +946,43 @@ class MainActivity : Activity() {
                 samplesByTarget.getValue(target).takeIf { it.isNotEmpty() }
                     ?.let { RouteStatistics.aggregate(it) }
             }
+            var comparisonCaptureMessage: String? = null
+            if (comparisonPath != null && comparisonSnapshot != null) {
+                val endSnapshot = currentComparisonNetworkSnapshot()
+                val ownVpnState = NovaVpnService.readLastTunnelState(this).first
+                val isCandidate = comparisonPath == RouteComparisonPath.CANDIDATE
+                val ownNovaTunnelActive = isCandidate && ownVpnState == "starting"
+                val stablePhysicalNetwork = endSnapshot != null &&
+                    endSnapshot.fingerprint == comparisonSnapshot.fingerprint &&
+                    endSnapshot.transport == comparisonSnapshot.transport &&
+                    endSnapshot.vpnActive == comparisonSnapshot.vpnActive
+                if (interrupted == null && networkIssue == null &&
+                    stablePhysicalNetwork && !ownNovaTunnelActive
+                ) {
+                    val batch = RouteComparisonBatch(
+                        label = comparisonPath.name,
+                        transport = comparisonSnapshot.transport,
+                        vpnLabel = if (isCandidate) "VPN actif — fournisseur non identifié" else null,
+                        aggregates = aggregates,
+                        experimentId = routeComparisonRepository.experimentId(),
+                        batchId = UUID.randomUUID().toString(),
+                        networkFingerprint = comparisonSnapshot.fingerprint,
+                        startedAtEpochMs = sessionStartedAtEpochMs,
+                        completedAtEpochMs = sessionEndedAtEpochMs
+                    )
+                    routeComparisonRepository.save(comparisonPath, batch)
+                    comparisonCaptureMessage = "Lot ${comparisonPath.name} enregistré : ${routeComparisonRepository.batches(comparisonPath).size}/${MeasurementPlan.ROUTE_COMPARISON_REQUIRED_PAIRS}."
+                } else {
+                    comparisonCaptureMessage = when {
+                        ownNovaTunnelActive ->
+                            "Capture refusée : le tunnel NOVA PING actuel ne constitue pas encore un relais distant."
+                        interrupted != null -> "Capture refusée : analyse interrompue."
+                        networkIssue != null -> "Capture refusée : ${networkIssue.userMessage}"
+                        else -> "Capture refusée : réseau physique ambigu ou modifié pendant la mesure."
+                    }
+                }
+            }
+
             val recommendations = if (networkIssue == null) {
                 DecisionEngine.recommend(context, aggregates)
             } else {
@@ -889,7 +996,17 @@ class MainActivity : Activity() {
 
             runOnUiThread {
                 routeButton.isEnabled = true
+                comparisonDirectButton.isEnabled = true
+                comparisonCandidateButton.isEnabled = true
+                refreshRouteComparisonStatus()
                 routeResults.removeAllViews()
+                comparisonCaptureMessage?.let { message ->
+                    routeResults.addView(label(
+                        message, 12f,
+                        if (message.startsWith("Lot ")) Color.rgb(100, 210, 150) else Color.rgb(255, 185, 90),
+                        true, Gravity.START
+                    ).apply { setPadding(0, dp(6), 0, dp(6)) })
+                }
                 if (interrupted != null) {
                     routeResults.addView(label(
                         "Analyse interrompue : $interrupted. Les résultats partiels ne permettent pas une conclusion complète.",
@@ -993,6 +1110,119 @@ class MainActivity : Activity() {
                 ).apply { setPadding(0, dp(8), 0, 0) })
             }
         }
+    }
+
+    private fun captureRouteComparison(path: RouteComparisonPath) {
+        val snapshot = currentComparisonNetworkSnapshot()
+        if (snapshot == null) {
+            showMeasurementDialog(
+                "Réseau non comparable",
+                "Android ne permet pas d'identifier un seul réseau physique validé sous la connexion actuelle. NOVA PING refuse d'enregistrer une comparaison incertaine."
+            )
+            return
+        }
+        if (path == RouteComparisonPath.DIRECT && snapshot.vpnActive) {
+            showMeasurementDialog(
+                "Connexion DIRECT requise",
+                "Désactive le VPN candidat avant de capturer la série DIRECT."
+            )
+            return
+        }
+        if (path == RouteComparisonPath.CANDIDATE && !snapshot.vpnActive) {
+            showMeasurementDialog(
+                "Connexion candidate requise",
+                "Active le chemin candidat déjà configuré, puis relance la capture. Aucun VPN n'est démarré par cette fonction."
+            )
+            return
+        }
+        if (path == RouteComparisonPath.CANDIDATE &&
+            NovaVpnService.readLastTunnelState(this).first == "starting"
+        ) {
+            showMeasurementDialog(
+                "Relais NOVA indisponible",
+                "Le tunnel NOVA PING actuellement intégré n'est pas encore un relais distant configuré. Il ne peut donc pas être évalué comme une route candidate."
+            )
+            return
+        }
+        runRouteAnalysis(path, snapshot)
+    }
+
+    private fun currentComparisonNetworkSnapshot(): ComparisonNetworkSnapshot? {
+        val manager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val active = manager.activeNetwork ?: return null
+        val activeCapabilities = manager.getNetworkCapabilities(active) ?: return null
+        val vpnActive = activeCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+
+        fun physicalTransport(capabilities: NetworkCapabilities): NetworkTransport? = when {
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> NetworkTransport.WIFI
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> NetworkTransport.CELLULAR
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> NetworkTransport.ETHERNET
+            else -> null
+        }
+
+        val selected = if (!vpnActive) {
+            val transport = physicalTransport(activeCapabilities) ?: return null
+            if (!activeCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) ||
+                !activeCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+            ) return null
+            active to transport
+        } else {
+            val physicalNetworks = manager.allNetworks.mapNotNull { network ->
+                val capabilities = manager.getNetworkCapabilities(network) ?: return@mapNotNull null
+                if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN) ||
+                    !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) ||
+                    !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                ) return@mapNotNull null
+                val transport = physicalTransport(capabilities) ?: return@mapNotNull null
+                network to transport
+            }.distinctBy { it.first.networkHandle }
+            if (physicalNetworks.size != 1) return null
+            physicalNetworks.single()
+        }
+
+        val (physicalNetwork, transport) = selected
+        return ComparisonNetworkSnapshot(
+            transport = transport,
+            fingerprint = "${transport.name}:${physicalNetwork.networkHandle}",
+            vpnActive = vpnActive
+        )
+    }
+
+    private fun refreshRouteComparisonStatus() {
+        if (!::comparisonStatusView.isInitialized) return
+        val direct = routeComparisonRepository.batches(RouteComparisonPath.DIRECT).size
+        val candidate = routeComparisonRepository.batches(RouteComparisonPath.CANDIDATE).size
+        comparisonStatusView.text =
+            "EXPÉRIENCE ${routeComparisonRepository.experimentId().take(8)}\nDIRECT : $direct/3   •   CANDIDATE : $candidate/3"
+        comparisonDirectButton.isEnabled = direct < MeasurementPlan.ROUTE_COMPARISON_REQUIRED_PAIRS
+        comparisonCandidateButton.isEnabled = candidate < MeasurementPlan.ROUTE_COMPARISON_REQUIRED_PAIRS
+    }
+
+    private fun compareRouteComparison() {
+        val result = RouteComparisonEngine.compare(
+            routeComparisonRepository.batches(RouteComparisonPath.DIRECT),
+            routeComparisonRepository.batches(RouteComparisonPath.CANDIDATE)
+        )
+        val details = buildString {
+            append(result.summary)
+            append("\n\nPaires valides : ${result.validPairs}/${MeasurementPlan.ROUTE_COMPARISON_REQUIRED_PAIRS}")
+            append("\nVerdict : ${result.verdict}")
+            result.limitations.forEach { append("\n• ").append(it) }
+        }
+        showMeasurementDialog("Comparaison DIRECT / CANDIDATE", details)
+    }
+
+    private fun confirmResetRouteComparison() {
+        AlertDialog.Builder(this)
+            .setTitle("Réinitialiser l'expérience ?")
+            .setMessage("Les lots DIRECT et CANDIDATE de cette expérience seront effacés de l'historique local.")
+            .setNegativeButton("ANNULER", null)
+            .setPositiveButton("RÉINITIALISER") { _, _ ->
+                routeComparisonRepository.reset()
+                refreshRouteComparisonStatus()
+                Toast.makeText(this, "Expérience réinitialisée.", Toast.LENGTH_SHORT).show()
+            }
+            .show()
     }
 
     private fun currentNetworkPreflight(): NetworkReadiness {
