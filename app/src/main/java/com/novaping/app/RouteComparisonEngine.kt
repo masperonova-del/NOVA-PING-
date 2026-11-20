@@ -170,13 +170,20 @@ object RouteComparisonEngine {
         if (hosts.any { it.isBlank() } || hosts.distinct().size != hosts.size) return false
         if (batch.targetFingerprint != hosts.sorted().joinToString("|")) return false
         return batch.aggregates.all { aggregate ->
+            val phases = listOf(
+                aggregate.dns,
+                aggregate.tcp,
+                aggregate.tcpAttemptTotal,
+                aggregate.tls,
+                aggregate.httpStatusLine
+            )
             aggregate.sampleCount == REQUIRED_SAMPLES_PER_HOST &&
-                aggregate.completeSamples >= MIN_COMPLETE_SAMPLES &&
-                aggregate.dns.successfulSamples >= MIN_COMPLETE_SAMPLES &&
-                aggregate.tcp.successfulSamples >= MIN_COMPLETE_SAMPLES &&
-                aggregate.tcpAttemptTotal.successfulSamples >= MIN_COMPLETE_SAMPLES &&
-                aggregate.tls.successfulSamples >= MIN_COMPLETE_SAMPLES &&
-                aggregate.httpStatusLine.successfulSamples >= MIN_COMPLETE_SAMPLES
+                aggregate.completeSamples in MIN_COMPLETE_SAMPLES..aggregate.sampleCount &&
+                aggregate.httpSuccessfulSamples in 0..aggregate.completeSamples &&
+                phases.all { phase ->
+                    phase.attemptedSamples == aggregate.sampleCount &&
+                        phase.successfulSamples in MIN_COMPLETE_SAMPLES..phase.attemptedSamples
+                }
         }
     }
 
