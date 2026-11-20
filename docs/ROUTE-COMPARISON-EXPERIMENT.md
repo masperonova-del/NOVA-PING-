@@ -1,61 +1,65 @@
-# NOVA BOOST — Route comparison experiment
+# NOVA PING — protocole de comparaison DIRECT / CANDIDATE
 
-## Objective
+## Objectif
 
-Build a repeatable, evidence-based comparison of the active network path before attempting any traffic-routing feature.
+Comparer, sur un même réseau physique, le chemin Internet direct et un chemin candidat à partir de mesures répétées vers les mêmes points de contrôle HTTPS.
 
-The first experiment compares:
-- direct connectivity (VPN disconnected);
-- one VPN provider/server at a time (for example, Proton VPN);
-- later, an explicitly configured NOVA relay candidate, only after relay infrastructure exists.
+Cette expérience ne mesure pas le ping d'un serveur de match. Elle ne fait ni traceroute, ni découverte d'adresses de serveurs de jeu, ni modification automatique du routage.
 
-## Controlled protocol
+## Parcours dans l'application
 
-For each configuration:
+1. Ouvrir la section ROUTE ENGINE — ANALYSE DES PHASES.
+2. Capturer un lot DIRECT lorsque le VPN candidat est désactivé.
+3. Activer le chemin candidat déjà configuré, puis capturer CANDIDATE.
+4. Répéter cette paire trois fois, en gardant le même réseau physique et les mêmes destinations.
+5. Appuyer sur COMPARER LES SÉRIES.
+6. Si les conditions ont changé, réinitialiser l'expérience et recommencer plutôt que mélanger des mesures incompatibles.
 
-1. Record the active transport (Wi-Fi or mobile), Android network validation state, timestamp, VPN state, and the user-entered provider/server label.
-2. Use the same three HTTPS control destinations and the same timeout.
-3. Run five independent samples per destination.
-4. Calculate median, observed P95, mean absolute variation, completion rate, and HTTP 2xx rate.
-5. Repeat the complete batch at least three times, alternating configuration order where practical.
-6. Compare only batches collected close together under the same physical access network. If Wi-Fi/mobile changes, mark the pair non-comparable.
+Le bouton de capture ne démarre ni n'arrête un VPN. Il ne fait que mesurer le chemin actuellement actif. Le tunnel NOVA PING intégré n'est pas considéré comme candidat tant qu'il n'utilise pas un relais distant configuré et vérifiable.
 
-## Decision rules
+## Provenance obligatoire
 
-A VPN candidate is not considered better merely because one sample is faster.
+Chaque lot conserve localement :
 
-A candidate may be labelled "promising" only when:
-- at least three paired batches are complete;
-- completion rate does not regress;
-- median and P95 improve consistently across batches;
-- variation does not materially worsen;
-- no transport change or measurement interruption invalidates the comparison.
+- un identifiant d'expérience et un identifiant de lot ;
+- le rôle DIRECT ou CANDIDATE ;
+- le type de transport physique observé ;
+- un fingerprint éphémère basé sur le handle Android du réseau physique ;
+- les heures de début et de fin ;
+- le profil de mesure et l'ensemble des hôtes testés ;
+- les agrégats par phase et le nombre de mesures réussies.
 
-Otherwise the result is "inconclusive" or "regression". No automatic selection is made in this phase.
+Le fingerprint n'est pas un identifiant de serveur ni une preuve cryptographique du chemin réseau. Aucun SSID, adresse MAC, contenu applicatif ou charge utile de paquet n'est enregistré. Si Android ne permet pas d'identifier un unique réseau physique sous le VPN, l'application refuse d'enregistrer le lot.
 
-## Evidence boundaries
+## Règles d'acceptation
 
-- HTTPS control endpoints are not CODM match servers.
-- These measurements compare the path to the control endpoints, not game-server latency.
-- A lower HTTPS measurement does not prove a lower in-game ping.
-- A VPN can add latency; a relay is useful only if its upstream route is better enough to offset the extra hop.
-- The first phase does not create a VPN, change Android routing, intercept game traffic, or claim acceleration.
-- The user controls VPN connection/disconnection and supplies the provider/server label; the app must not inspect another VPN application's private state.
+- Trois paires DIRECT/CANDIDATE sont nécessaires.
+- Chaque paire doit conserver le même transport physique, le même fingerprint, le même profil de mesure et le même ensemble de destinations.
+- Le lot CANDIDATE doit commencer après le lot DIRECT correspondant, avec un écart maximal de 30 minutes.
+- Chaque destination doit avoir cinq échantillons planifiés et au moins trois échantillons complets pour chaque phase.
+- Une amélioration doit atteindre au moins 5 % sur la somme des médianes de phases, sans dégradation du P95 observé ni du nombre de réponses réussies.
+- Une variation plus faible est classée comme inconclusive, pas comme une optimisation.
+- Une baisse de fiabilité ou une dégradation répétée produit un verdict de régression.
 
-## Implementation sequence
+Le P95 calculé à partir de cinq échantillons reste une statistique descriptive de petit échantillon ; il ne constitue pas une garantie de performance.
 
-1. Add a comparison data model and paired-batch validity checks.
-2. Add a UI flow for the user to label Direct / VPN provider / server and run the same probe plan.
-3. Store comparison summaries locally with explicit timestamps and network context.
-4. Add unit tests for incomplete batches, changed transport, missing samples, and false-positive wins.
-5. Only after reliable evidence exists, evaluate an Android VpnService prototype and a real relay endpoint. VPN consent must be requested through Android's supported flow.
-6. Test actual CODM sessions separately and record the in-game ping manually unless a documented, authorized game telemetry interface becomes available.
+## Limites Android et sécurité
 
-## Acceptance criteria
+Android n'autorise qu'une seule application VPN active à la fois. Une comparaison avec un chemin candidat VPN doit donc être faite en dehors du tunnel NOVA PING actuel. Les sockets du futur relais NOVA devront continuer à être protégés contre les boucles de routage conformément au modèle Android VpnService.
 
-The comparison feature is complete only when it:
-- refuses invalid or mismatched comparisons;
-- reports median, P95, variation, and completion rate for each condition;
-- identifies repeatable improvement, regression, or inconclusive evidence;
-- never claims CODM ping improvement from HTTPS-only probes;
-- passes unit tests and a physical-device test.
+Référence plateforme : https://developer.android.com/develop/connectivity/vpn
+
+## Critères avant toute sélection automatique
+
+Cette expérience n'active aucun routage automatique. Avant de choisir automatiquement un chemin, il faudra :
+
+- disposer d'un relais distant NOVA provisionné, authentifié et mesuré ;
+- mesurer la disponibilité, la latence, la stabilité et les pertes du relais ;
+- répéter les comparaisons sur plusieurs périodes et réseaux ;
+- définir un seuil d'avantage matériel et une politique de retour direct ;
+- valider les transitions et la restauration de connectivité sur appareils physiques ;
+- distinguer les mesures HTTPS des véritables mesures de serveurs de jeu, qui nécessitent des endpoints de match vérifiés et une méthode de mesure autorisée.
+
+## État de cette version
+
+La version route-comparison-v1 fournit la capture manuelle des lots, le stockage local des agrégats, les contrôles de comparabilité et l'affichage du verdict. Elle ne fournit pas de relais distant, de ping CODM certifié ni de sélection automatique.
