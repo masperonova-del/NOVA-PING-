@@ -111,12 +111,14 @@ object RouteComparisonEngine {
                     trial.httpSuccessfulSamples >= base.httpSuccessfulSamples
             }
             val better = comparisons.count { (_, _, scores) ->
-                materiallyBetter(scores.second.first, scores.first.first) &&
-                    scores.second.second <= scores.first.second
+                materiallyBetter(scores.second.medianMs, scores.first.medianMs) &&
+                    scores.second.p95Ms <= scores.first.p95Ms &&
+                    !materiallyWorse(scores.second.variationMs, scores.first.variationMs)
             }
             val worse = comparisons.count { (_, _, scores) ->
-                materiallyWorse(scores.second.first, scores.first.first) ||
-                    materiallyWorse(scores.second.second, scores.first.second)
+                materiallyWorse(scores.second.medianMs, scores.first.medianMs) ||
+                    materiallyWorse(scores.second.p95Ms, scores.first.p95Ms) ||
+                    materiallyWorse(scores.second.variationMs, scores.first.variationMs)
             }
             comparablePairs++
             if (reliabilityPreserved && better > comparisons.size / 2) improvedPairs++
@@ -131,7 +133,7 @@ object RouteComparisonEngine {
         }
         val summary = when (verdict) {
             RouteComparisonVerdict.PROMISING ->
-                "Amélioration répétée et d'au moins 5 % sur la médiane des phases HTTPS ($improvedPairs/$comparablePairs séries), sans dégradation du P95 observé ni du taux de réussite."
+                "Amélioration répétée et d'au moins 5 % sur la médiane des phases HTTPS ($improvedPairs/$comparablePairs séries), sans dégradation du P95 observé, de la variation ni du taux de réussite."
             RouteComparisonVerdict.REGRESSION ->
                 "Le candidat dégrade sensiblement les mesures ou ne préserve pas leur fiabilité ($regressedPairs/$comparablePairs séries)."
             RouteComparisonVerdict.INCONCLUSIVE ->
@@ -187,12 +189,23 @@ object RouteComparisonEngine {
         }
     }
 
-    private fun phaseScore(aggregate: RouteAggregate): Pair<Long, Long>? {
+    private data class AggregateScore(
+        val medianMs: Long,
+        val p95Ms: Long,
+        val variationMs: Long
+    )
+
+    private fun phaseScore(aggregate: RouteAggregate): AggregateScore? {
         val phases = listOf(aggregate.dns, aggregate.tcpAttemptTotal, aggregate.tls, aggregate.httpStatusLine)
         if (phases.any {
                 it.successfulSamples < MIN_COMPLETE_SAMPLES ||
-                    it.medianMs == null || it.p95ObservedMs == null
+                    it.medianMs == null || it.p95ObservedMs == null ||
+                    it.meanAbsoluteVariationMs == null
             }) return null
-        return phases.sumOf { it.medianMs!! } to phases.sumOf { it.p95ObservedMs!! }
+        return AggregateScore(
+            medianMs = phases.sumOf { it.medianMs!! },
+            p95Ms = phases.sumOf { it.p95ObservedMs!! },
+            variationMs = phases.sumOf { it.meanAbsoluteVariationMs!! }
+        )
     }
 }
