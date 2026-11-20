@@ -888,16 +888,13 @@ class MainActivity : Activity() {
         comparisonSnapshot: ComparisonNetworkSnapshot? = null
     ) {
         routeButton.isEnabled = false
-        if (comparisonPath != null) {
-            comparisonDirectButton.isEnabled = false
-            comparisonCandidateButton.isEnabled = false
-        }
+        comparisonDirectButton.isEnabled = false
+        comparisonCandidateButton.isEnabled = false
         val sessionStartNetwork = currentNetworkObservation()
         val context = currentNetworkContext()
         if (!sessionStartNetwork.isReady || !context.internetValidated) {
             routeButton.isEnabled = true
-            comparisonDirectButton.isEnabled = true
-            comparisonCandidateButton.isEnabled = true
+            refreshRouteComparisonStatus()
             routeResults.removeAllViews()
             routeResults.addView(label(
                 "Android ne confirme pas l'accès à Internet. Connecte-toi puis relance l'analyse.",
