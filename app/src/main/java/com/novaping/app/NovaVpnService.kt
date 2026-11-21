@@ -138,6 +138,11 @@ internal class NovaVpnService : VpnService() {
         }
         val gamePackage = readSelectedGamePackage(this)
             ?: throw IllegalStateException("Aucun jeu installé n'est sélectionné")
+        // In per-app mode, only the selected game is routed into TUN. NOVA PING's
+        // own process is outside the VPN unless its package is explicitly allowed.
+        val allowedVpnPackages = setOf(gamePackage)
+        val upstreamSocketsRequireProtection =
+            VpnRoutingPolicy.requiresSocketProtection(packageName, allowedVpnPackages)
 
         val connectivity = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val underlying = connectivity.activeNetwork
@@ -149,13 +154,13 @@ internal class NovaVpnService : VpnService() {
 
         val resolver = ProtectedDnsResolver(
             resolverAddress = dnsServer,
-            protectDatagramSocket = { protectSocket(it, "DNS_UDP") },
-            protectTcpSocket = { protectSocket(it, "DNS_TCP") }
+            protectDatagramSocket = { protectSocket(it, "DNS_UDP", upstreamSocketsRequireProtection) },
+            protectTcpSocket = { protectSocket(it, "DNS_TCP", upstreamSocketsRequireProtection) }
         )
         val localBridge = LocalSocks5Bridge(
-            protectUpstreamSocket = { protectSocket(it, "TCP_CONNECT") },
+            protectUpstreamSocket = { protectSocket(it, "TCP_CONNECT", upstreamSocketsRequireProtection) },
             bindAddress = InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1)),
-            protectUpstreamDatagramSocket = { protectSocket(it, "UDP_RELAY") },
+            protectUpstreamDatagramSocket = { protectSocket(it, "UDP_RELAY", upstreamSocketsRequireProtection) },
             protectedDnsResolver = resolver
         )
         bridge = localBridge
@@ -281,27 +286,57 @@ internal class NovaVpnService : VpnService() {
      * socket address is retained. Android's protect() boolean is authoritative;
      * a false result is never bypassed or retried on the same socket.
      */
-    private fun protectSocket(socket: Socket, purpose: String): Boolean =
-        evaluateSocketProtection(
+    private fun protectSocket(
+        socket: Socket,
+        purpose: String,
+        requiresProtection: Boolean
+    ): Boolean {
+        val invalidPrecondition = socket.isClosed || socket.isConnected
+        if (!requiresProtection) {
+            // Android's per-app allowlist already keeps this app's own sockets outside
+            // the VPN. Calling protect() here is redundant and can reject valid sockets.
+            VpnDiagnostics.tracker.recordSocketProtection(
+                purpose = purpose,
+                outcome = "bypassed_per_app_allowlist",
+                invalidPrecondition = invalidPrecondition
+            )
+            return !invalidPrecondition
+        }
+        return evaluateSocketProtection(
             purpose = purpose,
-            invalidPrecondition = socket.isClosed || socket.isConnected,
+            invalidPrecondition = invalidPrecondition,
             socketClosed = socket.isClosed,
             socketConnected = socket.isConnected,
             socketBound = socket.isBound
         ) {
             protect(socket)
         }
+    }
 
-    private fun protectSocket(socket: DatagramSocket, purpose: String): Boolean =
-        evaluateSocketProtection(
+    private fun protectSocket(
+        socket: DatagramSocket,
+        purpose: String,
+        requiresProtection: Boolean
+    ): Boolean {
+        val invalidPrecondition = socket.isClosed || socket.isConnected
+        if (!requiresProtection) {
+            VpnDiagnostics.tracker.recordSocketProtection(
+                purpose = purpose,
+                outcome = "bypassed_per_app_allowlist",
+                invalidPrecondition = invalidPrecondition
+            )
+            return !invalidPrecondition
+        }
+        return evaluateSocketProtection(
             purpose = purpose,
-            invalidPrecondition = socket.isClosed || socket.isConnected,
+            invalidPrecondition = invalidPrecondition,
             socketClosed = socket.isClosed,
             socketConnected = socket.isConnected,
             socketBound = socket.isBound
         ) {
             protect(socket)
         }
+    }
 
     private inline fun evaluateSocketProtection(
         purpose: String,
