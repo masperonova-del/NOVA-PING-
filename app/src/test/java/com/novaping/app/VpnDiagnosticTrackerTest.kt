@@ -48,7 +48,7 @@ class VpnDiagnosticTrackerTest {
         val report = tracker.report()
 
         assertTrue(report.contains("TCP_CONNECT : 0 protégés / 1 rejetés"))
-        assertTrue(report.contains("DNS_UDP : 0 protégés / 0 rejetés / 1 exceptions / 1 préconditions invalides"))
+        assertTrue(report.contains("DNS_UDP : 0 protégés / 0 rejetés / 0 bypassés par la liste d'applications / 1 exceptions / 1 préconditions invalides"))
     }
 
     @Test
