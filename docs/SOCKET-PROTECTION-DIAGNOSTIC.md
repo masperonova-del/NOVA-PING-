@@ -35,3 +35,7 @@ Après installation de la nouvelle build et démarrage du tunnel avec un jeu sé
 5. Vérifier ensuite que le jeu est toujours bien sélectionné dans l'allowlist et que le tunnel reste stable.
 
 La CI ne remplace pas ce test physique. Aucun gain de ping CODM ne peut être conclu à partir de ce diagnostic seul.
+
+## Contrôle de non-régression
+
+Les tests unitaires de politique vérifient les trois cas : liste limitée au jeu, liste vide (toutes les applications passent dans le VPN), et NOVA PING explicitement inclus. La compilation Android et le lint doivent ensuite être exécutés par Android CI sur cette branche avant toute installation.
