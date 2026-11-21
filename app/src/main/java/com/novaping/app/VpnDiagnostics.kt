@@ -222,7 +222,8 @@ internal class VpnDiagnosticTracker {
     fun recordSocketProtection(purpose: String, outcome: String, invalidPrecondition: Boolean) {
         val safePurpose = safeCategory(purpose)
         val safeOutcome = when (outcome) {
-            "protected", "rejected", "security_exception", "invalid_socket", "exception" -> outcome
+            "protected", "rejected", "bypassed_per_app_allowlist",
+            "security_exception", "invalid_socket", "exception" -> outcome
             else -> "other"
         }
         val results = socketProtectionResults.getOrPut(safePurpose) { linkedMapOf() }
@@ -361,6 +362,7 @@ internal class VpnDiagnosticTracker {
                 appendLine(
                     "$purpose : ${results["protected"] ?: 0} protégés / " +
                         "${results["rejected"] ?: 0} rejetés / " +
+                        "${results["bypassed_per_app_allowlist"] ?: 0} bypassés par la liste d'applications / " +
                         "${(results["security_exception"] ?: 0) + (results["invalid_socket"] ?: 0) + (results["exception"] ?: 0)} exceptions / " +
                         "${socketProtectionInvalidPreconditions[purpose] ?: 0} préconditions invalides"
                 )
