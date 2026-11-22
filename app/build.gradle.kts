@@ -14,8 +14,8 @@ android {
         applicationId = "com.novaping.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 36
-        versionName = "1.22.0-dev"
+        versionCode = 37
+        versionName = "1.23.0-dev"
     }
 
     signingConfigs {
