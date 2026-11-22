@@ -151,3 +151,10 @@ diff --git a/src/hev-socks5-tunnel.h b/src/hev-socks5-tunnel.h
 +uint32_t hev_socks5_tunnel_metadata_dropped (void);
 +
  #endif /* __HEV_SOCKS5_TUNNEL_H__ */
+
++JNIEXPORT jboolean JNICALL
++Java_com_novaping_app_HevTunnelNative_nativeIsInitialized (JNIEnv *env,
++                                                            jobject thiz)
++{
++    return hev_socks5_tunnel_is_running () ? JNI_TRUE : JNI_FALSE;
++}
