@@ -13,6 +13,7 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
  #include "hev-socks5-tunnel.h"
  
  enum
+
 @@ -79,6 +84,82 @@
  static HevTask *task_lwip_timer;
  static HevList session_set;
@@ -96,7 +97,8 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
  static int
  task_io_yielder (HevTaskYieldType type, void *data)
  {
-@@ -92,6 +172,8 @@
+
+@@ -92,6 +173,8 @@
  {
      ssize_t s;
  
@@ -105,7 +107,18 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
      s = hev_tunnel_write (tun_fd, p);
      if (s <= 0) {
          if (errno == EAGAIN)
-@@ -440,6 +522,8 @@
+
+@@ -285,6 +368,8 @@
+ event_task_entry (void *data)
+ {
+     HevListNode *node;
+     int val;
+ 
++    atomic_store (&nova_tunnel_running, 1);
++
+     LOG_D ("socks5 tunnel event task run");
+
+@@ -440,6 +525,8 @@
          stat_tx_packets++;
          stat_tx_bytes += buf->tot_len;
  
@@ -114,7 +127,8 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
          buf = tunnel_compact_pbuf (buf);
  
          data = buf->payload;
-@@ -811,6 +895,9 @@
+
+@@ -811,6 +898,9 @@
      if (res < 0)
          goto exit;
  
@@ -124,7 +138,24 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
      res = gateway_init ();
      if (res < 0)
          goto exit;
-@@ -939,3 +1026,31 @@
+
+@@ -852,5 +942,7 @@
+ hev_socks5_tunnel_init (int tun_fd)
+ {
+     int res;
+ 
++    atomic_store (&nova_tunnel_running, 0);
++
+     LOG_D ("socks5 tunnel init");
+
+@@ -862,3 +954,5 @@
+ hev_socks5_tunnel_fini (void)
+ {
++    atomic_store (&nova_tunnel_running, 0);
++
+ retry:
+
+@@ -939,3 +1033,31 @@
      if (rx_bytes)
          *rx_bytes = stat_rx_bytes;
  }
@@ -157,30 +188,8 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
 +           np_metadata_tap_dropped (&nova_metadata_tap_output);
 +}
 
-@@ -285,6 +285,8 @@
- event_task_entry (void *data)
- {
-     HevListNode *node;
-     int val;
- 
-+    atomic_store (&nova_tunnel_running, 1);
-+
-     LOG_D ("socks5 tunnel event task run");
-@@ -852,5 +854,7 @@
- hev_socks5_tunnel_init (int tun_fd)
- {
-     int res;
- 
-+    atomic_store (&nova_tunnel_running, 0);
-+
-     LOG_D ("socks5 tunnel init");
-@@ -862,3 +864,5 @@
- hev_socks5_tunnel_fini (void)
- {
-+    atomic_store (&nova_tunnel_running, 0);
-+
- retry:
-@@ -1058,5 +1062,12 @@
+
+@@ -1058,5 +1180,11 @@
  hev_socks5_tunnel_metadata_dropped (void)
  {
      return np_metadata_tap_dropped (&nova_metadata_tap_input) +
