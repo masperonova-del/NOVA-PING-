@@ -40,6 +40,9 @@ internal object HevTunnelNative {
         return nativeStart(config, tunFileDescriptor)
     }
 
+    /** True only after HEV has entered its native event loop. */
+    fun isEngineReady(): Boolean = isAvailable() && nativeIsInitialized()
+
     /** Requests the native event loop to stop; safe to call during service shutdown. */
     fun requestStop() {
         if (isAvailable()) nativeStop()
@@ -47,6 +50,7 @@ internal object HevTunnelNative {
 
     private external fun nativeStart(config: String, tunFileDescriptor: Int): Int
     private external fun nativeStop()
+    private external fun nativeIsInitialized(): Boolean
 }
 
 /** Builds the minimal HEV YAML configuration for NOVA PING's loopback bridge. */
