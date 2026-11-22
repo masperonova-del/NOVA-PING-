@@ -62,10 +62,12 @@ jobs:
             grep -q 'Java_com_novaping_app_HevMetadataNative_nativeDropped' <<< "$symbols"
             grep -q 'Java_com_novaping_app_HevTunnelNative_nativeStart' <<< "$symbols"
             grep -q 'Java_com_novaping_app_HevTunnelNative_nativeStop' <<< "$symbols"
+            grep -q 'Java_com_novaping_app_HevTunnelNative_nativeIsInitialized' <<< "$symbols"
             grep -q 'hev_socks5_tunnel_main_from_str' <<< "$symbols"
             grep -q 'hev_socks5_tunnel_quit' <<< "$symbols"
             grep -q 'hev_socks5_tunnel_metadata_poll' <<< "$symbols"
             grep -q 'hev_socks5_tunnel_metadata_dropped' <<< "$symbols"
+            grep -q 'hev_socks5_tunnel_is_running' <<< "$symbols"
           done
 
       - name: Run native packet metadata tests
