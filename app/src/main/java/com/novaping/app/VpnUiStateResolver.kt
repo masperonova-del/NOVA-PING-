@@ -12,6 +12,8 @@ internal object VpnUiStateResolver {
         savedState == "stopped" && vpnActive -> "other_vpn"
         savedState == null && vpnActive -> "other_vpn"
         savedState == "starting" && !vpnActive -> "stopped"
+        savedState == "ready" && !vpnActive -> "stopped"
+        savedState == "ready" -> "ready"
         savedState == "starting" -> "starting"
         savedState == null -> "stopped"
         else -> savedState
