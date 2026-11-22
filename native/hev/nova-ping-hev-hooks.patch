@@ -105,7 +105,7 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
      s = hev_tunnel_write (tun_fd, p);
      if (s <= 0) {
          if (errno == EAGAIN)
-@@ -285,6 +368,8 @@
+@@ -372,6 +455,8 @@
  event_task_entry (void *data)
  {
      HevListNode *node;
@@ -123,7 +123,15 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
          buf = tunnel_compact_pbuf (buf);
  
          data = buf->payload;
-@@ -811,6 +898,9 @@
+@@ -804,5 +891,7 @@
+ hev_socks5_tunnel_init (int tun_fd)
+ {
+     int res;
+ 
++    atomic_store (&nova_tunnel_running, 0);
++
+     LOG_D ("socks5 tunnel init");
+@@ -811,6 +900,9 @@
      if (res < 0)
          goto exit;
  
@@ -133,21 +141,13 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
      res = gateway_init ();
      if (res < 0)
          goto exit;
-@@ -852,5 +942,7 @@
- hev_socks5_tunnel_init (int tun_fd)
- {
-     int res;
- 
-+    atomic_store (&nova_tunnel_running, 0);
-+
-     LOG_D ("socks5 tunnel init");
-@@ -862,3 +954,5 @@
+@@ -850,3 +942,5 @@
  hev_socks5_tunnel_fini (void)
  {
 +    atomic_store (&nova_tunnel_running, 0);
 +
  retry:
-@@ -939,3 +1033,31 @@
+@@ -939,3 +1033,37 @@
      if (rx_bytes)
          *rx_bytes = stat_rx_bytes;
  }
@@ -179,12 +179,6 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
 +    return np_metadata_tap_dropped (&nova_metadata_tap_input) +
 +           np_metadata_tap_dropped (&nova_metadata_tap_output);
 +}
-@@ -1058,5 +1180,11 @@
- hev_socks5_tunnel_metadata_dropped (void)
- {
-     return np_metadata_tap_dropped (&nova_metadata_tap_input) +
-            np_metadata_tap_dropped (&nova_metadata_tap_output);
- }
 +
 +EXPORT_SYMBOL int
 +hev_socks5_tunnel_is_running (void)
