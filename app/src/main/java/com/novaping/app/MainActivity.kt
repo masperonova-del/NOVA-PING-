@@ -446,17 +446,17 @@ class MainActivity : Activity() {
             gameEvidenceStatus.text = if (usable.isEmpty()) {
                 "AUCUN SERVEUR DE MATCH VÉRIFIÉ"
             } else {
-                "\${usable.size} preuve(s) serveur actuellement valide(s)"
+                "${usable.size} preuve(s) serveur actuellement valide(s)"
             }
             gameEvidenceStatus.setTextColor(
                 if (usable.isEmpty()) Color.rgb(255, 190, 110)
                 else Color.rgb(100, 210, 150)
             )
             gameEvidenceDetails.text = if (usable.isEmpty()) {
-                "Jeu : \${profile.displayName}\nRégions et adresses : non confirmées\nAucune IP inventée. Les points Google/Cloudflare/Microsoft restent des contrôles Internet, pas des serveurs de match."
+                "Jeu : ${profile.displayName}\nRégions et adresses : non confirmées\nAucune IP inventée. Les points Google/Cloudflare/Microsoft restent des contrôles Internet, pas des serveurs de match."
             } else {
                 usable.joinToString("\n") { evidence ->
-                    "\${evidence.region} • \${evidence.endpointHost} • \${evidence.protocol}"
+                    "${evidence.region} • ${evidence.endpointHost} • ${evidence.protocol}"
                 }
             }
         }
@@ -1597,15 +1597,15 @@ class MainActivity : Activity() {
         val networkObservation = "\nRéseau utilisé par Android : $activeTransport · Internet : $internetState"
         wifiLockStatus.text = when {
             ssid.isNullOrBlank() ->
-                "Aucun réseau préféré enregistré.\nConnecté : \${connectedSsid ?: "Wi-Fi non identifié"}"
+                "Aucun réseau préféré enregistré.\nConnecté : ${connectedSsid ?: "Wi-Fi non identifié"}"
             mode == "smart" ->
-                "Réseau préféré : $ssid\nConnecté : \${connectedSsid ?: "Wi-Fi non identifié"}\nLe mode intelligent n'est pas encore implémenté."
+                "Réseau préféré : $ssid\nConnecté : ${connectedSsid ?: "Wi-Fi non identifié"}\nLe mode intelligent n'est pas encore implémenté."
             enabled && matches ->
                 "Réseau préféré : $ssid\nConnecté : $connectedSsid\nCorrespondance confirmée. Android garde le contrôle final."
             enabled ->
-                "PRÉFÉRENCE ACTIVÉE — MAIS NON CONNECTÉE\nPréféré : $ssid\nConnecté : \${connectedSsid ?: "Wi-Fi non identifié"}\nOuvre les paramètres Android et connecte-toi au réseau préféré."
+                "PRÉFÉRENCE ACTIVÉE — MAIS NON CONNECTÉE\nPréféré : $ssid\nConnecté : ${connectedSsid ?: "Wi-Fi non identifié"}\nOuvre les paramètres Android et connecte-toi au réseau préféré."
             else ->
-                "Réseau préféré : $ssid\nConnecté : \${connectedSsid ?: "Wi-Fi non identifié"}\nPréférence enregistrée, mais désactivée."
+                "Réseau préféré : $ssid\nConnecté : ${connectedSsid ?: "Wi-Fi non identifié"}\nPréférence enregistrée, mais désactivée."
         } + networkObservation
         wifiLockStatus.setTextColor(
             if (enabled && matches) Color.rgb(100, 210, 150)
