@@ -113,6 +113,12 @@ class MainActivity : Activity() {
                 vpnConsentStatus.text = "Interface Android établie ; démarrage du moteur HEV."
                 vpnConsentStatus.setTextColor(Color.rgb(100, 210, 150))
             }
+            "ready" -> {
+                vpnTunnelStartRequested = true
+                vpnConsentButton.text = "ARRÊTER LE TUNNEL"
+                vpnConsentStatus.text = "Moteur HEV initialisé ; tunnel actif pour le jeu sélectionné."
+                vpnConsentStatus.setTextColor(Color.rgb(100, 210, 150))
+            }
             "stopped" -> {
                 vpnTunnelStartRequested = false
                 vpnConsentButton.text = "DÉMARRER LE TUNNEL VPN"
@@ -959,7 +965,7 @@ class MainActivity : Activity() {
                 val endSnapshot = currentComparisonNetworkSnapshot()
                 val ownVpnState = NovaVpnService.readLastTunnelState(this).first
                 val isCandidate = comparisonPath == RouteComparisonPath.CANDIDATE
-                val ownNovaTunnelActive = isCandidate && ownVpnState == "starting"
+                val ownNovaTunnelActive = isCandidate && ownVpnState in setOf("starting", "ready")
                 val stablePhysicalNetwork = endSnapshot != null &&
                     endSnapshot.fingerprint == comparisonSnapshot.fingerprint &&
                     endSnapshot.transport == comparisonSnapshot.transport &&
@@ -1158,7 +1164,7 @@ class MainActivity : Activity() {
             return
         }
         if (path == RouteComparisonPath.CANDIDATE &&
-            NovaVpnService.readLastTunnelState(this).first == "starting"
+            NovaVpnService.readLastTunnelState(this).first in setOf("starting", "ready")
         ) {
             showMeasurementDialog(
                 "Relais NOVA indisponible",
