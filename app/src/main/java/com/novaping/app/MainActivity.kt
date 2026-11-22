@@ -1515,8 +1515,10 @@ class MainActivity : Activity() {
         for (network in networks) {
             val capabilities = connectivity.getNetworkCapabilities(network) ?: continue
             if (!capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) continue
-            val wifiInfo = capabilities.transportInfo as? WifiInfo
-            normalize(wifiInfo?.ssid)?.let { return it }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val wifiInfo = capabilities.transportInfo as? WifiInfo
+                normalize(wifiInfo?.ssid)?.let { return it }
+            }
         }
         return runCatching {
             val manager = getSystemService(Context.WIFI_SERVICE) as WifiManager
@@ -1534,15 +1536,15 @@ class MainActivity : Activity() {
         val modeLabel = if (mode == "smart") "Verrouillage intelligent (non disponible)" else "Préférence manuelle"
         wifiLockStatus.text = when {
             ssid.isNullOrBlank() ->
-                "Aucun réseau préféré enregistré.\\nConnecté : ${connectedSsid ?: "Wi-Fi non identifié"}"
+                "Aucun réseau préféré enregistré.\nConnecté : ${connectedSsid ?: "Wi-Fi non identifié"}"
             mode == "smart" ->
-                "Réseau préféré : $ssid\\nConnecté : ${connectedSsid ?: "Wi-Fi non identifié"}\\nLe mode intelligent n'est pas encore implémenté."
+                "Réseau préféré : $ssid\nConnecté : ${connectedSsid ?: "Wi-Fi non identifié"}\nLe mode intelligent n'est pas encore implémenté."
             enabled && matches ->
-                "Réseau préféré : $ssid\\nConnecté : $connectedSsid\\nCorrespondance confirmée. Android garde le contrôle final."
+                "Réseau préféré : $ssid\nConnecté : $connectedSsid\nCorrespondance confirmée. Android garde le contrôle final."
             enabled ->
-                "PRÉFÉRENCE ACTIVÉE — MAIS NON CONNECTÉE\\nPréféré : $ssid\\nConnecté : ${connectedSsid ?: "Wi-Fi non identifié"}\\nOuvre les paramètres Android et connecte-toi au réseau préféré."
+                "PRÉFÉRENCE ACTIVÉE — MAIS NON CONNECTÉE\nPréféré : $ssid\nConnecté : ${connectedSsid ?: "Wi-Fi non identifié"}\nOuvre les paramètres Android et connecte-toi au réseau préféré."
             else ->
-                "Réseau préféré : $ssid\\nConnecté : ${connectedSsid ?: "Wi-Fi non identifié"}\\nPréférence enregistrée, mais désactivée."
+                "Réseau préféré : $ssid\nConnecté : ${connectedSsid ?: "Wi-Fi non identifié"}\nPréférence enregistrée, mais désactivée."
         }
         wifiLockStatus.setTextColor(
             if (enabled && matches) Color.rgb(100, 210, 150)
