@@ -13,7 +13,7 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
  #include "hev-socks5-tunnel.h"
  
  enum
-@@ -79,6 +84,81 @@
+@@ -79,6 +84,82 @@
  static HevTask *task_lwip_timer;
  static HevList session_set;
 +static atomic_int nova_tunnel_running;
@@ -166,7 +166,7 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
 +    atomic_store (&nova_tunnel_running, 1);
 +
      LOG_D ("socks5 tunnel event task run");
-@@ -852,6 +854,8 @@
+@@ -852,5 +854,7 @@
  hev_socks5_tunnel_init (int tun_fd)
  {
      int res;
@@ -174,13 +174,13 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
 +    atomic_store (&nova_tunnel_running, 0);
 +
      LOG_D ("socks5 tunnel init");
-@@ -862,6 +866,8 @@
+@@ -862,3 +864,5 @@
  hev_socks5_tunnel_fini (void)
  {
 +    atomic_store (&nova_tunnel_running, 0);
 +
  retry:
-@@ -1058,3 +1064,10 @@
+@@ -1058,5 +1062,12 @@
  hev_socks5_tunnel_metadata_dropped (void)
  {
      return np_metadata_tap_dropped (&nova_metadata_tap_input) +
