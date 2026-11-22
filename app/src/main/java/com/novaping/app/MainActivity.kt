@@ -15,6 +15,7 @@ import android.graphics.drawable.GradientDrawable
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.VpnService
+import android.provider.Settings
 import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
@@ -71,6 +72,9 @@ class MainActivity : Activity() {
     private lateinit var networkTransportValue: TextView
     private lateinit var networkInternetValue: TextView
     private lateinit var networkMeteredValue: TextView
+    private lateinit var wifiLockSsidInput: EditText
+    private lateinit var wifiLockStatus: TextView
+    private lateinit var wifiLockToggleButton: Button
     private lateinit var testButton: Button
     private lateinit var gameSpinner: Spinner
     private lateinit var resultsContainer: LinearLayout
@@ -164,6 +168,7 @@ class MainActivity : Activity() {
     private val accentColor = Color.rgb(64, 160, 255)
     private val mutedColor = Color.rgb(160, 174, 195)
     private val preferences by lazy { getSharedPreferences("nova_ping_history", Context.MODE_PRIVATE) }
+    private val wifiLockPreferences by lazy { getSharedPreferences("nova_wifi_lock", Context.MODE_PRIVATE) }
     private val routeComparisonRepository by lazy {
         RouteComparisonRepository(getSharedPreferences("nova_route_comparison", Context.MODE_PRIVATE))
     }
@@ -241,6 +246,95 @@ class MainActivity : Activity() {
         networkCard.addView(networkInfo)
         root.addView(networkCard)
         refreshNetworkInfo()
+
+        root.addView(sectionTitle("WI-FI LOCK — PRIORITÉ MANUELLE"))
+        val wifiLockCard = card()
+        wifiLockCard.addView(label(
+            "Réseau Wi-Fi prioritaire",
+            16f, Color.WHITE, true, Gravity.START
+        ))
+        wifiLockCard.addView(label(
+            "NOVA PING mémorise le réseau que tu veux privilégier et t'accompagne dans les réglages Android. Pour éviter un basculement vers un autre Wi-Fi enregistré, désactive sa connexion automatique dans les paramètres du téléphone. Android conserve le contrôle final : une coupure réelle peut toujours provoquer un changement de réseau.",
+            12f, mutedColor, false, Gravity.START
+        ).apply { setPadding(0, dp(6), 0, dp(10)) })
+        wifiLockSsidInput = EditText(this).apply {
+            hint = "Nom exact du Wi-Fi (SSID)"
+            setTextColor(Color.WHITE)
+            setHintTextColor(mutedColor)
+            textSize = 14f
+            singleLine = true
+            inputType = android.text.InputType.TYPE_CLASS_TEXT
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            background = resultDetailBackground()
+            setText(wifiLockPreferences.getString("preferred_ssid", "") ?: "")
+        }
+        wifiLockCard.addView(wifiLockSsidInput)
+        wifiLockStatus = label(
+            "Aucun réseau prioritaire enregistré.",
+            12f, accentColor, true, Gravity.START
+        ).apply { setPadding(0, dp(10), 0, dp(8)) }
+        wifiLockCard.addView(wifiLockStatus)
+        wifiLockCard.addView(Button(this).apply {
+            text = "ENREGISTRER LE RÉSEAU"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            background = actionButtonBackground()
+            setOnClickListener {
+                val ssid = wifiLockSsidInput.text.toString().trim()
+                if (ssid.isBlank()) {
+                    Toast.makeText(this@MainActivity, "Saisis le nom exact du Wi-Fi.", Toast.LENGTH_SHORT).show()
+                } else {
+                    val previous = wifiLockPreferences.getString("preferred_ssid", null)
+                    wifiLockPreferences.edit()
+                        .putString("preferred_ssid", ssid)
+                        .apply {
+                            if (previous != ssid) putBoolean("enabled", false)
+                        }
+                        .apply()
+                    refreshWifiLockUi()
+                    Toast.makeText(this@MainActivity, "Réseau prioritaire enregistré.", Toast.LENGTH_SHORT).show()
+                }
+            }
+        })
+        wifiLockCard.addView(Button(this).apply {
+            text = "OUVRIR LES PARAMÈTRES WI-FI"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            background = actionButtonBackground()
+            setOnClickListener { openWifiSettings() }
+        })
+        wifiLockToggleButton = Button(this).apply {
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            background = actionButtonBackground()
+            setOnClickListener {
+                if (wifiLockPreferences.getBoolean("enabled", false)) {
+                    wifiLockPreferences.edit().putBoolean("enabled", false).apply()
+                    refreshWifiLockUi()
+                } else {
+                    val ssid = wifiLockPreferences.getString("preferred_ssid", null)
+                    if (ssid.isNullOrBlank()) {
+                        Toast.makeText(this@MainActivity, "Enregistre d'abord un réseau Wi-Fi.", Toast.LENGTH_SHORT).show()
+                    } else {
+                        AlertDialog.Builder(this@MainActivity)
+                            .setTitle("Confirmer la configuration Wi-Fi")
+                            .setMessage(
+                                "Dans les paramètres Android, désactive « Connexion automatique » pour les autres réseaux Wi-Fi enregistrés. Garde activée la connexion automatique pour « $ssid ». Android reste maître du choix du réseau et NOVA PING ne peut pas empêcher une coupure réelle."
+                            )
+                            .setNegativeButton("ANNULER", null)
+                            .setNeutralButton("PARAMÈTRES WI-FI") { _, _ -> openWifiSettings() }
+                            .setPositiveButton("J'AI TERMINÉ") { _, _ ->
+                                wifiLockPreferences.edit().putBoolean("enabled", true).apply()
+                                refreshWifiLockUi()
+                            }
+                            .show()
+                    }
+                }
+            }
+        }
+        wifiLockCard.addView(wifiLockToggleButton)
+        refreshWifiLockUi()
+        root.addView(wifiLockCard)
 
         root.addView(sectionTitle("SURVEILLANCE RÉSEAU"))
         val stabilityCard = card()
@@ -805,6 +899,7 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         if (::status.isInitialized) refreshNetworkInfo()
+        if (::wifiLockStatus.isInitialized) refreshWifiLockUi()
         if (!stabilityReceiverRegistered) {
             val filter = IntentFilter(ACTION_STABILITY_HISTORY_UPDATED)
             if (Build.VERSION.SDK_INT >= 33) {
@@ -1262,6 +1357,37 @@ class MainActivity : Activity() {
             hasInternet = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true,
             validated = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
         )
+    }
+
+    private fun openWifiSettings() {
+        try {
+            startActivity(Intent(Settings.ACTION_WIFI_SETTINGS))
+        } catch (error: Exception) {
+            Toast.makeText(
+                this,
+                "Impossible d'ouvrir les paramètres Wi-Fi : ${error.message ?: "erreur Android"}",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    private fun refreshWifiLockUi() {
+        if (!::wifiLockStatus.isInitialized || !::wifiLockToggleButton.isInitialized) return
+        val ssid = wifiLockPreferences.getString("preferred_ssid", null)
+        val enabled = wifiLockPreferences.getBoolean("enabled", false)
+        wifiLockStatus.text = when {
+            ssid.isNullOrBlank() -> "Aucun réseau prioritaire enregistré."
+            enabled -> "Préférence mémorisée : $ssid\\nConfiguration Android confirmée manuellement. Le système garde le contrôle du basculement."
+            else -> "Réseau choisi : $ssid\\nPréférence enregistrée, mais pas encore activée."
+        }
+        wifiLockStatus.setTextColor(
+            if (enabled) Color.rgb(100, 210, 150) else accentColor
+        )
+        wifiLockToggleButton.text = if (enabled) {
+            "DÉSACTIVER LA PRÉFÉRENCE"
+        } else {
+            "ACTIVER LA PRÉFÉRENCE"
+        }
     }
 
     private fun refreshNetworkInfo(): String {
