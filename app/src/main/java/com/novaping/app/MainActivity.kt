@@ -1515,9 +1515,9 @@ class MainActivity : Activity() {
     @Suppress("DEPRECATION")
     private fun currentConnectedWifiSsid(): String? {
         fun normalize(value: String?): String? {
-            if (value.isNullOrBlank() || value == WifiManager.UNKNOWN_SSID) return null
+            if (value.isNullOrBlank() || value == "<unknown ssid>") return null
             return value.removeSurrounding("\"").takeIf {
-                it.isNotBlank() && it != WifiManager.UNKNOWN_SSID
+                it.isNotBlank() && it != "<unknown ssid>"
             }
         }
 
