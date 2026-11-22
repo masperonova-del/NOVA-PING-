@@ -14,6 +14,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.net.Network
 import android.net.VpnService
 import android.net.wifi.WifiManager
 import android.net.wifi.WifiInfo
@@ -62,6 +63,12 @@ class MainActivity : Activity() {
     private val executor = Executors.newSingleThreadExecutor()
     private var stabilityReceiverRegistered = false
     private var wifiScanReceiverRegistered = false
+    private var defaultNetworkCallbackRegistered = false
+    private val wifiLockDefaultNetworkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) = refreshWifiLockFromNetworkCallback()
+        override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) = refreshWifiLockFromNetworkCallback()
+        override fun onLost(network: Network) = refreshWifiLockFromNetworkCallback()
+    }
     private val wifiScanReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action != WifiManager.SCAN_RESULTS_AVAILABLE_ACTION) return
@@ -939,7 +946,39 @@ class MainActivity : Activity() {
 
     override fun onStart() {
         super.onStart()
+        registerWifiLockNetworkCallback()
         refreshStabilityMonitorUi()
+    }
+
+    private fun registerWifiLockNetworkCallback() {
+        if (defaultNetworkCallbackRegistered) return
+        val manager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        try {
+            manager.registerDefaultNetworkCallback(wifiLockDefaultNetworkCallback)
+            defaultNetworkCallbackRegistered = true
+        } catch (_: Exception) {
+            // The screen still refreshes on resume if Android refuses callback registration.
+        }
+    }
+
+    private fun unregisterWifiLockNetworkCallback() {
+        if (!defaultNetworkCallbackRegistered) return
+        val manager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        runCatching { manager.unregisterNetworkCallback(wifiLockDefaultNetworkCallback) }
+        defaultNetworkCallbackRegistered = false
+    }
+
+    private fun refreshWifiLockFromNetworkCallback() {
+        runOnUiThread {
+            if (isFinishing || isDestroyed) return@runOnUiThread
+            if (::wifiLockStatus.isInitialized) refreshWifiLockUi()
+            if (::status.isInitialized) refreshNetworkInfo()
+        }
+    }
+
+    override fun onStop() {
+        unregisterWifiLockNetworkCallback()
+        super.onStop()
     }
 
     override fun onResume() {
@@ -1547,18 +1586,27 @@ class MainActivity : Activity() {
         val mode = wifiLockPreferences.getString("mode", "manual") ?: "manual"
         val connectedSsid = currentConnectedWifiSsid()
         val matches = !ssid.isNullOrBlank() && ssid == connectedSsid
+        val connectivity = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val activeCapabilities = connectivity.activeNetwork?.let { connectivity.getNetworkCapabilities(it) }
+        val activeTransport = transportName(activeCapabilities)
+        val internetState = when {
+            activeCapabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true -> "validé"
+            activeCapabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true -> "non validé"
+            else -> "indisponible"
+        }
+        val networkObservation = "\nRéseau utilisé par Android : $activeTransport · Internet : $internetState"
         wifiLockStatus.text = when {
             ssid.isNullOrBlank() ->
-                "Aucun réseau préféré enregistré.\nConnecté : ${connectedSsid ?: "Wi-Fi non identifié"}"
+                "Aucun réseau préféré enregistré.\nConnecté : \${connectedSsid ?: "Wi-Fi non identifié"}"
             mode == "smart" ->
-                "Réseau préféré : $ssid\nConnecté : ${connectedSsid ?: "Wi-Fi non identifié"}\nLe mode intelligent n'est pas encore implémenté."
+                "Réseau préféré : $ssid\nConnecté : \${connectedSsid ?: "Wi-Fi non identifié"}\nLe mode intelligent n'est pas encore implémenté."
             enabled && matches ->
                 "Réseau préféré : $ssid\nConnecté : $connectedSsid\nCorrespondance confirmée. Android garde le contrôle final."
             enabled ->
-                "PRÉFÉRENCE ACTIVÉE — MAIS NON CONNECTÉE\nPréféré : $ssid\nConnecté : ${connectedSsid ?: "Wi-Fi non identifié"}\nOuvre les paramètres Android et connecte-toi au réseau préféré."
+                "PRÉFÉRENCE ACTIVÉE — MAIS NON CONNECTÉE\nPréféré : $ssid\nConnecté : \${connectedSsid ?: "Wi-Fi non identifié"}\nOuvre les paramètres Android et connecte-toi au réseau préféré."
             else ->
-                "Réseau préféré : $ssid\nConnecté : ${connectedSsid ?: "Wi-Fi non identifié"}\nPréférence enregistrée, mais désactivée."
-        }
+                "Réseau préféré : $ssid\nConnecté : \${connectedSsid ?: "Wi-Fi non identifié"}\nPréférence enregistrée, mais désactivée."
+        } + networkObservation
         wifiLockStatus.setTextColor(
             if (enabled && matches) Color.rgb(100, 210, 150)
             else if (enabled) Color.rgb(255, 185, 90)
