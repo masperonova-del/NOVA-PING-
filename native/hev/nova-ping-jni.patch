@@ -41,7 +41,7 @@ diff --git a/src/hev-jni.c b/src/hev-jni.c
  
      pthread_key_create (&current_jni_env, detach_current_thread);
      pthread_mutex_init (&mutex, NULL);
-@@ -210,4 +214,97 @@
+@@ -210,4 +214,96 @@
      return res;
  }
  
@@ -138,7 +138,7 @@ diff --git a/src/hev-jni.c b/src/hev-jni.c
 +    return hev_socks5_tunnel_is_running () ? JNI_TRUE : JNI_FALSE;
 +}
 +
-+#endif /* ANDROID */
+ #endif /* ANDROID */
 diff --git a/src/hev-socks5-tunnel.h b/src/hev-socks5-tunnel.h
 --- a/src/hev-socks5-tunnel.h
 +++ b/src/hev-socks5-tunnel.h
