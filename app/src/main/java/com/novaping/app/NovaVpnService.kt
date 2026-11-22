@@ -73,6 +73,7 @@ internal class NovaVpnService : VpnService() {
     private val stopping = AtomicBoolean(false)
     private val metadataPolling = AtomicBoolean(false)
     @Volatile private var metadataThread: Thread? = null
+    @Volatile private var readinessThread: Thread? = null
     @Volatile private var engineStarted = false
     @Volatile private var engineThread: Thread? = null
     @Volatile private var bridge: LocalSocks5Bridge? = null
@@ -105,6 +106,7 @@ internal class NovaVpnService : VpnService() {
                     VpnDiagnostics.tracker.setTunnelState("Échec au démarrage")
                     VpnDiagnostics.tracker.setBridgeState("Échec ou non démarré")
                     VpnDiagnostics.tracker.setTunState("Non établi")
+                    stopHevReadinessMonitor()
                     stopHevMetadataPolling()
                     bridge?.close()
                     bridge = null
@@ -213,6 +215,7 @@ internal class NovaVpnService : VpnService() {
                     publishState("error", terminalError)
                 }
             } finally {
+                stopHevReadinessMonitor()
                 stopHevMetadataPolling()
                 engineStarted = false
                 tunDescriptor = null
@@ -223,6 +226,41 @@ internal class NovaVpnService : VpnService() {
         engineThread = thread
         startHevMetadataPolling()
         thread.start()
+        startHevReadinessMonitor(thread)
+    }
+
+    /**
+     * Confirms that HEV has entered its native event loop before reporting the tunnel active.
+     * The probe is a native atomic flag set by HEV's event task, not by Kotlin thread creation.
+     */
+    private fun startHevReadinessMonitor(engine: Thread) {
+        val monitor = Thread({
+            while (!stopping.get() && engine.isAlive) {
+                val ready = runCatching { HevTunnelNative.isEngineReady() }.getOrDefault(false)
+                if (ready) {
+                    if (!stopping.get() && engine.isAlive) {
+                        VpnDiagnostics.tracker.setEngineState("Initialisé — boucle native active")
+                        VpnDiagnostics.tracker.setTunnelState("HEV actif")
+                        publishState("ready", null)
+                    }
+                    return@Thread
+                }
+                try {
+                    Thread.sleep(50L)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    return@Thread
+                }
+            }
+        }, "NovaHevReadinessMonitor").apply { isDaemon = true }
+        readinessThread = monitor
+        monitor.start()
+    }
+
+    private fun stopHevReadinessMonitor() {
+        val monitor = readinessThread
+        readinessThread = null
+        monitor?.interrupt()
     }
 
     /**
@@ -404,6 +442,7 @@ internal class NovaVpnService : VpnService() {
 
     private fun finishTunnel() {
         if (engineThread?.isAlive == true && engineStarted) return
+        stopHevReadinessMonitor()
         bridge?.close()
         bridge = null
         tunDescriptor?.let { runCatching { ParcelFileDescriptor.adoptFd(it).close() } }
