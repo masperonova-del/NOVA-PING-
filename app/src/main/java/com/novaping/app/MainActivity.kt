@@ -60,6 +60,17 @@ private data class TargetResult(
 class MainActivity : Activity() {
     private val executor = Executors.newSingleThreadExecutor()
     private var stabilityReceiverRegistered = false
+    private var wifiScanReceiverRegistered = false
+    private val wifiScanReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != WifiManager.SCAN_RESULTS_AVAILABLE_ACTION) return
+            if (wifiScanReceiverRegistered) {
+                runCatching { unregisterReceiver(this) }
+                wifiScanReceiverRegistered = false
+            }
+            displayWifiScanResults()
+        }
+    }
     private val stabilityHistoryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == ACTION_STABILITY_HISTORY_UPDATED) {
@@ -1370,18 +1381,56 @@ class MainActivity : Activity() {
                 openWifiSettings()
                 return
             }
+            if (!wifiScanReceiverRegistered) {
+                val filter = IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION)
+                if (Build.VERSION.SDK_INT >= 33) {
+                    registerReceiver(wifiScanReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+                } else {
+                    @Suppress("DEPRECATION")
+                    @SuppressLint("UnspecifiedRegisterReceiverFlag")
+                    registerReceiver(wifiScanReceiver, filter)
+                }
+                wifiScanReceiverRegistered = true
+            }
             val scanStarted = manager.startScan()
+            if (!scanStarted) {
+                if (wifiScanReceiverRegistered) {
+                    runCatching { unregisterReceiver(wifiScanReceiver) }
+                    wifiScanReceiverRegistered = false
+                }
+                displayWifiScanResults()
+                Toast.makeText(this, "Android limite les scans. Les derniers résultats disponibles sont affichés.", Toast.LENGTH_LONG).show()
+            } else {
+                Toast.makeText(this, "Recherche des réseaux Wi-Fi…", Toast.LENGTH_SHORT).show()
+            }
+        } catch (error: SecurityException) {
+            if (wifiScanReceiverRegistered) {
+                runCatching { unregisterReceiver(wifiScanReceiver) }
+                wifiScanReceiverRegistered = false
+            }
+            Toast.makeText(
+                this,
+                "Autorisation Wi-Fi ou localisation manquante. Vérifie aussi que la localisation Android est activée.",
+                Toast.LENGTH_LONG
+            ).show()
+        } catch (error: Exception) {
+            if (wifiScanReceiverRegistered) {
+                runCatching { unregisterReceiver(wifiScanReceiver) }
+                wifiScanReceiverRegistered = false
+            }
+            Toast.makeText(this, "Scan Wi-Fi indisponible : ${error.message ?: "erreur Android"}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun displayWifiScanResults() {
+        val manager = getSystemService(Context.WIFI_SERVICE) as WifiManager
+        try {
             val visible = manager.scanResults
                 .filter { it.SSID.isNotBlank() && it.SSID != "<unknown ssid>" }
                 .distinctBy { it.SSID }
                 .sortedByDescending { it.level }
             if (visible.isEmpty()) {
-                val message = if (scanStarted) {
-                    "Recherche lancée. Appuie à nouveau dans quelques secondes pour afficher les résultats."
-                } else {
-                    "Aucun résultat récent. Android limite parfois la fréquence des scans ; réessaie plus tard."
-                }
-                Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Aucun réseau détecté. Vérifie la localisation Android puis réessaie.", Toast.LENGTH_LONG).show()
                 return
             }
             val labels = visible.map { "${it.SSID}  ·  ${it.level} dBm" }.toTypedArray()
@@ -1400,13 +1449,7 @@ class MainActivity : Activity() {
                 .setNegativeButton("ANNULER", null)
                 .show()
         } catch (error: SecurityException) {
-            Toast.makeText(
-                this,
-                "Autorisation Wi-Fi ou localisation manquante. Vérifie aussi que la localisation Android est activée.",
-                Toast.LENGTH_LONG
-            ).show()
-        } catch (error: Exception) {
-            Toast.makeText(this, "Scan Wi-Fi indisponible : ${error.message ?: "erreur Android"}", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Autorisation Wi-Fi ou localisation manquante.", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -2617,6 +2660,11 @@ class MainActivity : Activity() {
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     override fun onDestroy() {
+        if (wifiScanReceiverRegistered) {
+            runCatching { unregisterReceiver(wifiScanReceiver) }
+            wifiScanReceiverRegistered = false
+        }
+
         executor.shutdownNow()
         super.onDestroy()
     }
