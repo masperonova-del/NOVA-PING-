@@ -1533,7 +1533,6 @@ class MainActivity : Activity() {
         val mode = wifiLockPreferences.getString("mode", "manual") ?: "manual"
         val connectedSsid = currentConnectedWifiSsid()
         val matches = !ssid.isNullOrBlank() && ssid == connectedSsid
-        val modeLabel = if (mode == "smart") "Verrouillage intelligent (non disponible)" else "Préférence manuelle"
         wifiLockStatus.text = when {
             ssid.isNullOrBlank() ->
                 "Aucun réseau préféré enregistré.\nConnecté : ${connectedSsid ?: "Wi-Fi non identifié"}"
