@@ -358,6 +358,20 @@ class MainActivity : Activity() {
             }
         }
         wifiLockCard.addView(wifiLockToggleButton)
+        wifiLockCard.addView(Button(this).apply {
+            text = "VÉRIFIER LE RÉSEAU ACTUEL"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            background = actionButtonBackground()
+            setOnClickListener {
+                refreshWifiLockUi()
+                Toast.makeText(
+                    this@MainActivity,
+                    "État de la connexion Wi-Fi actualisé.",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        })
         refreshWifiLockUi()
         root.addView(wifiLockCard)
 
