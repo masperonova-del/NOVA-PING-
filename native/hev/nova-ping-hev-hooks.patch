@@ -141,9 +141,11 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
      res = gateway_init ();
      if (res < 0)
          goto exit;
-@@ -850,3 +942,5 @@
+@@ -850,5 +942,7 @@
  hev_socks5_tunnel_fini (void)
  {
+     LOG_D ("socks5 tunnel fini");
+ 
 +    atomic_store (&nova_tunnel_running, 0);
 +
  retry:
