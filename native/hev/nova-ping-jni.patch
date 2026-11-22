@@ -17,7 +17,7 @@ diff --git a/src/hev-jni.c b/src/hev-jni.c
  
  #include "hev-jni.h"
  
-@@ -83,13 +84,16 @@
+@@ -83,13 +85,16 @@
          return JNI_ERR;
  
      klass = (*env)->FindClass (env, STR (PKGNAME) "/" STR (CLSNAME));
@@ -41,7 +41,7 @@ diff --git a/src/hev-jni.c b/src/hev-jni.c
  
      pthread_key_create (&current_jni_env, detach_current_thread);
      pthread_mutex_init (&mutex, NULL);
-@@ -210,4 +214,96 @@
+@@ -210,4 +215,96 @@
      return res;
  }
  
