@@ -1377,8 +1377,8 @@ class MainActivity : Activity() {
         val enabled = wifiLockPreferences.getBoolean("enabled", false)
         wifiLockStatus.text = when {
             ssid.isNullOrBlank() -> "Aucun réseau prioritaire enregistré."
-            enabled -> "Préférence mémorisée : $ssid\\nConfiguration Android confirmée manuellement. Le système garde le contrôle du basculement."
-            else -> "Réseau choisi : $ssid\\nPréférence enregistrée, mais pas encore activée."
+            enabled -> "Préférence mémorisée : $ssid\nConfiguration Android confirmée manuellement. Le système garde le contrôle du basculement."
+            else -> "Réseau choisi : $ssid\nPréférence enregistrée, mais pas encore activée."
         }
         wifiLockStatus.setTextColor(
             if (enabled) Color.rgb(100, 210, 150) else accentColor
