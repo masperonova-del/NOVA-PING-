@@ -15,6 +15,7 @@ import android.graphics.drawable.GradientDrawable
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.VpnService
+import android.net.wifi.WifiManager
 import android.provider.Settings
 import android.os.Build
 import android.os.Bundle
@@ -72,7 +73,6 @@ class MainActivity : Activity() {
     private lateinit var networkTransportValue: TextView
     private lateinit var networkInternetValue: TextView
     private lateinit var networkMeteredValue: TextView
-    private lateinit var wifiLockSsidInput: EditText
     private lateinit var wifiLockStatus: TextView
     private lateinit var wifiLockToggleButton: Button
     private lateinit var testButton: Button
@@ -247,53 +247,55 @@ class MainActivity : Activity() {
         root.addView(networkCard)
         refreshNetworkInfo()
 
-        root.addView(sectionTitle("WI-FI LOCK — PRIORITÉ MANUELLE"))
+        root.addView(sectionTitle("WI-FI LOCK — DEUX MODES"))
         val wifiLockCard = card()
         wifiLockCard.addView(label(
-            "Réseau Wi-Fi prioritaire",
+            "Choisir automatiquement un réseau visible",
             16f, Color.WHITE, true, Gravity.START
         ))
         wifiLockCard.addView(label(
-            "NOVA PING mémorise le réseau que tu veux privilégier et t'accompagne dans les réglages Android. Pour éviter un basculement vers un autre Wi-Fi enregistré, désactive sa connexion automatique dans les paramètres du téléphone. Android conserve le contrôle final : une coupure réelle peut toujours provoquer un changement de réseau.",
+            "NOVA PING affiche les réseaux détectés et mémorise ton choix. Android garde le contrôle final de la connexion : l'application ne peut pas forcer silencieusement un changement de Wi-Fi ni récupérer les mots de passe des réseaux enregistrés.",
             12f, mutedColor, false, Gravity.START
         ).apply { setPadding(0, dp(6), 0, dp(10)) })
-        wifiLockSsidInput = EditText(this).apply {
-            hint = "Nom exact du Wi-Fi (SSID)"
-            setTextColor(Color.WHITE)
-            setHintTextColor(mutedColor)
-            textSize = 14f
-            isSingleLine = true
-            inputType = android.text.InputType.TYPE_CLASS_TEXT
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-            background = resultDetailBackground()
-            setText(wifiLockPreferences.getString("preferred_ssid", "") ?: "")
-        }
-        wifiLockCard.addView(wifiLockSsidInput)
         wifiLockStatus = label(
             "Aucun réseau prioritaire enregistré.",
             12f, accentColor, true, Gravity.START
         ).apply { setPadding(0, dp(10), 0, dp(8)) }
         wifiLockCard.addView(wifiLockStatus)
         wifiLockCard.addView(Button(this).apply {
-            text = "ENREGISTRER LE RÉSEAU"
+            text = "DÉTECTER LES RÉSEAUX WI-FI"
             isAllCaps = false
             setTextColor(Color.WHITE)
             background = actionButtonBackground()
             setOnClickListener {
-                val ssid = wifiLockSsidInput.text.toString().trim()
-                if (ssid.isBlank()) {
-                    Toast.makeText(this@MainActivity, "Saisis le nom exact du Wi-Fi.", Toast.LENGTH_SHORT).show()
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+                    checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 9202)
                 } else {
-                    val previous = wifiLockPreferences.getString("preferred_ssid", null)
-                    wifiLockPreferences.edit()
-                        .putString("preferred_ssid", ssid)
-                        .apply {
-                            if (previous != ssid) putBoolean("enabled", false)
-                        }
-                        .apply()
-                    refreshWifiLockUi()
-                    Toast.makeText(this@MainActivity, "Réseau prioritaire enregistré.", Toast.LENGTH_SHORT).show()
+                    scanWifiNetworks()
                 }
+            }
+        })
+        wifiLockCard.addView(Button(this).apply {
+            text = "CHOISIR LE MODE DE VERROUILLAGE"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            background = actionButtonBackground()
+            setOnClickListener {
+                val modes = arrayOf("Verrouillage manuel", "Verrouillage intelligent")
+                val current = wifiLockPreferences.getString("mode", "manual")
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Mode Wi-Fi Lock")
+                    .setSingleChoiceItems(modes, if (current == "smart") 1 else 0) { dialog, which ->
+                        wifiLockPreferences.edit()
+                            .putString("mode", if (which == 1) "smart" else "manual")
+                            .apply()
+                        dialog.dismiss()
+                        refreshWifiLockUi()
+                    }
+                    .setNegativeButton("ANNULER", null)
+                    .show()
             }
         })
         wifiLockCard.addView(Button(this).apply {
@@ -308,27 +310,21 @@ class MainActivity : Activity() {
             setTextColor(Color.WHITE)
             background = actionButtonBackground()
             setOnClickListener {
-                if (wifiLockPreferences.getBoolean("enabled", false)) {
+                val enabled = wifiLockPreferences.getBoolean("enabled", false)
+                val ssid = wifiLockPreferences.getString("preferred_ssid", null)
+                if (enabled) {
                     wifiLockPreferences.edit().putBoolean("enabled", false).apply()
                     refreshWifiLockUi()
+                } else if (ssid.isNullOrBlank()) {
+                    Toast.makeText(this@MainActivity, "Sélectionne d'abord un réseau Wi-Fi.", Toast.LENGTH_SHORT).show()
                 } else {
-                    val ssid = wifiLockPreferences.getString("preferred_ssid", null)
-                    if (ssid.isNullOrBlank()) {
-                        Toast.makeText(this@MainActivity, "Enregistre d'abord un réseau Wi-Fi.", Toast.LENGTH_SHORT).show()
-                    } else {
-                        AlertDialog.Builder(this@MainActivity)
-                            .setTitle("Confirmer la configuration Wi-Fi")
-                            .setMessage(
-                                "Dans les paramètres Android, désactive « Connexion automatique » pour les autres réseaux Wi-Fi enregistrés. Garde activée la connexion automatique pour « $ssid ». Android reste maître du choix du réseau et NOVA PING ne peut pas empêcher une coupure réelle."
-                            )
-                            .setNegativeButton("ANNULER", null)
-                            .setNeutralButton("PARAMÈTRES WI-FI") { _, _ -> openWifiSettings() }
-                            .setPositiveButton("J'AI TERMINÉ") { _, _ ->
-                                wifiLockPreferences.edit().putBoolean("enabled", true).apply()
-                                refreshWifiLockUi()
-                            }
-                            .show()
-                    }
+                    wifiLockPreferences.edit().putBoolean("enabled", true).apply()
+                    refreshWifiLockUi()
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Préférence enregistrée. Android conserve la décision finale de connexion.",
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
             }
         }
@@ -889,6 +885,13 @@ class MainActivity : Activity() {
                 stabilityStatus.text = "Autorisation de notification refusée : surveillance non démarrée"
             }
         }
+        if (requestCode == 9202) {
+            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+                scanWifiNetworks()
+            } else {
+                Toast.makeText(this, "Autorisation de localisation refusée : détection Wi-Fi impossible.", Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     override fun onStart() {
@@ -1359,6 +1362,54 @@ class MainActivity : Activity() {
         )
     }
 
+    private fun scanWifiNetworks() {
+        val manager = getSystemService(Context.WIFI_SERVICE) as WifiManager
+        try {
+            if (!manager.isWifiEnabled) {
+                Toast.makeText(this, "Active d'abord le Wi-Fi dans Android.", Toast.LENGTH_LONG).show()
+                openWifiSettings()
+                return
+            }
+            val scanStarted = manager.startScan()
+            val visible = manager.scanResults
+                .filter { it.SSID.isNotBlank() && it.SSID != "<unknown ssid>" }
+                .distinctBy { it.SSID }
+                .sortedByDescending { it.level }
+            if (visible.isEmpty()) {
+                val message = if (scanStarted) {
+                    "Recherche lancée. Appuie à nouveau dans quelques secondes pour afficher les résultats."
+                } else {
+                    "Aucun résultat récent. Android limite parfois la fréquence des scans ; réessaie plus tard."
+                }
+                Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+                return
+            }
+            val labels = visible.map { "${it.SSID}  ·  ${it.level} dBm" }.toTypedArray()
+            AlertDialog.Builder(this)
+                .setTitle("Choisir le réseau prioritaire")
+                .setItems(labels) { _, index ->
+                    val selected = visible[index]
+                    wifiLockPreferences.edit()
+                        .putString("preferred_ssid", selected.SSID)
+                        .putString("preferred_bssid", selected.BSSID)
+                        .putBoolean("enabled", false)
+                        .apply()
+                    refreshWifiLockUi()
+                    Toast.makeText(this, "Réseau sélectionné : ${selected.SSID}", Toast.LENGTH_SHORT).show()
+                }
+                .setNegativeButton("ANNULER", null)
+                .show()
+        } catch (error: SecurityException) {
+            Toast.makeText(
+                this,
+                "Autorisation Wi-Fi ou localisation manquante. Vérifie aussi que la localisation Android est activée.",
+                Toast.LENGTH_LONG
+            ).show()
+        } catch (error: Exception) {
+            Toast.makeText(this, "Scan Wi-Fi indisponible : ${error.message ?: "erreur Android"}", Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun openWifiSettings() {
         try {
             startActivity(Intent(Settings.ACTION_WIFI_SETTINGS))
@@ -1375,10 +1426,12 @@ class MainActivity : Activity() {
         if (!::wifiLockStatus.isInitialized || !::wifiLockToggleButton.isInitialized) return
         val ssid = wifiLockPreferences.getString("preferred_ssid", null)
         val enabled = wifiLockPreferences.getBoolean("enabled", false)
+        val mode = wifiLockPreferences.getString("mode", "manual") ?: "manual"
+        val modeLabel = if (mode == "smart") "Verrouillage intelligent" else "Verrouillage manuel"
         wifiLockStatus.text = when {
-            ssid.isNullOrBlank() -> "Aucun réseau prioritaire enregistré."
-            enabled -> "Préférence mémorisée : $ssid\nConfiguration Android confirmée manuellement. Le système garde le contrôle du basculement."
-            else -> "Réseau choisi : $ssid\nPréférence enregistrée, mais pas encore activée."
+            ssid.isNullOrBlank() -> "Aucun réseau prioritaire enregistré.\\nMode : $modeLabel"
+            enabled -> "Réseau prioritaire : $ssid\\nMode : $modeLabel\\nPréférence activée ; Android garde le contrôle final de la connexion."
+            else -> "Réseau choisi : $ssid\\nMode : $modeLabel\\nPréférence enregistrée, mais inactive."
         }
         wifiLockStatus.setTextColor(
             if (enabled) Color.rgb(100, 210, 150) else accentColor
