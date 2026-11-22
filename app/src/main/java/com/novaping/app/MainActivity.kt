@@ -282,7 +282,13 @@ class MainActivity : Activity() {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
                     checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
                 ) {
-                    requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 9202)
+                    requestPermissions(
+                        arrayOf(
+                            Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_COARSE_LOCATION
+                        ),
+                        9202
+                    )
                 } else {
                     scanWifiNetworks()
                 }
