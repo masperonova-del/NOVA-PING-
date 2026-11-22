@@ -12,6 +12,14 @@ class VpnUiStateResolverTest {
         assertEquals("starting", VpnUiStateResolver.resolve("starting", true))
     }
 
+    @Test fun readyStateIsKeptWhileVpnTransportExists() {
+        assertEquals("ready", VpnUiStateResolver.resolve("ready", true))
+    }
+
+    @Test fun staleReadyStateWithoutVpnBecomesStopped() {
+        assertEquals("stopped", VpnUiStateResolver.resolve("ready", false))
+    }
+
     @Test fun activeVpnWithoutNovaStateIsReportedAsOtherVpn() {
         assertEquals("other_vpn", VpnUiStateResolver.resolve(null, true))
     }
