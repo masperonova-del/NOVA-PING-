@@ -1594,21 +1594,29 @@ class MainActivity : Activity() {
             activeCapabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true -> "non validé"
             else -> "indisponible"
         }
+        val activeNetworkIsWifi =
+            activeCapabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+        val preferredWifiIsUsable = enabled && matches && activeNetworkIsWifi &&
+            activeCapabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
         val networkObservation = "\nRéseau utilisé par Android : $activeTransport · Internet : $internetState"
         wifiLockStatus.text = when {
             ssid.isNullOrBlank() ->
                 "Aucun réseau préféré enregistré.\nConnecté : ${connectedSsid ?: "Wi-Fi non identifié"}"
             mode == "smart" ->
                 "Réseau préféré : $ssid\nConnecté : ${connectedSsid ?: "Wi-Fi non identifié"}\nLe mode intelligent n'est pas encore implémenté."
+            preferredWifiIsUsable ->
+                "WI-FI PRÉFÉRÉ UTILISÉ — INTERNET VALIDÉ\nRéseau : $ssid\nAndroid confirme cette connexion comme réseau actif."
+            enabled && matches && !activeNetworkIsWifi ->
+                "WI-FI PRÉFÉRÉ CONNECTÉ, MAIS PAS UTILISÉ PAR ANDROID\nWi-Fi : $ssid\nRéseau actif : $activeTransport. Android garde le contrôle du routage."
             enabled && matches ->
-                "Réseau préféré : $ssid\nConnecté : $connectedSsid\nCorrespondance confirmée. Android garde le contrôle final."
+                "WI-FI PRÉFÉRÉ CONNECTÉ, INTERNET NON VALIDÉ\nRéseau : $ssid\nAndroid n'a pas confirmé l'accès Internet sur le Wi-Fi."
             enabled ->
                 "PRÉFÉRENCE ACTIVÉE — MAIS NON CONNECTÉE\nPréféré : $ssid\nConnecté : ${connectedSsid ?: "Wi-Fi non identifié"}\nOuvre les paramètres Android et connecte-toi au réseau préféré."
             else ->
                 "Réseau préféré : $ssid\nConnecté : ${connectedSsid ?: "Wi-Fi non identifié"}\nPréférence enregistrée, mais désactivée."
         } + networkObservation
         wifiLockStatus.setTextColor(
-            if (enabled && matches) Color.rgb(100, 210, 150)
+            if (preferredWifiIsUsable) Color.rgb(100, 210, 150)
             else if (enabled) Color.rgb(255, 185, 90)
             else accentColor
         )
