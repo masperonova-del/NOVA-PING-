@@ -406,8 +406,18 @@ class MainActivity : Activity() {
             background = actionButtonBackground()
             setOnClickListener {
                 val enabled = mobileDataLockPreferences.getBoolean("enabled", false)
-                mobileDataLockPreferences.edit().putBoolean("enabled", !enabled).apply()
-                refreshMobileDataLockUi()
+                val nextEnabled = !enabled
+                mobileDataLockPreferences.edit().putBoolean("enabled", nextEnabled).apply()
+                if (nextEnabled) {
+                    refreshMobileDataLockUi()
+                    requestNotificationPermissionAndStartMobileDataLockMonitor()
+                } else {
+                    if (!preferences.getBoolean("stability_monitor_requested", false)) {
+                        stopNetworkMonitorService()
+                    }
+                    refreshMobileDataLockUi()
+                    refreshStabilityMonitorUi()
+                }
             }
         }
         mobileDataLockCard.addView(mobileDataLockToggleButton)
@@ -435,7 +445,7 @@ class MainActivity : Activity() {
             setTextColor(Color.WHITE)
             background = actionButtonBackground()
             setOnClickListener {
-                if (preferences.getBoolean("stability_monitor_running", false)) {
+                if (preferences.getBoolean("stability_monitor_requested", false)) {
                     stopNetworkMonitor()
                 } else {
                     requestNotificationPermissionAndStartMonitor()
@@ -857,6 +867,8 @@ class MainActivity : Activity() {
             NetworkStabilityEventType.WIFI_CONNECTED,
             NetworkStabilityEventType.MOBILE_DATA_CONNECTED,
             NetworkStabilityEventType.DEFAULT_NETWORK_CHANGED -> accentColor
+            NetworkStabilityEventType.MOBILE_DATA_LOCK_WIFI_FALLBACK -> Color.rgb(255, 185, 90)
+            NetworkStabilityEventType.MOBILE_DATA_LOCK_MOBILE_RESTORED -> Color.rgb(100, 210, 150)
             NetworkStabilityEventType.MOBILE_DATA_DISCONNECTED -> Color.rgb(255, 115, 105)
             NetworkStabilityEventType.MOBILE_INTERNET_STATUS ->
                 if (details.contains("validé", ignoreCase = true) &&
@@ -913,16 +925,21 @@ class MainActivity : Activity() {
     private fun refreshStabilityMonitorUi() {
         if (!::stabilityStatus.isInitialized || !::stabilityToggleButton.isInitialized) return
         val running = preferences.getBoolean("stability_monitor_running", false)
-        stabilityStatus.text = if (running) {
-            "Surveillance active en arrière-plan · relevés périodiques susceptibles d’être retardés en veille"
-        } else {
-            preferences.getString("stability_monitor_error", null)
+        val stabilityRequested = preferences.getBoolean("stability_monitor_requested", false)
+        val mobileLockEnabled = mobileDataLockPreferences.getBoolean("enabled", false)
+        stabilityStatus.text = when {
+            running && stabilityRequested ->
+                "Surveillance active en arrière-plan · relevés périodiques susceptibles d’être retardés en veille"
+            running && mobileLockEnabled ->
+                "Surveillance active en arrière-plan pour Mobile Data Lock"
+            running -> "Surveillance réseau active en arrière-plan"
+            else -> preferences.getString("stability_monitor_error", null)
                 ?: "Surveillance arrêtée"
         }
-        stabilityToggleButton.text = if (running) {
-            "ARRÊTER LA SURVEILLANCE"
-        } else {
-            "DÉMARRER LA SURVEILLANCE"
+        stabilityToggleButton.text = when {
+            stabilityRequested -> "ARRÊTER LA SURVEILLANCE"
+            running && mobileLockEnabled -> "ACTIVER AUSSI L’HISTORIQUE DES COUPURES"
+            else -> "DÉMARRER LA SURVEILLANCE"
         }
         renderStabilityHistory()
     }
@@ -937,8 +954,21 @@ class MainActivity : Activity() {
         startNetworkMonitor()
     }
 
+    private fun requestNotificationPermissionAndStartMobileDataLockMonitor() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 9203)
+            return
+        }
+        startNetworkMonitor()
+    }
+
     private fun startNetworkMonitor() {
-        preferences.edit().remove("stability_monitor_error").apply()
+        preferences.edit()
+            .putBoolean("stability_monitor_requested", true)
+            .remove("stability_monitor_error")
+            .apply()
         val intent = Intent(this, NetworkMonitorService::class.java)
             .setAction(NetworkMonitorService.ACTION_START)
         try {
@@ -951,6 +981,16 @@ class MainActivity : Activity() {
     }
 
     private fun stopNetworkMonitor() {
+        preferences.edit().putBoolean("stability_monitor_requested", false).apply()
+        if (mobileDataLockPreferences.getBoolean("enabled", false)) {
+            stabilityStatus.text = "Surveillance maintenue : Mobile Data Lock en dépend."
+            refreshStabilityMonitorUi()
+            return
+        }
+        stopNetworkMonitorService()
+    }
+
+    private fun stopNetworkMonitorService() {
         val intent = Intent(this, NetworkMonitorService::class.java)
             .setAction(NetworkMonitorService.ACTION_STOP)
         try {
@@ -972,6 +1012,19 @@ class MainActivity : Activity() {
                 startNetworkMonitor()
             } else {
                 stabilityStatus.text = "Autorisation de notification refusée : surveillance non démarrée"
+            }
+        }
+        if (requestCode == 9203) {
+            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+                startNetworkMonitor()
+            } else {
+                mobileDataLockPreferences.edit().putBoolean("enabled", false).apply()
+                refreshMobileDataLockUi()
+                Toast.makeText(
+                    this,
+                    "Autorisation de notification refusée : surveillance en arrière-plan non démarrée.",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
         if (requestCode == 9202) {
@@ -1107,7 +1160,18 @@ class MainActivity : Activity() {
             mobileNetworkAvailable = mobileAvailable,
             mobileInternetValidated = mobileInternetValidated
         )
-        mobileDataLockStatus.text = snapshot.details
+        val monitorRunning = preferences.getBoolean("stability_monitor_running", false)
+        val monitorError = preferences.getString("stability_monitor_error", null)
+        mobileDataLockStatus.text = buildString {
+            append(snapshot.details)
+            if (enabled) {
+                append(if (monitorRunning) "\nSurveillance en arrière-plan active." else "\nSurveillance en arrière-plan inactive.")
+                if (!monitorRunning && !monitorError.isNullOrBlank()) {
+                    append("\n")
+                    append(monitorError)
+                }
+            }
+        }
         mobileDataLockStatus.setTextColor(
             when (snapshot.state) {
                 MobileDataLockState.MOBILE_ACTIVE_VALIDATED -> Color.rgb(100, 210, 150)
