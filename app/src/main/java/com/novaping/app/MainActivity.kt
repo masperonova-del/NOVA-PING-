@@ -83,6 +83,7 @@ class MainActivity : Activity() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == ACTION_STABILITY_HISTORY_UPDATED) {
                 refreshStabilityMonitorUi()
+                refreshMobileDataLockUi()
             }
         }
     }
