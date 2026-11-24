@@ -411,7 +411,10 @@ class NetworkMonitorService : Service() {
         defaultCallback = null
         wifiCallback = null
         mobileCallback = null
-        preferences.edit().putBoolean("stability_monitor_running", false).apply()
+        preferences.edit()
+            .putBoolean("stability_monitor_running", false)
+            .putBoolean("stability_monitor_requested", false)
+            .apply()
         notifyMonitorStateChanged()
     }
 
