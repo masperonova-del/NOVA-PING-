@@ -52,11 +52,12 @@ internal class LocalSocks5UdpRelay(
             relaySocket = socket
             val upstream = DatagramSocket(null)
             upstream.reuseAddress = false
-            upstream.bind(InetSocketAddress(0))
             upstreamSocket = upstream
             check(protectUpstreamDatagramSocket(upstream)) {
-                "Impossible de protéger le socket UDP amont du tunnel"
+                "Impossible de protéger ou de lier le socket UDP amont du tunnel"
             }
+            // Network.bindSocket must run before the UDP socket is locally bound.
+            upstream.bind(InetSocketAddress(0))
             receiver.start()
             upstreamReceiver.start()
             VpnDiagnostics.tracker.recordUdpAssociationStarted()
