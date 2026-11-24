@@ -389,11 +389,11 @@ class MainActivity : Activity() {
         root.addView(sectionTitle("MOBILE DATA LOCK"))
         val mobileDataLockCard = card()
         mobileDataLockCard.addView(label(
-            "Privilégier les données mobiles",
+            "Préférer le réseau mobile pour le tunnel du jeu",
             16f, Color.WHITE, true, Gravity.START
         ))
         mobileDataLockCard.addView(label(
-            "Surveille le réseau réellement utilisé par Android. Si Android bascule vers le Wi-Fi, NOVA PING le signale et permet d'ouvrir les paramètres Internet. Android conserve le contrôle du réseau par défaut : aucun basculement forcé ni activation silencieuse des données mobiles.",
+            "Surveille le réseau réellement utilisé par Android. Lorsque cette préférence est activée avant le démarrage du tunnel VPN NOVA PING, le trafic du jeu sélectionné est lié au réseau mobile disponible. Le réseau par défaut des autres applications reste contrôlé par Android ; aucune activation silencieuse des données mobiles ni bascule globale n'est effectuée.",
             12f, mutedColor, false, Gravity.START
         ).apply { setPadding(0, dp(6), 0, dp(10)) })
         mobileDataLockStatus = label(
