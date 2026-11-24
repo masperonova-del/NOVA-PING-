@@ -69,6 +69,9 @@ class NetworkMonitorService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            // A notification-level stop is an explicit request to stop every monitor feature.
+            mobileDataLockPreferences.edit().putBoolean("enabled", false).apply()
+            preferences.edit().putBoolean("stability_monitor_requested", false).apply()
             stopMonitoring()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf(startId)
@@ -357,13 +360,20 @@ class NetworkMonitorService : Service() {
             this, 4102, stopIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        val openAppIntent = Intent(this, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        val contentPendingIntent = PendingIntent.getActivity(
+            this, 4101, openAppIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
         return Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentTitle("NOVA PING — surveillance active")
             .setContentText(content)
+            .setContentIntent(contentPendingIntent)
             .setOngoing(true)
             .setCategory(Notification.CATEGORY_SERVICE)
-            .addAction(0, "Arrêter", stopPendingIntent)
+            .addAction(0, "Arrêter tout", stopPendingIntent)
             .build()
     }
 
