@@ -94,6 +94,8 @@ class MainActivity : Activity() {
     private lateinit var networkMeteredValue: TextView
     private lateinit var wifiLockStatus: TextView
     private lateinit var wifiLockToggleButton: Button
+    private lateinit var mobileDataLockStatus: TextView
+    private lateinit var mobileDataLockToggleButton: Button
     private lateinit var testButton: Button
     private lateinit var gameSpinner: Spinner
     private lateinit var resultsContainer: LinearLayout
@@ -188,6 +190,7 @@ class MainActivity : Activity() {
     private val mutedColor = Color.rgb(160, 174, 195)
     private val preferences by lazy { getSharedPreferences("nova_ping_history", Context.MODE_PRIVATE) }
     private val wifiLockPreferences by lazy { getSharedPreferences("nova_wifi_lock", Context.MODE_PRIVATE) }
+    private val mobileDataLockPreferences by lazy { getSharedPreferences("nova_mobile_data_lock", Context.MODE_PRIVATE) }
     private val routeComparisonRepository by lazy {
         RouteComparisonRepository(getSharedPreferences("nova_route_comparison", Context.MODE_PRIVATE))
     }
@@ -381,6 +384,42 @@ class MainActivity : Activity() {
         })
         refreshWifiLockUi()
         root.addView(wifiLockCard)
+
+        root.addView(sectionTitle("MOBILE DATA LOCK"))
+        val mobileDataLockCard = card()
+        mobileDataLockCard.addView(label(
+            "Privilégier les données mobiles",
+            16f, Color.WHITE, true, Gravity.START
+        ))
+        mobileDataLockCard.addView(label(
+            "Surveille le réseau réellement utilisé par Android. Si Android bascule vers le Wi-Fi, NOVA PING le signale et permet d'ouvrir les paramètres Internet. Android conserve le contrôle du réseau par défaut : aucun basculement forcé ni activation silencieuse des données mobiles.",
+            12f, mutedColor, false, Gravity.START
+        ).apply { setPadding(0, dp(6), 0, dp(10)) })
+        mobileDataLockStatus = label(
+            "Mobile Data Lock désactivé.",
+            12f, accentColor, true, Gravity.START
+        ).apply { setPadding(0, dp(8), 0, dp(8)) }
+        mobileDataLockCard.addView(mobileDataLockStatus)
+        mobileDataLockToggleButton = Button(this).apply {
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            background = actionButtonBackground()
+            setOnClickListener {
+                val enabled = mobileDataLockPreferences.getBoolean("enabled", false)
+                mobileDataLockPreferences.edit().putBoolean("enabled", !enabled).apply()
+                refreshMobileDataLockUi()
+            }
+        }
+        mobileDataLockCard.addView(mobileDataLockToggleButton)
+        mobileDataLockCard.addView(Button(this).apply {
+            text = "OUVRIR LES PARAMÈTRES INTERNET"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            background = actionButtonBackground()
+            setOnClickListener { openMobileNetworkSettings() }
+        })
+        refreshMobileDataLockUi()
+        root.addView(mobileDataLockCard)
 
         root.addView(sectionTitle("SURVEILLANCE RÉSEAU"))
         val stabilityCard = card()
@@ -972,6 +1011,7 @@ class MainActivity : Activity() {
         runOnUiThread {
             if (isFinishing || isDestroyed) return@runOnUiThread
             if (::wifiLockStatus.isInitialized) refreshWifiLockUi()
+            if (::mobileDataLockStatus.isInitialized) refreshMobileDataLockUi()
             if (::status.isInitialized) refreshNetworkInfo()
         }
     }
@@ -985,6 +1025,7 @@ class MainActivity : Activity() {
         super.onResume()
         if (::status.isInitialized) refreshNetworkInfo()
         if (::wifiLockStatus.isInitialized) refreshWifiLockUi()
+        if (::mobileDataLockStatus.isInitialized) refreshMobileDataLockUi()
         if (!stabilityReceiverRegistered) {
             val filter = IntentFilter(ACTION_STABILITY_HISTORY_UPDATED)
             if (Build.VERSION.SDK_INT >= 33) {
@@ -1023,6 +1064,88 @@ class MainActivity : Activity() {
             stabilityReceiverRegistered = false
         }
         super.onPause()
+    }
+
+    private fun refreshMobileDataLockUi() {
+        if (!::mobileDataLockStatus.isInitialized ||
+            !::mobileDataLockToggleButton.isInitialized
+        ) return
+
+        val enabled = mobileDataLockPreferences.getBoolean("enabled", false)
+        val manager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val active = manager.activeNetwork
+        val activeCapabilities = active?.let { manager.getNetworkCapabilities(it) }
+        val activeTransport = when {
+            activeCapabilities == null -> "Aucun"
+            activeCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> "VPN"
+            activeCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
+            activeCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "Données mobiles"
+            activeCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet"
+            else -> "Autre"
+        }
+        val mobileCapabilities = manager.allNetworks.mapNotNull { network ->
+            manager.getNetworkCapabilities(network)
+                ?.takeIf { it.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) }
+        }
+        val mobileAvailable = mobileCapabilities.isNotEmpty()
+        val mobileInternetValidated = when {
+            mobileCapabilities.any {
+                it.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+            } -> true
+            mobileCapabilities.isEmpty() -> null
+            mobileCapabilities.all {
+                !it.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+            } -> false
+            else -> null
+        }
+        val snapshot = MobileDataLockResolver.resolve(
+            enabled = enabled,
+            activeTransport = activeTransport,
+            activeInternetValidated = activeCapabilities?.hasCapability(
+                NetworkCapabilities.NET_CAPABILITY_VALIDATED
+            ),
+            mobileNetworkAvailable = mobileAvailable,
+            mobileInternetValidated = mobileInternetValidated
+        )
+        mobileDataLockStatus.text = snapshot.details
+        mobileDataLockStatus.setTextColor(
+            when (snapshot.state) {
+                MobileDataLockState.MOBILE_ACTIVE_VALIDATED -> Color.rgb(100, 210, 150)
+                MobileDataLockState.DISABLED -> mutedColor
+                MobileDataLockState.WIFI_ACTIVE_MOBILE_AVAILABLE,
+                MobileDataLockState.WIFI_ACTIVE_MOBILE_UNAVAILABLE,
+                MobileDataLockState.MOBILE_ACTIVE_UNVALIDATED,
+                MobileDataLockState.VPN_ACTIVE -> Color.rgb(255, 185, 90)
+                MobileDataLockState.OTHER_NETWORK_ACTIVE,
+                MobileDataLockState.NO_NETWORK -> Color.rgb(255, 150, 130)
+            }
+        )
+        mobileDataLockToggleButton.text = if (enabled) {
+            "DÉSACTIVER MOBILE DATA LOCK"
+        } else {
+            "ACTIVER MOBILE DATA LOCK"
+        }
+    }
+
+    private fun openMobileNetworkSettings() {
+        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            Intent(Settings.Panel.ACTION_INTERNET_CONNECTIVITY)
+        } else {
+            Intent(Settings.ACTION_WIRELESS_SETTINGS)
+        }
+        try {
+            startActivity(intent)
+        } catch (_: Exception) {
+            try {
+                startActivity(Intent(Settings.ACTION_SETTINGS))
+            } catch (_: Exception) {
+                Toast.makeText(
+                    this,
+                    "Impossible d'ouvrir les paramètres réseau Android.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
     }
 
     private fun currentNetworkObservation(): NetworkObservation {
