@@ -308,22 +308,24 @@ class NetworkMonitorService : Service() {
             .putLong("background_updated_at", System.currentTimeMillis())
             .apply()
 
-        if (enabled && previous != snapshot.state) {
-            val wasWifiFallback = previous == MobileDataLockState.WIFI_ACTIVE_MOBILE_AVAILABLE ||
-                previous == MobileDataLockState.WIFI_ACTIVE_MOBILE_UNAVAILABLE
-            val isWifiFallback = snapshot.state == MobileDataLockState.WIFI_ACTIVE_MOBILE_AVAILABLE ||
-                snapshot.state == MobileDataLockState.WIFI_ACTIVE_MOBILE_UNAVAILABLE
-            val isMobileActive = snapshot.state == MobileDataLockState.MOBILE_ACTIVE_VALIDATED ||
-                snapshot.state == MobileDataLockState.MOBILE_ACTIVE_UNVALIDATED
-            when {
-                isWifiFallback && !wasWifiFallback -> recordEvent(NetworkStabilityEvent(
-                    NetworkStabilityEventType.MOBILE_DATA_LOCK_WIFI_FALLBACK,
-                    System.currentTimeMillis(), snapshot.details
-                ))
-                isMobileActive && wasWifiFallback -> recordEvent(NetworkStabilityEvent(
-                    NetworkStabilityEventType.MOBILE_DATA_LOCK_MOBILE_RESTORED,
-                    System.currentTimeMillis(), snapshot.details
-                ))
+        if (previous != snapshot.state) {
+            if (enabled) {
+                val wasWifiFallback = previous == MobileDataLockState.WIFI_ACTIVE_MOBILE_AVAILABLE ||
+                    previous == MobileDataLockState.WIFI_ACTIVE_MOBILE_UNAVAILABLE
+                val isWifiFallback = snapshot.state == MobileDataLockState.WIFI_ACTIVE_MOBILE_AVAILABLE ||
+                    snapshot.state == MobileDataLockState.WIFI_ACTIVE_MOBILE_UNAVAILABLE
+                val isMobileActive = snapshot.state == MobileDataLockState.MOBILE_ACTIVE_VALIDATED ||
+                    snapshot.state == MobileDataLockState.MOBILE_ACTIVE_UNVALIDATED
+                when {
+                    isWifiFallback && !wasWifiFallback -> recordEvent(NetworkStabilityEvent(
+                        NetworkStabilityEventType.MOBILE_DATA_LOCK_WIFI_FALLBACK,
+                        System.currentTimeMillis(), snapshot.details
+                    ))
+                    isMobileActive && wasWifiFallback -> recordEvent(NetworkStabilityEvent(
+                        NetworkStabilityEventType.MOBILE_DATA_LOCK_MOBILE_RESTORED,
+                        System.currentTimeMillis(), snapshot.details
+                    ))
+                }
             }
             if (monitoring) {
                 getSystemService(NotificationManager::class.java)
