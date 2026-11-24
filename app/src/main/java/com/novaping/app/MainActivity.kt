@@ -414,6 +414,8 @@ class MainActivity : Activity() {
                 } else {
                     if (!preferences.getBoolean("stability_monitor_requested", false)) {
                         stopNetworkMonitorService()
+                    } else {
+                        startNetworkMonitorService()
                     }
                     refreshMobileDataLockUi()
                     refreshStabilityMonitorUi()
@@ -961,14 +963,16 @@ class MainActivity : Activity() {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 9203)
             return
         }
-        startNetworkMonitor()
+        startNetworkMonitorService()
     }
 
     private fun startNetworkMonitor() {
-        preferences.edit()
-            .putBoolean("stability_monitor_requested", true)
-            .remove("stability_monitor_error")
-            .apply()
+        preferences.edit().putBoolean("stability_monitor_requested", true).apply()
+        startNetworkMonitorService()
+    }
+
+    private fun startNetworkMonitorService() {
+        preferences.edit().remove("stability_monitor_error").apply()
         val intent = Intent(this, NetworkMonitorService::class.java)
             .setAction(NetworkMonitorService.ACTION_START)
         try {
@@ -1016,7 +1020,7 @@ class MainActivity : Activity() {
         }
         if (requestCode == 9203) {
             if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
-                startNetworkMonitor()
+                startNetworkMonitorService()
             } else {
                 mobileDataLockPreferences.edit().putBoolean("enabled", false).apply()
                 refreshMobileDataLockUi()
