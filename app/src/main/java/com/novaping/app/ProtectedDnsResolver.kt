@@ -97,10 +97,12 @@ internal class ProtectedDnsResolver(
     private fun queryUdp(query: ByteArray): DnsQueryResult = try {
         DatagramSocket(null).use { socket ->
             socket.reuseAddress = false
-            socket.bind(InetSocketAddress(0))
             if (!protectDatagramSocket(socket)) {
                 DnsQueryResult(null, "protect_udp_rejected")
             } else {
+                // The protector may bind this unconnected socket to the selected
+                // physical network. Bind locally only after that routing decision.
+                socket.bind(InetSocketAddress(0))
                 socket.soTimeout = timeoutMillis
                 socket.connect(InetSocketAddress(resolverAddress, resolverPort))
                 socket.send(DatagramPacket(query, query.size))
