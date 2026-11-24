@@ -77,7 +77,7 @@ class NetworkMonitorService : Service() {
 
         try {
             startForeground(NOTIFICATION_ID, buildNotification())
-            if (!monitoring) startMonitoring()
+            if (!monitoring) startMonitoring() else refreshMobileDataLockStatus()
             return START_STICKY
         } catch (error: Exception) {
             preferences.edit()
