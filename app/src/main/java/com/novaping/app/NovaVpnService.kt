@@ -81,6 +81,8 @@ internal class NovaVpnService : VpnService() {
     @Volatile private var tunnelEstablished = false
     @Volatile private var terminalError: String? = null
     @Volatile private var terminalState: String? = null
+    @Volatile private var mobileTransportPreferenceEnabled = false
+    @Volatile private var preferredMobileNetwork: android.net.Network? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -147,7 +149,35 @@ internal class NovaVpnService : VpnService() {
             VpnRoutingPolicy.requiresSocketProtection(packageName, allowedVpnPackages)
 
         val connectivity = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        val underlying = connectivity.activeNetwork
+        mobileTransportPreferenceEnabled = getSharedPreferences(
+            "nova_mobile_data_lock", Context.MODE_PRIVATE
+        ).getBoolean("enabled", false)
+
+        val mobileNetwork = if (mobileTransportPreferenceEnabled) {
+            connectivity.allNetworks
+                .mapNotNull { network ->
+                    val capabilities = connectivity.getNetworkCapabilities(network)
+                    if (capabilities?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) == true &&
+                        capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    ) {
+                        network to capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                    } else null
+                }
+                .sortedByDescending { it.second }
+                .firstOrNull()?.first
+                ?: throw IllegalStateException(
+                    "Mobile Data Lock est activé, mais aucun réseau mobile Internet n'est disponible. Le Wi-Fi ne sera pas utilisé en remplacement."
+                )
+        } else null
+
+        preferredMobileNetwork = mobileNetwork
+        if (mobileNetwork != null) {
+            check(setUnderlyingNetworks(arrayOf(mobileNetwork))) {
+                "Android n'a pas accepté le réseau mobile comme transport sous-jacent du VPN."
+            }
+        }
+
+        val underlying = mobileNetwork ?: connectivity.activeNetwork
             ?: throw IllegalStateException("Aucun réseau Internet actif")
         val linkProperties: LinkProperties = connectivity.getLinkProperties(underlying)
             ?: throw IllegalStateException("Configuration du réseau indisponible")
@@ -324,6 +354,28 @@ internal class NovaVpnService : VpnService() {
      * socket address is retained. Android's protect() boolean is authoritative;
      * a false result is never bypassed or retried on the same socket.
      */
+    private fun bindToPreferredMobileNetwork(socket: Socket): Boolean {
+        if (!mobileTransportPreferenceEnabled) return true
+        val network = preferredMobileNetwork ?: return false
+        return try {
+            network.bindSocket(socket)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun bindToPreferredMobileNetwork(socket: DatagramSocket): Boolean {
+        if (!mobileTransportPreferenceEnabled) return true
+        val network = preferredMobileNetwork ?: return false
+        return try {
+            network.bindSocket(socket)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     private fun protectSocket(
         socket: Socket,
         purpose: String,
@@ -331,16 +383,17 @@ internal class NovaVpnService : VpnService() {
     ): Boolean {
         val invalidPrecondition = socket.isClosed || socket.isConnected
         if (!requiresProtection) {
-            // Android's per-app allowlist already keeps this app's own sockets outside
-            // the VPN. Calling protect() here is redundant and can reject valid sockets.
+            // Per-app allowlisting keeps NOVA PING's upstream sockets outside the TUN.
+            // When requested, explicitly bind those sockets to the selected cellular network.
+            val bound = bindToPreferredMobileNetwork(socket)
             VpnDiagnostics.tracker.recordSocketProtection(
                 purpose = purpose,
-                outcome = "bypassed_per_app_allowlist",
+                outcome = if (bound) "bypassed_per_app_allowlist" else "mobile_network_bind_failed",
                 invalidPrecondition = invalidPrecondition
             )
-            return !invalidPrecondition
+            return !invalidPrecondition && bound
         }
-        return evaluateSocketProtection(
+        val protected = evaluateSocketProtection(
             purpose = purpose,
             invalidPrecondition = invalidPrecondition,
             socketClosed = socket.isClosed,
@@ -349,6 +402,7 @@ internal class NovaVpnService : VpnService() {
         ) {
             protect(socket)
         }
+        return protected && bindToPreferredMobileNetwork(socket)
     }
 
     private fun protectSocket(
@@ -358,14 +412,15 @@ internal class NovaVpnService : VpnService() {
     ): Boolean {
         val invalidPrecondition = socket.isClosed || socket.isConnected
         if (!requiresProtection) {
+            val bound = bindToPreferredMobileNetwork(socket)
             VpnDiagnostics.tracker.recordSocketProtection(
                 purpose = purpose,
-                outcome = "bypassed_per_app_allowlist",
+                outcome = if (bound) "bypassed_per_app_allowlist" else "mobile_network_bind_failed",
                 invalidPrecondition = invalidPrecondition
             )
-            return !invalidPrecondition
+            return !invalidPrecondition && bound
         }
-        return evaluateSocketProtection(
+        val protected = evaluateSocketProtection(
             purpose = purpose,
             invalidPrecondition = invalidPrecondition,
             socketClosed = socket.isClosed,
@@ -374,6 +429,7 @@ internal class NovaVpnService : VpnService() {
         ) {
             protect(socket)
         }
+        return protected && bindToPreferredMobileNetwork(socket)
     }
 
     private inline fun evaluateSocketProtection(
@@ -450,6 +506,9 @@ internal class NovaVpnService : VpnService() {
         engineThread = null
         engineStarted = false
         tunnelEstablished = false
+        preferredMobileNetwork = null
+        mobileTransportPreferenceEnabled = false
+        runCatching { setUnderlyingNetworks(null) }
         stopping.set(false)
         stopForeground(STOP_FOREGROUND_REMOVE)
         val error = terminalError
@@ -481,6 +540,9 @@ internal class NovaVpnService : VpnService() {
 
     override fun onDestroy() {
         stopTunnel()
+        preferredMobileNetwork = null
+        mobileTransportPreferenceEnabled = false
+        runCatching { setUnderlyingNetworks(null) }
         super.onDestroy()
     }
 
