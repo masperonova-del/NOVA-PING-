@@ -40,6 +40,10 @@ class NetworkMonitorService : Service() {
     private val preferences by lazy {
         getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
+    private val mobileDataLockPreferences by lazy {
+        getSharedPreferences("nova_mobile_data_lock", Context.MODE_PRIVATE)
+    }
+    private var lastMobileDataLockState: MobileDataLockState? = null
     private lateinit var connectivityManager: ConnectivityManager
     private var defaultCallback: ConnectivityManager.NetworkCallback? = null
     private var wifiCallback: ConnectivityManager.NetworkCallback? = null
@@ -107,24 +111,6 @@ class NetworkMonitorService : Service() {
         }
     }
 
-    private fun buildNotification(): Notification {
-        val stopIntent = Intent(this, NetworkMonitorService::class.java).setAction(ACTION_STOP)
-        val stopPendingIntent = PendingIntent.getService(
-            this,
-            4102,
-            stopIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        return Notification.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_notify_sync)
-            .setContentTitle("NOVA PING — surveillance active")
-            .setContentText("Transitions réseau et relevés périodiques indicatifs")
-            .setOngoing(true)
-            .setCategory(Notification.CATEGORY_SERVICE)
-            .addAction(0, "Arrêter", stopPendingIntent)
-            .build()
-    }
-
     private fun startMonitoring() {
         val now = System.currentTimeMillis()
         val wifi = wifiNetworks.synchronize(networksForTransport(NetworkCapabilities.TRANSPORT_WIFI))
@@ -152,12 +138,14 @@ class NetworkMonitorService : Service() {
             override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
                 defaultNetwork = network
                 recordEvent(tracker.onDefaultTransportChanged(transportName(capabilities), System.currentTimeMillis()))
+                refreshMobileDataLockStatus()
             }
 
             override fun onLost(network: Network) {
                 if (defaultNetwork == network) {
                     defaultNetwork = null
                     recordEvent(tracker.onDefaultTransportChanged("Aucun", System.currentTimeMillis()))
+                    refreshMobileDataLockStatus()
                 }
             }
         }
@@ -166,6 +154,7 @@ class NetworkMonitorService : Service() {
                 val before = wifiNetworks.snapshot()
                 val after = wifiNetworks.onAvailable(network.toString())
                 applyWifiSnapshot(before, after)
+                refreshMobileDataLockStatus()
             }
 
             override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
@@ -176,6 +165,7 @@ class NetworkMonitorService : Service() {
                         capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
                     )
                     applyWifiSnapshot(before, after)
+                    refreshMobileDataLockStatus()
                 }
             }
 
@@ -183,6 +173,7 @@ class NetworkMonitorService : Service() {
                 val before = wifiNetworks.snapshot()
                 val after = wifiNetworks.onLost(network.toString())
                 applyWifiSnapshot(before, after)
+                refreshMobileDataLockStatus()
             }
         }
 
@@ -198,6 +189,7 @@ class NetworkMonitorService : Service() {
                 val before = mobileNetworks.snapshot()
                 val after = mobileNetworks.onAvailable(network.toString())
                 applyMobileSnapshot(before, after)
+                refreshMobileDataLockStatus()
             }
 
             override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
@@ -208,6 +200,7 @@ class NetworkMonitorService : Service() {
                         capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
                     )
                     applyMobileSnapshot(before, after)
+                    refreshMobileDataLockStatus()
                 }
             }
 
@@ -215,6 +208,7 @@ class NetworkMonitorService : Service() {
                 val before = mobileNetworks.snapshot()
                 val after = mobileNetworks.onLost(network.toString())
                 applyMobileSnapshot(before, after)
+                refreshMobileDataLockStatus()
             }
         }
         connectivityManager.registerNetworkCallback(
@@ -230,6 +224,7 @@ class NetworkMonitorService : Service() {
             .remove("stability_monitor_error")
             .apply()
         notifyMonitorStateChanged()
+        refreshMobileDataLockStatus()
         recordPeriodicSnapshot()
         handler.removeCallbacks(sampleRunnable)
         handler.postDelayed(sampleRunnable, SAMPLE_INTERVAL_MS)
@@ -288,6 +283,88 @@ class NetworkMonitorService : Service() {
         capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "Données mobiles"
         capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet"
         else -> "Autre"
+    }
+
+    /** Shares the foreground monitor with Mobile Data Lock without changing Android routing. */
+    private fun refreshMobileDataLockStatus() {
+        val enabled = mobileDataLockPreferences.getBoolean("enabled", false)
+        val active = currentActiveCapabilities()
+        val mobile = mobileNetworks.snapshot()
+        val snapshot = MobileDataLockResolver.resolve(
+            enabled = enabled,
+            activeTransport = transportName(active),
+            activeInternetValidated = active?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
+            mobileNetworkAvailable = mobile.available,
+            mobileInternetValidated = mobile.internetValidated
+        )
+        val previous = lastMobileDataLockState
+        lastMobileDataLockState = snapshot.state
+        mobileDataLockPreferences.edit()
+            .putString("background_state", snapshot.state.name)
+            .putString("background_details", snapshot.details)
+            .putLong("background_updated_at", System.currentTimeMillis())
+            .apply()
+
+        if (enabled && previous != snapshot.state) {
+            val wasWifiFallback = previous == MobileDataLockState.WIFI_ACTIVE_MOBILE_AVAILABLE ||
+                previous == MobileDataLockState.WIFI_ACTIVE_MOBILE_UNAVAILABLE
+            val isWifiFallback = snapshot.state == MobileDataLockState.WIFI_ACTIVE_MOBILE_AVAILABLE ||
+                snapshot.state == MobileDataLockState.WIFI_ACTIVE_MOBILE_UNAVAILABLE
+            val isMobileActive = snapshot.state == MobileDataLockState.MOBILE_ACTIVE_VALIDATED ||
+                snapshot.state == MobileDataLockState.MOBILE_ACTIVE_UNVALIDATED
+            when {
+                isWifiFallback && !wasWifiFallback -> recordEvent(NetworkStabilityEvent(
+                    NetworkStabilityEventType.MOBILE_DATA_LOCK_WIFI_FALLBACK,
+                    System.currentTimeMillis(), snapshot.details
+                ))
+                isMobileActive && wasWifiFallback -> recordEvent(NetworkStabilityEvent(
+                    NetworkStabilityEventType.MOBILE_DATA_LOCK_MOBILE_RESTORED,
+                    System.currentTimeMillis(), snapshot.details
+                ))
+            }
+            if (monitoring) {
+                getSystemService(NotificationManager::class.java)
+                    .notify(NOTIFICATION_ID, buildNotification(snapshot))
+            }
+            notifyMonitorStateChanged()
+        }
+    }
+
+    private fun buildNotification(snapshot: MobileDataLockSnapshot? = null): Notification {
+        val enabled = mobileDataLockPreferences.getBoolean("enabled", false)
+        val state = snapshot?.state ?: runCatching {
+            MobileDataLockState.valueOf(
+                mobileDataLockPreferences.getString("background_state", MobileDataLockState.DISABLED.name)
+                    ?: MobileDataLockState.DISABLED.name
+            )
+        }.getOrDefault(MobileDataLockState.DISABLED)
+        val content = if (!enabled) {
+            "Transitions réseau et relevés périodiques indicatifs"
+        } else {
+            when (state) {
+                MobileDataLockState.MOBILE_ACTIVE_VALIDATED -> "Mobile Data Lock : données mobiles actives"
+                MobileDataLockState.MOBILE_ACTIVE_UNVALIDATED -> "Mobile actif ; Internet non validé par Android"
+                MobileDataLockState.WIFI_ACTIVE_MOBILE_AVAILABLE -> "Alerte : Android utilise le Wi-Fi"
+                MobileDataLockState.WIFI_ACTIVE_MOBILE_UNAVAILABLE -> "Wi-Fi actif ; réseau mobile indisponible"
+                MobileDataLockState.VPN_ACTIVE -> "VPN actif ; transport physique non confirmé"
+                MobileDataLockState.OTHER_NETWORK_ACTIVE -> "Autre type de réseau actif"
+                MobileDataLockState.NO_NETWORK -> "Aucun réseau actif détecté"
+                MobileDataLockState.DISABLED -> "Mobile Data Lock désactivé"
+            }
+        }
+        val stopIntent = Intent(this, NetworkMonitorService::class.java).setAction(ACTION_STOP)
+        val stopPendingIntent = PendingIntent.getService(
+            this, 4102, stopIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        return Notification.Builder(this, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_notify_sync)
+            .setContentTitle("NOVA PING — surveillance active")
+            .setContentText(content)
+            .setOngoing(true)
+            .setCategory(Notification.CATEGORY_SERVICE)
+            .addAction(0, "Arrêter", stopPendingIntent)
+            .build()
     }
 
     private fun recordPeriodicSnapshot() {
