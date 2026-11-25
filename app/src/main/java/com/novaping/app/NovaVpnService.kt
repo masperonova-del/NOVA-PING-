@@ -30,9 +30,11 @@ internal class NovaVpnService : VpnService() {
         const val ACTION_STATE = "com.novaping.app.action.GAME_TUNNEL_STATE"
         const val EXTRA_STATE = "state"
         const val EXTRA_ERROR = "error"
+        const val EXTRA_TRANSPORT_STATUS = "mobile_transport_status"
+        internal const val VPN_PREFERENCES = "nova_ping_vpn"
+        internal const val KEY_MOBILE_TRANSPORT_STATUS = "mobile_transport_status"
         private const val CHANNEL_ID = "nova_ping_vpn"
         private const val NOTIFICATION_ID = 4201
-        private const val VPN_PREFERENCES = "nova_ping_vpn"
         private const val KEY_SELECTED_GAME_PACKAGE = "selected_game_package"
         private const val KEY_LAST_TUNNEL_STATE = "last_tunnel_state"
         private const val KEY_LAST_TUNNEL_ERROR = "last_tunnel_error"
@@ -83,6 +85,16 @@ internal class NovaVpnService : VpnService() {
     @Volatile private var terminalState: String? = null
     @Volatile private var mobileTransportPreferenceEnabled = false
     @Volatile private var preferredMobileNetwork: android.net.Network? = null
+
+    private fun publishMobileTransportStatus(status: String) {
+        getSharedPreferences(VPN_PREFERENCES, Context.MODE_PRIVATE).edit()
+            .putString(KEY_MOBILE_TRANSPORT_STATUS, status)
+            .commit()
+        sendBroadcast(Intent(ACTION_STATE).setPackage(packageName).apply {
+            putExtra(EXTRA_STATE, readLastTunnelState(this@NovaVpnService).first)
+            putExtra(EXTRA_TRANSPORT_STATUS, status)
+        })
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -152,6 +164,7 @@ internal class NovaVpnService : VpnService() {
         mobileTransportPreferenceEnabled = getSharedPreferences(
             "nova_mobile_data_lock", Context.MODE_PRIVATE
         ).getBoolean("enabled", false)
+        publishMobileTransportStatus(if (mobileTransportPreferenceEnabled) "selected" else "disabled")
 
         val mobileNetwork = if (mobileTransportPreferenceEnabled) {
             connectivity.allNetworks
@@ -165,9 +178,12 @@ internal class NovaVpnService : VpnService() {
                 }
                 .sortedByDescending { it.second }
                 .firstOrNull()?.first
-                ?: throw IllegalStateException(
-                    "Mobile Data Lock est activé, mais aucun réseau mobile Internet n'est disponible. Le Wi-Fi ne sera pas utilisé en remplacement."
-                )
+                ?: run {
+                    publishMobileTransportStatus("unavailable")
+                    throw IllegalStateException(
+                        "Mobile Data Lock est activé, mais aucun réseau mobile Internet n'est disponible. Le Wi-Fi ne sera pas utilisé en remplacement."
+                    )
+                }
         } else null
 
         preferredMobileNetwork = mobileNetwork
@@ -359,8 +375,10 @@ internal class NovaVpnService : VpnService() {
         val network = preferredMobileNetwork ?: return false
         return try {
             network.bindSocket(socket)
+            publishMobileTransportStatus("bound")
             true
         } catch (_: Exception) {
+            publishMobileTransportStatus("bind_failed")
             false
         }
     }
@@ -370,8 +388,10 @@ internal class NovaVpnService : VpnService() {
         val network = preferredMobileNetwork ?: return false
         return try {
             network.bindSocket(socket)
+            publishMobileTransportStatus("bound")
             true
         } catch (_: Exception) {
+            publishMobileTransportStatus("bind_failed")
             false
         }
     }
@@ -508,6 +528,7 @@ internal class NovaVpnService : VpnService() {
         tunnelEstablished = false
         preferredMobileNetwork = null
         mobileTransportPreferenceEnabled = false
+        publishMobileTransportStatus("stopped")
         runCatching { setUnderlyingNetworks(null) }
         stopping.set(false)
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -542,6 +563,7 @@ internal class NovaVpnService : VpnService() {
         stopTunnel()
         preferredMobileNetwork = null
         mobileTransportPreferenceEnabled = false
+        publishMobileTransportStatus("stopped")
         runCatching { setUnderlyingNetworks(null) }
         super.onDestroy()
     }
