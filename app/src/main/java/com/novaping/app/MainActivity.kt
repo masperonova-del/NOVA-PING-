@@ -96,6 +96,7 @@ class MainActivity : Activity() {
     private lateinit var wifiLockStatus: TextView
     private lateinit var wifiLockToggleButton: Button
     private lateinit var mobileDataLockStatus: TextView
+    private lateinit var mobileDataLockTunnelStatus: TextView
     private lateinit var mobileDataLockToggleButton: Button
     private lateinit var testButton: Button
     private lateinit var gameSpinner: Spinner
@@ -128,6 +129,7 @@ class MainActivity : Activity() {
             if (intent?.action != NovaVpnService.ACTION_STATE) return
             val state = intent.getStringExtra(NovaVpnService.EXTRA_STATE) ?: return
             applyVpnUiState(state, intent.getStringExtra(NovaVpnService.EXTRA_ERROR))
+            refreshMobileDataLockUi()
         }
     }
 
@@ -397,10 +399,15 @@ class MainActivity : Activity() {
             12f, mutedColor, false, Gravity.START
         ).apply { setPadding(0, dp(6), 0, dp(10)) })
         mobileDataLockStatus = label(
-            "Mobile Data Lock désactivé.",
+            "Réseau Android : en attente de détection.",
             12f, accentColor, true, Gravity.START
-        ).apply { setPadding(0, dp(8), 0, dp(8)) }
+        ).apply { setPadding(0, dp(8), 0, dp(4)) }
         mobileDataLockCard.addView(mobileDataLockStatus)
+        mobileDataLockTunnelStatus = label(
+            "Transport du tunnel : non confirmé.",
+            12f, mutedColor, true, Gravity.START
+        ).apply { setPadding(0, dp(4), 0, dp(8)) }
+        mobileDataLockCard.addView(mobileDataLockTunnelStatus)
         mobileDataLockToggleButton = Button(this).apply {
             isAllCaps = false
             setTextColor(Color.WHITE)
@@ -1168,6 +1175,7 @@ class MainActivity : Activity() {
         val monitorRunning = preferences.getBoolean("stability_monitor_running", false)
         val monitorError = preferences.getString("stability_monitor_error", null)
         mobileDataLockStatus.text = buildString {
+            append("Réseau Android : ")
             append(snapshot.details)
             if (enabled) {
                 append(if (monitorRunning) "\nSurveillance en arrière-plan active." else "\nSurveillance en arrière-plan inactive.")
@@ -1187,6 +1195,24 @@ class MainActivity : Activity() {
                 MobileDataLockState.VPN_ACTIVE -> Color.rgb(255, 185, 90)
                 MobileDataLockState.OTHER_NETWORK_ACTIVE,
                 MobileDataLockState.NO_NETWORK -> Color.rgb(255, 150, 130)
+            }
+        )
+        val tunnelTransportStatus = getSharedPreferences(
+            NovaVpnService.VPN_PREFERENCES, Context.MODE_PRIVATE
+        ).getString(NovaVpnService.KEY_MOBILE_TRANSPORT_STATUS, "disabled")
+        mobileDataLockTunnelStatus.text = when (tunnelTransportStatus) {
+            "selected" -> "Transport du tunnel : réseau mobile sélectionné ; liaison des sockets en attente."
+            "bound" -> "Transport du tunnel : au moins une socket amont liée au réseau mobile. Cela ne prouve pas le transport de chaque paquet du jeu."
+            "bind_failed" -> "Transport du tunnel : échec de liaison au réseau mobile. Le verrouillage n'est pas confirmé."
+            "unavailable" -> "Transport du tunnel : réseau mobile indisponible au démarrage."
+            else -> "Transport du tunnel : inactif ou non confirmé."
+        }
+        mobileDataLockTunnelStatus.setTextColor(
+            when (tunnelTransportStatus) {
+                "bound" -> Color.rgb(100, 210, 150)
+                "selected" -> Color.rgb(255, 185, 90)
+                "bind_failed", "unavailable" -> Color.rgb(255, 150, 130)
+                else -> mutedColor
             }
         )
         mobileDataLockToggleButton.text = if (enabled) {
