@@ -126,7 +126,7 @@ internal class NovaVpnService : VpnService() {
                         val transportStatus = getSharedPreferences(
                             VPN_PREFERENCES, Context.MODE_PRIVATE
                         ).getString(KEY_MOBILE_TRANSPORT_STATUS, null)
-                        if (transportStatus !in setOf("unavailable", "bind_failed", "selection_failed")) {
+                        if (transportStatus !in setOf("unavailable", "bind_failed", "selection_failed", "monitor_failed", "mobile_lost")) {
                             publishMobileTransportStatus("start_failed")
                         }
                     }
@@ -136,6 +136,9 @@ internal class NovaVpnService : VpnService() {
                     stopHevReadinessMonitor()
                     stopHevMetadataPolling()
                     unregisterPreferredMobileNetworkMonitor()
+                    preferredMobileNetwork = null
+                    mobileTransportPreferenceEnabled = false
+                    runCatching { setUnderlyingNetworks(null) }
                     bridge?.close()
                     bridge = null
                     tunDescriptor?.let { fd ->
