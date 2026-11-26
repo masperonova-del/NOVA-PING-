@@ -8,6 +8,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.LinkProperties
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.VpnService
 import android.os.Build
 import android.os.Handler
@@ -84,7 +87,9 @@ internal class NovaVpnService : VpnService() {
     @Volatile private var terminalError: String? = null
     @Volatile private var terminalState: String? = null
     @Volatile private var mobileTransportPreferenceEnabled = false
-    @Volatile private var preferredMobileNetwork: android.net.Network? = null
+    @Volatile private var preferredMobileNetwork: Network? = null
+    @Volatile private var mobileNetworkCallback: ConnectivityManager.NetworkCallback? = null
+    @Volatile private var connectivityManager: ConnectivityManager? = null
 
     private fun publishMobileTransportStatus(status: String) {
         getSharedPreferences(VPN_PREFERENCES, Context.MODE_PRIVATE).edit()
@@ -130,6 +135,7 @@ internal class NovaVpnService : VpnService() {
                     VpnDiagnostics.tracker.setTunState("Non établi")
                     stopHevReadinessMonitor()
                     stopHevMetadataPolling()
+                    unregisterPreferredMobileNetworkMonitor()
                     bridge?.close()
                     bridge = null
                     tunDescriptor?.let { fd ->
@@ -260,6 +266,9 @@ internal class NovaVpnService : VpnService() {
 
         stopping.set(false)
         tunnelEstablished = true
+        if (mobileTransportPreferenceEnabled && mobileNetwork != null) {
+            registerPreferredMobileNetworkMonitor(connectivity, mobileNetwork)
+        }
         publishState("starting", null)
         val thread = Thread({
             engineStarted = true
@@ -380,6 +389,70 @@ internal class NovaVpnService : VpnService() {
             } catch (_: InterruptedException) {
                 Thread.currentThread().interrupt()
             }
+        }
+    }
+
+    /**
+     * Fail closed if the selected cellular network disappears. Existing TCP/UDP
+     * sockets are bound to that Network and cannot be transparently migrated;
+     * stopping the VPN avoids an unannounced fallback through Wi-Fi.
+     */
+    private fun registerPreferredMobileNetworkMonitor(
+        connectivity: ConnectivityManager,
+        selectedNetwork: Network
+    ) {
+        connectivityManager = connectivity
+        val request = NetworkRequest.Builder()
+            .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .build()
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onLost(network: Network) {
+                if (network != selectedNetwork) return
+                mainHandler.post {
+                    if (preferredMobileNetwork != selectedNetwork ||
+                        !mobileTransportPreferenceEnabled ||
+                        !tunnelEstablished
+                    ) return@post
+
+                    val message =
+                        "Le réseau mobile utilisé par le tunnel a disparu. NOVA PING arrête le tunnel pour éviter un basculement silencieux vers le Wi-Fi."
+                    terminalError = message
+                    publishMobileTransportStatus("mobile_lost")
+                    publishState("error", message)
+                    stopTunnel()
+                }
+            }
+        }
+        try {
+            connectivity.registerNetworkCallback(request, callback)
+            mobileNetworkCallback = callback
+        } catch (error: Exception) {
+            publishMobileTransportStatus("monitor_failed")
+            throw IllegalStateException(
+                "Impossible de surveiller la disponibilité du réseau mobile. Le tunnel ne sera pas lancé sans cette protection.",
+                error
+            )
+        }
+
+        val capabilities = connectivity.getNetworkCapabilities(selectedNetwork)
+        val stillAvailable = capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true &&
+            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        if (!stillAvailable) {
+            publishMobileTransportStatus("mobile_lost")
+            throw IllegalStateException(
+                "Le réseau mobile a disparu pendant le démarrage du tunnel."
+            )
+        }
+    }
+
+    private fun unregisterPreferredMobileNetworkMonitor() {
+        val callback = mobileNetworkCallback
+        mobileNetworkCallback = null
+        val connectivity = connectivityManager
+        connectivityManager = null
+        if (callback != null && connectivity != null) {
+            runCatching { connectivity.unregisterNetworkCallback(callback) }
         }
     }
 
@@ -544,9 +617,15 @@ internal class NovaVpnService : VpnService() {
         engineThread = null
         engineStarted = false
         tunnelEstablished = false
+        unregisterPreferredMobileNetworkMonitor()
         preferredMobileNetwork = null
         mobileTransportPreferenceEnabled = false
-        publishMobileTransportStatus("stopped")
+        val transportStatus = getSharedPreferences(
+            VPN_PREFERENCES, Context.MODE_PRIVATE
+        ).getString(KEY_MOBILE_TRANSPORT_STATUS, null)
+        if (transportStatus != "mobile_lost") {
+            publishMobileTransportStatus("stopped")
+        }
         runCatching { setUnderlyingNetworks(null) }
         stopping.set(false)
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -579,6 +658,7 @@ internal class NovaVpnService : VpnService() {
 
     override fun onDestroy() {
         stopTunnel()
+        unregisterPreferredMobileNetworkMonitor()
         preferredMobileNetwork = null
         mobileTransportPreferenceEnabled = false
         publishMobileTransportStatus("stopped")
