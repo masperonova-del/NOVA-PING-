@@ -1208,13 +1208,15 @@ class MainActivity : Activity() {
             "selection_failed" -> "Transport du tunnel : Android n'a pas accepté la configuration du réseau mobile."
             "start_failed" -> "Transport du tunnel : échec du démarrage après sélection du réseau mobile."
             "unavailable" -> "Transport du tunnel : réseau mobile indisponible au démarrage."
+            "mobile_lost" -> "Transport du tunnel : réseau mobile perdu ; tunnel arrêté pour empêcher le basculement vers le Wi-Fi."
+            "monitor_failed" -> "Transport du tunnel : surveillance du réseau mobile impossible ; tunnel non lancé."
             else -> "Transport du tunnel : inactif ou non confirmé."
         }
         mobileDataLockTunnelStatus.setTextColor(
             when (tunnelTransportStatus) {
                 "bound" -> Color.rgb(100, 210, 150)
                 "selected" -> Color.rgb(255, 185, 90)
-                "bind_failed", "unavailable", "selection_failed", "start_failed" -> Color.rgb(255, 150, 130)
+                "bind_failed", "unavailable", "selection_failed", "start_failed", "mobile_lost", "monitor_failed" -> Color.rgb(255, 150, 130)
                 else -> mutedColor
             }
         )
