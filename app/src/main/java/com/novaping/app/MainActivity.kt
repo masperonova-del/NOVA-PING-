@@ -1201,9 +1201,12 @@ class MainActivity : Activity() {
             NovaVpnService.VPN_PREFERENCES, Context.MODE_PRIVATE
         ).getString(NovaVpnService.KEY_MOBILE_TRANSPORT_STATUS, "disabled")
         mobileDataLockTunnelStatus.text = when (tunnelTransportStatus) {
+            "selecting" -> "Transport du tunnel : recherche d'un réseau mobile Internet."
             "selected" -> "Transport du tunnel : réseau mobile sélectionné ; liaison des sockets en attente."
             "bound" -> "Transport du tunnel : au moins une socket amont liée au réseau mobile. Cela ne prouve pas le transport de chaque paquet du jeu."
             "bind_failed" -> "Transport du tunnel : échec de liaison au réseau mobile. Le verrouillage n'est pas confirmé."
+            "selection_failed" -> "Transport du tunnel : Android n'a pas accepté la configuration du réseau mobile."
+            "start_failed" -> "Transport du tunnel : échec du démarrage après sélection du réseau mobile."
             "unavailable" -> "Transport du tunnel : réseau mobile indisponible au démarrage."
             else -> "Transport du tunnel : inactif ou non confirmé."
         }
@@ -1211,7 +1214,7 @@ class MainActivity : Activity() {
             when (tunnelTransportStatus) {
                 "bound" -> Color.rgb(100, 210, 150)
                 "selected" -> Color.rgb(255, 185, 90)
-                "bind_failed", "unavailable" -> Color.rgb(255, 150, 130)
+                "bind_failed", "unavailable", "selection_failed", "start_failed" -> Color.rgb(255, 150, 130)
                 else -> mutedColor
             }
         )
