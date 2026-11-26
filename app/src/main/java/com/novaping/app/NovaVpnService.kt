@@ -117,6 +117,14 @@ internal class NovaVpnService : VpnService() {
                     startTunnel()
                 } catch (error: Exception) {
                     terminalError = error.message ?: "Démarrage VPN impossible"
+                    if (mobileTransportPreferenceEnabled) {
+                        val transportStatus = getSharedPreferences(
+                            VPN_PREFERENCES, Context.MODE_PRIVATE
+                        ).getString(KEY_MOBILE_TRANSPORT_STATUS, null)
+                        if (transportStatus !in setOf("unavailable", "bind_failed", "selection_failed")) {
+                            publishMobileTransportStatus("start_failed")
+                        }
+                    }
                     VpnDiagnostics.tracker.setTunnelState("Échec au démarrage")
                     VpnDiagnostics.tracker.setBridgeState("Échec ou non démarré")
                     VpnDiagnostics.tracker.setTunState("Non établi")
@@ -164,7 +172,7 @@ internal class NovaVpnService : VpnService() {
         mobileTransportPreferenceEnabled = getSharedPreferences(
             "nova_mobile_data_lock", Context.MODE_PRIVATE
         ).getBoolean("enabled", false)
-        publishMobileTransportStatus(if (mobileTransportPreferenceEnabled) "selected" else "disabled")
+        publishMobileTransportStatus(if (mobileTransportPreferenceEnabled) "selecting" else "disabled")
 
         val mobileNetwork = if (mobileTransportPreferenceEnabled) {
             connectivity.allNetworks
@@ -187,11 +195,6 @@ internal class NovaVpnService : VpnService() {
         } else null
 
         preferredMobileNetwork = mobileNetwork
-        if (mobileNetwork != null) {
-            check(setUnderlyingNetworks(arrayOf(mobileNetwork))) {
-                "Android n'a pas accepté le réseau mobile comme transport sous-jacent du VPN."
-            }
-        }
 
         val underlying = mobileNetwork ?: connectivity.activeNetwork
             ?: throw IllegalStateException("Aucun réseau Internet actif")
@@ -223,6 +226,21 @@ internal class NovaVpnService : VpnService() {
             .addRoute("0.0.0.0", 0)
             .addRoute("::", 0)
             .addAllowedApplication(gamePackage)
+
+        // Configure the VPN's underlying network before establish().
+        // VpnService.setUnderlyingNetworks() is only valid after the VPN is established.
+        if (mobileNetwork != null) {
+            try {
+                builder.setUnderlyingNetworks(arrayOf(mobileNetwork))
+                publishMobileTransportStatus("selected")
+            } catch (error: Exception) {
+                publishMobileTransportStatus("selection_failed")
+                throw IllegalStateException(
+                    "Impossible de configurer le réseau mobile sous-jacent du VPN.",
+                    error
+                )
+            }
+        }
 
         val pfd = builder.establish()
             ?: throw IllegalStateException("Android n'a pas pu établir l'interface VPN")
