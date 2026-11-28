@@ -96,8 +96,6 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
  static int
  task_io_yielder (HevTaskYieldType type, void *data)
  {
-@@ -92,6 +173,8 @@
- {
      ssize_t s;
  
 +    nova_metadata_observe (p, &nova_metadata_tap_output);
@@ -187,7 +185,7 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
 +{
 +    return atomic_load (&nova_tunnel_running);
 +}
-
++
 +EXPORT_SYMBOL void
 +hev_socks5_tunnel_reset_stop_request (void)
 +{
