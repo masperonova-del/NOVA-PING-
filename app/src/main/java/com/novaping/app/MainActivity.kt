@@ -122,16 +122,25 @@ class MainActivity : Activity() {
     private lateinit var vpnConsentStatus: TextView
     private lateinit var vpnConsentButton: Button
     private lateinit var endpointObservationOptInCheckBox: CheckBox
+    private lateinit var endpointObservationResults: TextView
+    private lateinit var endpointObservationRefreshButton: Button
     private var installedGameApps: List<InstalledLaunchableApp> = emptyList()
     private var selectedVpnGamePackage: String? = null
     private var vpnTunnelStartRequested = false
     private var vpnStateReceiverRegistered = false
     private val vpnStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action != NovaVpnService.ACTION_STATE) return
-            val state = intent.getStringExtra(NovaVpnService.EXTRA_STATE) ?: return
-            applyVpnUiState(state, intent.getStringExtra(NovaVpnService.EXTRA_ERROR))
-            refreshMobileDataLockUi()
+            when (intent?.action) {
+                NovaVpnService.ACTION_STATE -> {
+                    val state = intent.getStringExtra(NovaVpnService.EXTRA_STATE) ?: return
+                    applyVpnUiState(state, intent.getStringExtra(NovaVpnService.EXTRA_ERROR))
+                    refreshMobileDataLockUi()
+                    if (state == "ready" && ::endpointObservationOptInCheckBox.isInitialized &&
+                        endpointObservationOptInCheckBox.isChecked
+                    ) requestEndpointObservations()
+                }
+                NovaVpnService.ACTION_ENDPOINTS -> renderEndpointObservations(intent)
+            }
         }
     }
 
@@ -173,6 +182,14 @@ class MainActivity : Activity() {
                 vpnConsentButton.text = "RÉESSAYER LE TUNNEL VPN"
                 vpnConsentStatus.text = "Échec du tunnel : ${error ?: "erreur inconnue"}"
                 vpnConsentStatus.setTextColor(Color.rgb(255, 150, 130))
+            }
+        }
+        if (::endpointObservationRefreshButton.isInitialized) {
+            endpointObservationRefreshButton.isEnabled =
+                state == "ready" && endpointObservationOptInCheckBox.isChecked
+            if (state in setOf("stopped", "error", "replaced", "other_vpn")) {
+                endpointObservationResults.text =
+                    "Aucune observation conservée. Le tunnel est arrêté."
             }
         }
     }
@@ -716,6 +733,23 @@ class MainActivity : Activity() {
             12f, accentColor, false, Gravity.START
         ).apply { setPadding(0, dp(8), 0, dp(8)) }
         vpnConsentCard.addView(vpnConsentStatus)
+        endpointObservationResults = label(
+            "Aucun candidat chargé. Active l'option avant de démarrer le tunnel.",
+            12f, mutedColor, false, Gravity.START
+        ).apply {
+            setPadding(0, dp(8), 0, dp(8))
+            setTextIsSelectable(true)
+        }
+        vpnConsentCard.addView(endpointObservationResults)
+        endpointObservationRefreshButton = Button(this).apply {
+            text = "ACTUALISER LES ENDPOINTS OBSERVÉS"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            background = actionButtonBackground()
+            isEnabled = false
+            setOnClickListener { requestEndpointObservations() }
+        }
+        vpnConsentCard.addView(endpointObservationRefreshButton)
         vpnConsentButton = Button(this).apply {
             text = "DÉMARRER LE TUNNEL VPN"
             isAllCaps = false
@@ -1125,7 +1159,9 @@ class MainActivity : Activity() {
         }
         refreshStabilityMonitorUi()
         if (!vpnStateReceiverRegistered) {
-            val vpnFilter = IntentFilter(NovaVpnService.ACTION_STATE)
+            val vpnFilter = IntentFilter(NovaVpnService.ACTION_STATE).apply {
+                addAction(NovaVpnService.ACTION_ENDPOINTS)
+            }
             if (Build.VERSION.SDK_INT >= 33) {
                 registerReceiver(vpnStateReceiver, vpnFilter, Context.RECEIVER_NOT_EXPORTED)
             } else {
@@ -1138,6 +1174,9 @@ class MainActivity : Activity() {
         // Broadcasts are not sticky: reconcile persisted service state whenever the
         // activity returns, including after another VPN has replaced NOVA PING.
         refreshVpnUiState()
+        if (vpnTunnelStartRequested && ::endpointObservationOptInCheckBox.isInitialized &&
+            endpointObservationOptInCheckBox.isChecked
+        ) requestEndpointObservations()
     }
 
     override fun onPause() {
@@ -2948,6 +2987,64 @@ class MainActivity : Activity() {
             vpnConsentStatus.text =
                 "Impossible d'ouvrir la demande Android : ${error.message ?: "erreur inconnue"}"
         }
+    }
+
+    private fun requestEndpointObservations() {
+        if (!::endpointObservationOptInCheckBox.isInitialized ||
+            !endpointObservationOptInCheckBox.isChecked || !vpnTunnelStartRequested
+        ) return
+        endpointObservationRefreshButton.isEnabled = false
+        endpointObservationResults.text = "Récupération des observations en mémoire…"
+        runCatching {
+            startService(
+                Intent(this, NovaVpnService::class.java)
+                    .setAction(NovaVpnService.ACTION_REQUEST_ENDPOINTS)
+            )
+        }.onFailure { error ->
+            endpointObservationResults.text =
+                "Impossible de récupérer les observations : ${error.message ?: "erreur Android"}"
+            endpointObservationRefreshButton.isEnabled = true
+        }
+    }
+
+    private fun renderEndpointObservations(intent: Intent) {
+        val enabled = intent.getBooleanExtra(NovaVpnService.EXTRA_ENDPOINTS_ENABLED, false)
+        if (!enabled) {
+            endpointObservationResults.text =
+                "Observation désactivée pour cette session. Elle doit être autorisée avant le démarrage du tunnel."
+            endpointObservationRefreshButton.isEnabled = false
+            return
+        }
+        val raw = intent.getStringExtra(NovaVpnService.EXTRA_ENDPOINTS_JSON).orEmpty()
+        val candidates = runCatching { JSONArray(raw) }.getOrNull()
+        if (candidates == null || candidates.length() == 0) {
+            endpointObservationResults.text =
+                "Aucun endpoint public admissible observé pour le moment."
+            endpointObservationRefreshButton.isEnabled = true
+            return
+        }
+        val displayLimit = 20
+        val lines = buildList {
+            add("CANDIDATS OBSERVÉS — RÔLE SERVEUR NON CONFIRMÉ")
+            add("")
+            for (index in 0 until minOf(candidates.length(), displayLimit)) {
+                val item = candidates.optJSONObject(index) ?: continue
+                val address = item.optString("address")
+                val port = item.optInt("port")
+                val transport = item.optString("transport")
+                val observations = item.optInt("observations")
+                val endpoint = if (address.contains(':')) "[$address]:$port" else "$address:$port"
+                add("$endpoint • $transport • $observations observation(s)")
+            }
+            if (candidates.length() > displayLimit) {
+                add("")
+                add("${candidates.length() - displayLimit} autre(s) candidat(s) non affiché(s).")
+            }
+            add("")
+            add("Ces observations ne prouvent pas qu'une adresse héberge un serveur de match CODM.")
+        }
+        endpointObservationResults.text = lines.joinToString("\n")
+        endpointObservationRefreshButton.isEnabled = true
     }
 
     private fun startGameTunnel() {
