@@ -3033,8 +3033,17 @@ class MainActivity : Activity() {
                 val port = item.optInt("port")
                 val transport = item.optString("transport")
                 val observations = item.optInt("observations")
+                val outbound = item.optInt("outbound_packets")
+                val inbound = item.optInt("inbound_packets")
+                val totalBytes = item.optLong("total_observed_bytes")
+                val averageBytes = item.optDouble("average_packet_bytes")
+                val minBytes = item.optInt("min_packet_bytes")
+                val maxBytes = item.optInt("max_packet_bytes")
                 val endpoint = if (address.contains(':')) "[$address]:$port" else "$address:$port"
-                add("$endpoint • $transport • $observations observation(s)")
+                add("$endpoint • $transport")
+                add("Paquets : $observations (sortants $outbound / entrants $inbound)")
+                add("Volume IP observé : " + totalBytes + " octets • taille moyenne : " + averageBytes + " octets")
+                add("Taille des paquets : min. $minBytes / max. $maxBytes octets")
             }
             if (candidates.length() > displayLimit) {
                 add("")
