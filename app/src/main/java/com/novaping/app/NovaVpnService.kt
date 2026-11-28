@@ -412,18 +412,19 @@ internal class NovaVpnService : VpnService() {
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onLost(network: Network) {
                 if (network != selectedNetwork) return
-                mainHandler.post {
-                    if (preferredMobileNetwork != selectedNetwork ||
-                        !mobileTransportPreferenceEnabled ||
-                        !tunnelEstablished
-                    ) return@post
+                failClosedForPreferredNetworkChange(selectedNetwork, "mobile_lost")
+            }
 
-                    val message =
-                        "Le réseau mobile utilisé par le tunnel a disparu. NOVA PING arrête le tunnel pour éviter un basculement silencieux vers le Wi-Fi."
-                    terminalError = message
-                    publishMobileTransportStatus("mobile_lost")
-                    publishState("error", message)
-                    stopTunnel()
+            override fun onCapabilitiesChanged(
+                network: Network,
+                capabilities: NetworkCapabilities
+            ) {
+                if (network != selectedNetwork) return
+                val networkStillUsable =
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) &&
+                    capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                if (!networkStillUsable) {
+                    failClosedForPreferredNetworkChange(selectedNetwork, "mobile_capability_lost")
                 }
             }
         }
@@ -446,6 +447,30 @@ internal class NovaVpnService : VpnService() {
             throw IllegalStateException(
                 "Le réseau mobile a disparu pendant le démarrage du tunnel."
             )
+        }
+    }
+
+    private fun failClosedForPreferredNetworkChange(
+        selectedNetwork: Network,
+        reason: String
+    ) {
+        mainHandler.post {
+            if (!PreferredNetworkMonitorPolicy.shouldStop(
+                    isSelectedNetwork = preferredMobileNetwork == selectedNetwork,
+                    mobileLockEnabled = mobileTransportPreferenceEnabled,
+                    tunnelEstablished = tunnelEstablished
+                )
+            ) return@post
+
+            val message = if (reason == "mobile_lost") {
+                "Le réseau mobile utilisé par le tunnel a disparu. NOVA PING arrête le tunnel pour éviter un basculement silencieux vers le Wi-Fi."
+            } else {
+                "Le réseau mobile sélectionné a perdu ses capacités Internet. NOVA PING arrête le tunnel pour éviter un basculement silencieux vers le Wi-Fi."
+            }
+            terminalError = message
+            publishMobileTransportStatus(reason)
+            publishState("error", message)
+            stopTunnel()
         }
     }
 
