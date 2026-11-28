@@ -41,7 +41,7 @@ diff --git a/src/hev-jni.c b/src/hev-jni.c
  
      pthread_key_create (&current_jni_env, detach_current_thread);
      pthread_mutex_init (&mutex, NULL);
-@@ -210,4 +215,97 @@
+@@ -210,4 +215,169 @@
      return res;
  }
  
@@ -87,6 +87,37 @@ diff --git a/src/hev-jni.c b/src/hev-jni.c
 +    return (jlong)hev_socks5_tunnel_metadata_dropped ();
 +}
 +
++/* Direct NOVA PING lifecycle: IDLE -> RESERVED -> RUNNING. */
++static int nova_start_reserved;
++static int nova_stop_pending;
++static int nova_start_active;
++
++JNIEXPORT jboolean JNICALL
++Java_com_novaping_app_HevTunnelNative_nativePrepareStart (JNIEnv *env, jobject thiz)
++{
++    jboolean result = JNI_FALSE;
++
++    pthread_mutex_lock (&mutex);
++    if (!nova_start_reserved && !nova_start_active) {
++        nova_start_reserved = 1;
++        nova_stop_pending = 0;
++        result = JNI_TRUE;
++    }
++    pthread_mutex_unlock (&mutex);
++    return result;
++}
++
++JNIEXPORT void JNICALL
++Java_com_novaping_app_HevTunnelNative_nativeCancelStart (JNIEnv *env, jobject thiz)
++{
++    pthread_mutex_lock (&mutex);
++    if (nova_start_reserved) {
++        nova_start_reserved = 0;
++        nova_stop_pending = 0;
++    }
++    pthread_mutex_unlock (&mutex);
++}
++
 +JNIEXPORT jint JNICALL
 +Java_com_novaping_app_HevTunnelNative_nativeStart (JNIEnv *env, jobject thiz,
 +                                                   jstring config, jint tun_fd)
@@ -97,39 +128,80 @@ diff --git a/src/hev-jni.c b/src/hev-jni.c
 +    int result;
 +
 +    if (!config || tun_fd < 0)
-+        return -1;
++        goto invalid_arguments;
 +
 +    config_bytes = (*env)->GetStringUTFChars (env, config, NULL);
 +    if (!config_bytes)
-+        return -1;
++        goto invalid_arguments;
 +
 +    config_len = (*env)->GetStringUTFLength (env, config);
 +    if (config_len <= 0) {
 +        (*env)->ReleaseStringUTFChars (env, config, config_bytes);
-+        return -1;
++        goto invalid_arguments;
 +    }
 +
 +    /* HEV borrows this external fd; duplicate it so JNI can close its copy after return. */
 +    owned_tun_fd = dup (tun_fd);
 +    if (owned_tun_fd < 0) {
 +        (*env)->ReleaseStringUTFChars (env, config, config_bytes);
-+        return -1;
++        goto invalid_arguments;
 +    }
++
++    pthread_mutex_lock (&mutex);
++    if (!nova_start_reserved || nova_start_active) {
++        pthread_mutex_unlock (&mutex);
++        close (owned_tun_fd);
++        (*env)->ReleaseStringUTFChars (env, config, config_bytes);
++        return -2;
++    }
++    if (nova_stop_pending) {
++        nova_start_reserved = 0;
++        nova_stop_pending = 0;
++        pthread_mutex_unlock (&mutex);
++        close (owned_tun_fd);
++        (*env)->ReleaseStringUTFChars (env, config, config_bytes);
++        return -2;
++    }
++    nova_start_reserved = 0;
++    nova_start_active = 1;
++    pthread_mutex_unlock (&mutex);
 +
 +    result = hev_socks5_tunnel_main_from_str (
 +        (const unsigned char *)config_bytes, (unsigned int)config_len,
 +        owned_tun_fd);
++
 +    close (owned_tun_fd);
 +    (*env)->ReleaseStringUTFChars (env, config, config_bytes);
++
++    pthread_mutex_lock (&mutex);
++    hev_socks5_tunnel_reset_stop_request ();
++    nova_start_active = 0;
++    nova_start_reserved = 0;
++    nova_stop_pending = 0;
++    pthread_mutex_unlock (&mutex);
 +    return result;
++
++invalid_arguments:
++    pthread_mutex_lock (&mutex);
++    nova_start_reserved = 0;
++    nova_stop_pending = 0;
++    pthread_mutex_unlock (&mutex);
++    return -1;
 +}
 +
 +JNIEXPORT void JNICALL
 +Java_com_novaping_app_HevTunnelNative_nativeStop (JNIEnv *env, jobject thiz)
 +{
-+    hev_socks5_tunnel_quit ();
++    pthread_mutex_lock (&mutex);
++    if (nova_start_reserved) {
++        /* Preserve stop requests that arrive before nativeStart enters HEV. */
++        nova_stop_pending = 1;
++    } else if (nova_start_active) {
++        /* The HEV stop latch handles requests arriving during native init. */
++        hev_socks5_tunnel_quit ();
++    }
++    pthread_mutex_unlock (&mutex);
 +}
-+
 +
 +JNIEXPORT jboolean JNICALL
 +Java_com_novaping_app_HevTunnelNative_nativeIsInitialized (JNIEnv *env,
@@ -150,7 +222,7 @@ diff --git a/src/hev-socks5-tunnel.h b/src/hev-socks5-tunnel.h
  
  int hev_socks5_tunnel_init (int tun_fd);
  void hev_socks5_tunnel_fini (void);
-@@ -23,4 +24,9 @@
+@@ -23,4 +24,10 @@
  
  void hev_socks5_tunnel_update_session (HevListNode *node);
  
@@ -158,5 +230,6 @@ diff --git a/src/hev-socks5-tunnel.h b/src/hev-socks5-tunnel.h
 +int hev_socks5_tunnel_metadata_poll (np_packet_metadata_t *record);
 +uint32_t hev_socks5_tunnel_metadata_dropped (void);
 +int hev_socks5_tunnel_is_running (void);
++void hev_socks5_tunnel_reset_stop_request (void);
 +
  #endif /* __HEV_SOCKS5_TUNNEL_H__ */

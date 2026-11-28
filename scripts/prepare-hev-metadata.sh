@@ -32,5 +32,6 @@ grep -q 'nova_metadata_observe (p, &nova_metadata_tap_output)' "${DEST}/src/hev-
 grep -q 'hev_socks5_tunnel_metadata_poll' "${DEST}/src/hev-socks5-tunnel.c"
 grep -q 'Java_com_novaping_app_HevMetadataNative_nativePoll' "${DEST}/src/hev-jni.c"
 grep -q 'hev_socks5_tunnel_metadata_dropped' "${DEST}/src/hev-socks5-tunnel.h"
+grep -q 'hev_socks5_tunnel_reset_stop_request' "${DEST}/src/hev-socks5-tunnel.c"
 
 printf 'HEV metadata patch applied at %s\n' "${HEV_REV}"

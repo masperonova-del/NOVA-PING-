@@ -306,7 +306,15 @@ internal class NovaVpnService : VpnService() {
         }, "NovaHevEngine").apply { isDaemon = true }
         engineThread = thread
         startHevMetadataPolling()
-        thread.start()
+        check(HevTunnelNative.prepareStart()) {
+            "Impossible de réserver le démarrage natif HEV"
+        }
+        try {
+            thread.start()
+        } catch (error: Throwable) {
+            HevTunnelNative.cancelPreparedStart()
+            throw error
+        }
         startHevReadinessMonitor(thread)
     }
 
