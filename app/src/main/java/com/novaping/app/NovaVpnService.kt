@@ -185,7 +185,7 @@ internal class NovaVpnService : VpnService() {
             GameEndpointObservationSession(
                 gameId = if (gamePackage == "com.activision.callofduty.shooter") "codm" else "other",
                 gameAppPackage = gamePackage,
-                userConsentGranted = true
+                endpointObservationOptInGranted = true
             )
         } else {
             null
