@@ -775,7 +775,6 @@ internal class NovaVpnService : VpnService() {
                 put("port", candidate.remotePort)
                 put("transport", candidate.transport.name)
                 put("observations", candidate.observationCount)
-                put("sessions", candidate.distinctSessionCount)
             })
         }
         sendBroadcast(Intent(ACTION_ENDPOINTS).setPackage(packageName).apply {
