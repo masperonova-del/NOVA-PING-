@@ -21,7 +21,7 @@ data class GameEndpointObservation(
     val remotePort: Int,
     val transport: GameEndpointTransport,
     val observedAtEpochMs: Long,
-    val userConsentGranted: Boolean
+    val endpointObservationOptInGranted: Boolean
 )
 
 data class GameEndpointCandidate(
@@ -49,7 +49,7 @@ data class GameEndpointCandidate(
 
 object GameEndpointObservationRegistry {
     fun isAdmissible(observation: GameEndpointObservation, expectedPackage: String): Boolean {
-        if (!observation.userConsentGranted) return false
+        if (!observation.endpointObservationOptInGranted) return false
         if (observation.gameId.isBlank() || expectedPackage.isBlank()) return false
         if (observation.gameAppPackage != expectedPackage) return false
         if (observation.sessionId.isBlank() || observation.observedAtEpochMs <= 0L) return false
