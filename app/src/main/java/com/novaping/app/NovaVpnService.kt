@@ -778,6 +778,14 @@ internal class NovaVpnService : VpnService() {
                 put("port", candidate.remotePort)
                 put("transport", candidate.transport.name)
                 put("observations", candidate.observationCount)
+                put("outbound_packets", candidate.outboundPacketCount)
+                put("inbound_packets", candidate.inboundPacketCount)
+                put("total_observed_bytes", candidate.totalObservedBytes)
+                put("average_packet_bytes", candidate.averagePacketLengthBytes)
+                put("min_packet_bytes", candidate.minPacketLengthBytes)
+                put("max_packet_bytes", candidate.maxPacketLengthBytes)
+                put("first_observed_at_ms", candidate.firstObservedAtEpochMs)
+                put("last_observed_at_ms", candidate.lastObservedAtEpochMs)
             })
         }
         sendBroadcast(Intent(ACTION_ENDPOINTS).setPackage(packageName).apply {
