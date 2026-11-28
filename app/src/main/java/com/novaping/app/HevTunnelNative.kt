@@ -16,6 +16,10 @@ internal object HevTunnelNative {
     @Volatile
     private var loadAttempted = false
 
+    // HEV keeps process-global native state. A service recreation must not
+    // enter nativeStart while an earlier engine thread is still unwinding.
+    private val engineRunGate = HevEngineRunGate()
+
     @Synchronized
     fun isAvailable(): Boolean {
         if (loaded) return true
@@ -37,7 +41,18 @@ internal object HevTunnelNative {
         require(config.isNotBlank()) { "HEV configuration must not be empty" }
         require(tunFileDescriptor >= 0) { "Invalid TUN file descriptor" }
         check(isAvailable()) { "HEV native library is unavailable" }
+        check(engineRunGate.isReserved()) {
+            "HEV engine run was not reserved by the VPN service"
+        }
         return nativeStart(config, tunFileDescriptor)
+    }
+
+    /** Reserves the process-wide native engine before its worker thread starts. */
+    fun reserveEngineRun(): Boolean = engineRunGate.tryReserve()
+
+    /** Releases a reservation when thread startup fails or the worker exits. */
+    fun releaseEngineRun() {
+        engineRunGate.release()
     }
 
     /** True only after HEV has entered its native event loop. */
