@@ -13,7 +13,7 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
  #include "hev-socks5-tunnel.h"
  
  enum
-@@ -79,6 +84,82 @@
+@@ -79,11 +84,89 @@
  static HevTask *task_lwip_timer;
  static HevList session_set;
 +static atomic_int nova_tunnel_running;
