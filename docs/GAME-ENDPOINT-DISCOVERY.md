@@ -75,3 +75,19 @@ The HEV-to-registry connection is now implemented, but the candidate list is not
 - No decryption or inspection of game payloads.
 - No claim that a public control endpoint represents a CODM match server.
 - No automatic VPN routing optimization or claim of lower in-game latency.
+
+
+## Endpoint Intelligence V2 — packet metadata aggregation
+
+The opted-in per-game session now aggregates additional header-only evidence for each
+remote address, port, and transport tuple:
+
+- outbound and inbound packet counts;
+- total observed IP packet bytes, plus minimum, maximum, and average packet size;
+- first and last observation timestamps for the current in-memory session.
+
+These values describe packets observed at the tunnel metadata hooks. They are not
+application payload sizes, throughput guarantees, round-trip latency, packet loss,
+or proof that an endpoint is a match server. The bounded session remains in memory
+only, is limited to the selected game package, and is cleared when the tunnel stops.
+No payload, credentials, or message content is collected.
