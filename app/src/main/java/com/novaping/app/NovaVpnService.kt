@@ -92,6 +92,7 @@ internal class NovaVpnService : VpnService() {
     @Volatile private var preferredMobileNetwork: Network? = null
     @Volatile private var mobileNetworkCallback: ConnectivityManager.NetworkCallback? = null
     @Volatile private var connectivityManager: ConnectivityManager? = null
+    @Volatile private var endpointObservationSession: GameEndpointObservationSession? = null
 
     private fun publishMobileTransportStatus(status: String) {
         getSharedPreferences(VPN_PREFERENCES, Context.MODE_PRIVATE).edit()
@@ -173,6 +174,14 @@ internal class NovaVpnService : VpnService() {
         }
         val gamePackage = readSelectedGamePackage(this)
             ?: throw IllegalStateException("Aucun jeu installé n'est sélectionné")
+        // Android's system VPN-consent dialog is the explicit user authorization
+        // for this per-app observation. The Builder below scopes TUN traffic to
+        // this exact package; observations remain in memory for this session only.
+        endpointObservationSession = GameEndpointObservationSession(
+            gameId = if (gamePackage == "com.activision.callofduty.shooter") "codm" else "other",
+            gameAppPackage = gamePackage,
+            userConsentGranted = vpnAuthorizationPresent
+        )
         // In per-app mode, only the selected game is routed into TUN. NOVA PING's
         // own process is outside the VPN unless its package is explicitly allowed.
         val allowedVpnPackages = setOf(gamePackage)
@@ -390,6 +399,10 @@ internal class NovaVpnService : VpnService() {
                 try {
                     val records = HevMetadataNative.drainAvailable().get(1, TimeUnit.SECONDS)
                     records.forEach { record ->
+                        // The TUN is allow-listed to the selected game package. Keep
+                        // only validated public endpoint headers in the bounded,
+                        // in-memory session registry; never persist or log addresses.
+                        endpointObservationSession?.record(record, System.currentTimeMillis())
                         VpnDiagnostics.tracker.recordHevPacket(
                             transport = record.transport,
                             direction = record.direction,
@@ -718,6 +731,8 @@ internal class NovaVpnService : VpnService() {
 
     override fun onDestroy() {
         stopTunnel()
+        endpointObservationSession?.clear()
+        endpointObservationSession = null
         unregisterPreferredMobileNetworkMonitor()
         preferredMobileNetwork = null
         mobileTransportPreferenceEnabled = false

@@ -38,7 +38,7 @@ The model stores only endpoint metadata. It has no packet-payload, credential, m
 
 ## Packet metadata parser now added
 
-The branch now contains `GamePacketMetadataParser`, a pure Kotlin decoder for individual IP packets supplied by a future capture adapter. It extracts only:
+The branch contains `GamePacketMetadataParser`, a pure Kotlin decoder for IP packets, and `HevMetadataNative`, the single-consumer JNI adapter for the bounded native HEV metadata queue. The HEV readiness monitor starts polling only after native initialization. The VPN allow-lists the exact selected game package, so the TUN metadata stream is scoped to that package. `NovaVpnService` now feeds decoded HEV endpoint headers into `GameEndpointObservationSession`, which applies `GameEndpointObservationRegistry` validation and aggregation. The session is in-memory, bounded to 512 observations, and cleared when the VPN service is destroyed. It stores no payloads and does not write endpoint addresses into diagnostics or persistent preferences. The Android system VPN-consent flow is the authorization gate; observations are accepted only when that authorization is present. It extracts only:
 
 - IP version and remote numeric address;
 - remote TCP/UDP port and transport;
@@ -51,19 +51,23 @@ The existing WireGuard dependency is a WireGuard tunnel backend, not a generic p
 
 WireGuard Android embedding reference: https://github.com/WireGuard/wireguard-android
 
-## Android capture architecture decision\n\nThe forwarding-engine evaluation and activation gate are documented in [ADR-001](ANDROID-VPN-CAPTURE-ADR.md). HEV tun2socks is a candidate forwarding component, not yet integrated: it needs a SOCKS5 endpoint and has no documented per-packet callback. A separate reader on the same TUN descriptor is unsafe because it can consume packets that should be forwarded. The next implementation must solve the metadata tap and direct-connect SOCKS5 bridge before live capture is enabled.\n\n## Required next implementation stage
+## Android capture architecture decision
 
-Before enabling live capture, a separate engineering change must provide:
+The forwarding-engine evaluation and activation gates are documented in [ADR-001](ANDROID-VPN-CAPTURE-ADR.md). The current VPN path uses the integrated HEV tun2socks engine and a bounded native metadata tap inside the packet path. Kotlin consumes only the tap queue through the single JNI consumer after HEV reports native readiness; it does not read from the TUN descriptor independently. This avoids a second reader stealing packets from the forwarding engine. The existing tunnel/bridge path still requires real-device regression testing with each selected game and network type.
 
-- an explicit Android system VPN-consent flow;
-- strict allow-listing to the selected game package;
-- a correctly implemented and tested packet-forwarding path, or a documented alternative that does not intercept traffic;
-- local-only metadata extraction (IP version, remote address, port, transport, timestamp, session ID);
-- immediate stop and cleanup controls;
-- no packet payload persistence;
-- no endpoint claim stronger than "observed during the selected game's session".
+## Required next implementation stage
 
-Only after that capture layer is stable can the observation registry be connected to the UI and used to build a candidate list. An endpoint still needs independent evidence of its match-server role before it can be labelled as a verified match server or used as a CODM ping target.
+The next stage is validation and productization of the connected observer:
+
+- expose the candidate list in the UI with a clear "observed endpoint — server role unconfirmed" label;
+- add a user-facing explanation and a dedicated opt-in for endpoint history before retaining observations beyond the active VPN session;
+- keep endpoint addresses in memory only until that explicit history choice is implemented;
+- test the HEV tap and selected-package isolation on a real Android device with CODM in lobby and in a live match;
+- map additional game packages explicitly instead of grouping them under "other";
+- do not calculate match RTT or packet loss from one-way packet observations; those metrics need a separate, validated measurement method;
+- do not use candidate endpoints for routing or probing until their role and measurement method are independently validated.
+
+The HEV-to-registry connection is now implemented, but the candidate list is not yet exposed in the UI and is not used as a ping target. An endpoint still needs independent evidence of its match-server role before it can be labelled as a verified match server or used as a CODM ping target. The current session uses the CODM package mapping when the selected package is `com.activision.callofduty.shooter`; other selected packages are conservatively grouped as `other` until their package-to-game mapping is explicitly defined.
 
 ## Non-goals
 
