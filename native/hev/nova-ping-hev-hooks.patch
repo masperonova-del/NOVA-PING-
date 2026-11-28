@@ -149,7 +149,7 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
 +    atomic_store (&nova_tunnel_running, 0);
 +
  retry:
-@@ -939,3 +1033,37 @@
+@@ -939,3 +1033,43 @@
      if (rx_bytes)
          *rx_bytes = stat_rx_bytes;
  }
