@@ -14,7 +14,6 @@ diff --git a/src/hev-jni.c b/src/hev-jni.c
  
  #include "hev-main.h"
 +#include "hev-socks5-tunnel.h"
-
  
  #include "hev-jni.h"
  
