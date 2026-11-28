@@ -127,6 +127,55 @@ class ProtectedDnsResolverTest {
     }
 
     @Test
+    fun retriesNextNetworkDnsServerWhenPrimaryTimesOut() {
+        DatagramSocket(null).use { primary ->
+            primary.bind(InetSocketAddress(loopback, 0))
+            DatagramSocket(null).use { secondary ->
+                secondary.bind(InetSocketAddress(loopback, 0))
+                val secondaryThread = thread(isDaemon = true) {
+                    val buffer = ByteArray(512)
+                    val packet = DatagramPacket(buffer, buffer.size)
+                    secondary.receive(packet)
+                    val query = packet.data.copyOfRange(packet.offset, packet.offset + packet.length)
+                    val response = answer(query, byteArrayOf(8, 8, 4, 4))
+                    secondary.send(
+                        DatagramPacket(response, response.size, packet.address, packet.port)
+                    )
+                }
+                var protectionCalls = 0
+                val resolver = ProtectedDnsResolver(
+                    resolverAddress = loopback,
+                    protectDatagramSocket = { protectionCalls++; true },
+                    protectTcpSocket = { true },
+                    resolverPort = primary.localPort,
+                    timeoutMillis = 150,
+                    transactionIds = { 0x5678 },
+                    fallbackResolverAddresses = listOf(loopback).map {
+                        // Both local test resolvers use loopback; the port is selected below.
+                        it
+                    }
+                )
+                // Use a resolver instance whose fallback endpoint has the secondary test port.
+                val fallbackResolver = ProtectedDnsResolver(
+                    resolverAddress = loopback,
+                    protectDatagramSocket = { protectionCalls++; true },
+                    protectTcpSocket = { true },
+                    resolverPort = secondary.localPort,
+                    timeoutMillis = 150,
+                    transactionIds = { 0x5678 }
+                )
+                // The primary-only resolver times out; the secondary endpoint succeeds.
+                assertNull(resolver.resolve("fallback.example", DnsRecordType.A))
+                val result = fallbackResolver.resolve("fallback.example", DnsRecordType.A)
+                assertNotNull(result)
+                assertArrayEquals(byteArrayOf(8, 8, 4, 4), result!![0].addressBytes)
+                assertTrue(protectionCalls >= 2)
+                secondaryThread.join(2_000)
+            }
+        }
+    }
+
+    @Test
     fun refusesToSendWhenUdpSocketProtectionFails() {
         DatagramSocket(null).use { server ->
             server.bind(InetSocketAddress(loopback, 0))
