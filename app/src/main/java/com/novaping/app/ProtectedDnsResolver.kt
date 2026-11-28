@@ -22,6 +22,7 @@ internal class ProtectedDnsResolver(
     private val resolverPort: Int = 53,
     private val timeoutMillis: Int = 2_500,
     private val cache: DnsAnswerCache = DnsAnswerCache(),
+    private val fallbackResolverAddresses: List<InetAddress> = emptyList(),
     private val transactionIds: () -> Int = { secureRandom.nextInt(65_536) }
 ) {
     init {
@@ -56,27 +57,39 @@ internal class ProtectedDnsResolver(
                 return null
             }
 
-        val udpResult = queryUdp(query)
-        val udpResponse = udpResult.response ?: run {
-            VpnDiagnostics.tracker.recordDnsFailure(udpResult.failureCategory ?: "dns_udp_failed")
-            return null
-        }
-        val response = if (DnsWireCodec.isTruncatedResponse(udpResponse, id)) {
-            val tcpResult = queryTcp(query)
-            tcpResult.response ?: run {
-                VpnDiagnostics.tracker.recordDnsFailure(tcpResult.failureCategory ?: "dns_tcp_failed")
-                return null
+        var lastFailure = "dns_udp_failed"
+        val resolvers = (listOf(resolverAddress) + fallbackResolverAddresses).distinct()
+        for (resolver in resolvers) {
+            val udpResult = queryUdp(query, resolver)
+            val udpResponse = udpResult.response
+            if (udpResponse == null) {
+                lastFailure = udpResult.failureCategory ?: "dns_udp_failed"
+                continue
             }
-        } else {
-            udpResponse
+
+            val response = if (DnsWireCodec.isTruncatedResponse(udpResponse, id)) {
+                val tcpResult = queryTcp(query, resolver)
+                tcpResult.response ?: run {
+                    lastFailure = tcpResult.failureCategory ?: "dns_tcp_failed"
+                    continue
+                }
+            } else {
+                udpResponse
+            }
+
+            val answers = DnsWireCodec.parseResponse(response, normalized, type, id)
+            if (answers == null) {
+                lastFailure = "invalid_dns_response"
+                continue
+            }
+
+            cache.put(normalized, type, answers)
+            VpnDiagnostics.tracker.recordDnsSuccess()
+            return answers
         }
-        val answers = DnsWireCodec.parseResponse(response, normalized, type, id) ?: run {
-            VpnDiagnostics.tracker.recordDnsFailure("invalid_dns_response")
-            return null
-        }
-        cache.put(normalized, type, answers)
-        VpnDiagnostics.tracker.recordDnsSuccess()
-        return answers
+
+        VpnDiagnostics.tracker.recordDnsFailure(lastFailure)
+        return null
     }
 
     /** Resolves through validated A first, then AAAA; never uses the platform resolver. */
@@ -94,7 +107,7 @@ internal class ProtectedDnsResolver(
         val failureCategory: String? = null
     )
 
-    private fun queryUdp(query: ByteArray): DnsQueryResult = try {
+    private fun queryUdp(query: ByteArray, resolver: InetAddress): DnsQueryResult = try {
         DatagramSocket(null).use { socket ->
             socket.reuseAddress = false
             socket.bind(InetSocketAddress(0))
@@ -102,7 +115,7 @@ internal class ProtectedDnsResolver(
                 DnsQueryResult(null, "protect_udp_rejected")
             } else {
                 socket.soTimeout = timeoutMillis
-                socket.connect(InetSocketAddress(resolverAddress, resolverPort))
+                socket.connect(InetSocketAddress(resolver, resolverPort))
                 socket.send(DatagramPacket(query, query.size))
                 val buffer = ByteArray(MAX_DNS_MESSAGE_SIZE)
                 val packet = DatagramPacket(buffer, buffer.size)
@@ -116,14 +129,14 @@ internal class ProtectedDnsResolver(
         DnsQueryResult(null, "udp_io_error")
     }
 
-    private fun queryTcp(query: ByteArray): DnsQueryResult = try {
+    private fun queryTcp(query: ByteArray, resolver: InetAddress): DnsQueryResult = try {
         Socket().use { socket ->
             if (!protectTcpSocket(socket)) {
                 DnsQueryResult(null, "protect_tcp_rejected")
             } else {
                 socket.soTimeout = timeoutMillis
                 socket.tcpNoDelay = true
-                socket.connect(InetSocketAddress(resolverAddress, resolverPort), timeoutMillis)
+                socket.connect(InetSocketAddress(resolver, resolverPort), timeoutMillis)
                 val output = DataOutputStream(socket.getOutputStream())
                 output.writeShort(query.size)
                 output.write(query)
