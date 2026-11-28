@@ -32,6 +32,14 @@ internal object HevTunnelNative {
         return loaded
     }
 
+    /** Reserves one native start slot before the engine thread is launched. */
+    fun prepareStart(): Boolean = isAvailable() && nativePrepareStart()
+
+    /** Cancels a reservation if the Kotlin engine thread could not be started. */
+    fun cancelPreparedStart() {
+        if (isAvailable()) nativeCancelStart()
+    }
+
     /** Blocks until HEV exits or [requestStop] is called from another thread. */
     fun runBlocking(config: String, tunFileDescriptor: Int): Int {
         require(config.isNotBlank()) { "HEV configuration must not be empty" }
@@ -48,6 +56,8 @@ internal object HevTunnelNative {
         if (isAvailable()) nativeStop()
     }
 
+    private external fun nativePrepareStart(): Boolean
+    private external fun nativeCancelStart()
     private external fun nativeStart(config: String, tunFileDescriptor: Int): Int
     private external fun nativeStop()
     private external fun nativeIsInitialized(): Boolean
