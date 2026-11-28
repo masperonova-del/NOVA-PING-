@@ -15,7 +15,7 @@ diff --git a/src/hev-jni.c b/src/hev-jni.c
  #include "hev-main.h"
 +#include "hev-socks5-tunnel.h"
 
-@@ -54,6 +56,10 @@
+@@ -54,4 +56,8 @@
  static JavaVM *java_vm;
  static pthread_t work_thread;
  static pthread_mutex_t mutex;
