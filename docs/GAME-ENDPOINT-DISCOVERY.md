@@ -38,7 +38,7 @@ The model stores only endpoint metadata. It has no packet-payload, credential, m
 
 ## Packet metadata parser now added
 
-The branch now contains `GamePacketMetadataParser`, a pure Kotlin decoder for individual IP packets supplied by a future capture adapter. It extracts only:
+The branch contains `GamePacketMetadataParser`, a pure Kotlin decoder for IP packets, and `HevMetadataNative`, the single-consumer JNI adapter for the bounded native HEV metadata queue. The HEV readiness monitor starts polling only after native initialization. The VPN allow-lists the exact selected game package, so the TUN metadata stream is scoped to that package. `NovaVpnService` now feeds decoded HEV endpoint headers into `GameEndpointObservationSession`, which applies `GameEndpointObservationRegistry` validation and aggregation. The session is in-memory, bounded to 512 observations, and cleared when the VPN service is destroyed. It stores no payloads and does not write endpoint addresses into diagnostics or persistent preferences. The Android system VPN-consent flow is the authorization gate; observations are accepted only when that authorization is present. It extracts only:
 
 - IP version and remote numeric address;
 - remote TCP/UDP port and transport;
@@ -58,12 +58,12 @@ Before enabling live capture, a separate engineering change must provide:
 - an explicit Android system VPN-consent flow;
 - strict allow-listing to the selected game package;
 - a correctly implemented and tested packet-forwarding path, or a documented alternative that does not intercept traffic;
-- local-only metadata extraction (IP version, remote address, port, transport, timestamp, session ID);
+- local-only metadata extraction (IP version, remote address, port, transport, timestamp, session ID), already connected from HEV polling to the in-memory registry;
 - immediate stop and cleanup controls;
 - no packet payload persistence;
 - no endpoint claim stronger than "observed during the selected game's session".
 
-Only after that capture layer is stable can the observation registry be connected to the UI and used to build a candidate list. An endpoint still needs independent evidence of its match-server role before it can be labelled as a verified match server or used as a CODM ping target.
+The HEV-to-registry connection is now implemented, but the candidate list is not yet exposed in the UI and is not used as a ping target. An endpoint still needs independent evidence of its match-server role before it can be labelled as a verified match server or used as a CODM ping target. The current session uses the CODM package mapping when the selected package is `com.activision.callofduty.shooter`; other selected packages are conservatively grouped as `other` until their package-to-game mapping is explicitly defined.
 
 ## Non-goals
 
