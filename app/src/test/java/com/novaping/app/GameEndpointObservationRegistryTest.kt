@@ -24,7 +24,7 @@ class GameEndpointObservationRegistryTest {
         remotePort = port,
         transport = transport,
         observedAtEpochMs = observedAt,
-        endpointObservationOptInGranted = consent
+        endpointObservationOptInGranted = optIn
     )
 
     @Test fun rejectsObservationWithoutEndpointObservationOptIn() {
