@@ -222,7 +222,7 @@ diff --git a/src/hev-socks5-tunnel.h b/src/hev-socks5-tunnel.h
  
  int hev_socks5_tunnel_init (int tun_fd);
  void hev_socks5_tunnel_fini (void);
-@@ -23,4 +24,9 @@
+@@ -23,4 +24,10 @@
  
  void hev_socks5_tunnel_update_session (HevListNode *node);
  
@@ -230,5 +230,6 @@ diff --git a/src/hev-socks5-tunnel.h b/src/hev-socks5-tunnel.h
 +int hev_socks5_tunnel_metadata_poll (np_packet_metadata_t *record);
 +uint32_t hev_socks5_tunnel_metadata_dropped (void);
 +int hev_socks5_tunnel_is_running (void);
++void hev_socks5_tunnel_reset_stop_request (void);
 +
  #endif /* __HEV_SOCKS5_TUNNEL_H__ */
