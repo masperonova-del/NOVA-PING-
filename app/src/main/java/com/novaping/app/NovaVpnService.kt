@@ -209,13 +209,15 @@ internal class NovaVpnService : VpnService() {
             ?: throw IllegalStateException("Aucun réseau Internet actif")
         val linkProperties: LinkProperties = connectivity.getLinkProperties(underlying)
             ?: throw IllegalStateException("Configuration du réseau indisponible")
-        val dnsServer = linkProperties.dnsServers.firstOrNull()
+        val dnsServers = linkProperties.dnsServers.distinct()
+        val dnsServer = dnsServers.firstOrNull()
             ?: throw IllegalStateException("Aucun serveur DNS numérique fourni par le réseau")
 
         val resolver = ProtectedDnsResolver(
             resolverAddress = dnsServer,
             protectDatagramSocket = { protectSocket(it, "DNS_UDP", upstreamSocketsRequireProtection) },
-            protectTcpSocket = { protectSocket(it, "DNS_TCP", upstreamSocketsRequireProtection) }
+            protectTcpSocket = { protectSocket(it, "DNS_TCP", upstreamSocketsRequireProtection) },
+            fallbackResolverAddresses = dnsServers.drop(1)
         )
         val localBridge = LocalSocks5Bridge(
             protectUpstreamSocket = { protectSocket(it, "TCP_CONNECT", upstreamSocketsRequireProtection) },

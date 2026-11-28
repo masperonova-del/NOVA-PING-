@@ -127,6 +127,44 @@ class ProtectedDnsResolverTest {
     }
 
     @Test
+    fun retriesNextNetworkDnsServerWhenPrimaryTimesOut() {
+        val primaryAddress = InetAddress.getByName("127.0.0.1")
+        val secondaryAddress = InetAddress.getByName("127.0.0.2")
+        DatagramSocket(null).use { primary ->
+            primary.bind(InetSocketAddress(primaryAddress, 0))
+            DatagramSocket(null).use { secondary ->
+                secondary.bind(InetSocketAddress(secondaryAddress, primary.localPort))
+                val secondaryThread = thread(isDaemon = true) {
+                    val buffer = ByteArray(512)
+                    val packet = DatagramPacket(buffer, buffer.size)
+                    secondary.receive(packet)
+                    val query = packet.data.copyOfRange(packet.offset, packet.offset + packet.length)
+                    val response = answer(query, byteArrayOf(8, 8, 4, 4))
+                    secondary.send(
+                        DatagramPacket(response, response.size, packet.address, packet.port)
+                    )
+                }
+                var protectionCalls = 0
+                val resolver = ProtectedDnsResolver(
+                    resolverAddress = primaryAddress,
+                    protectDatagramSocket = { protectionCalls++; true },
+                    protectTcpSocket = { true },
+                    resolverPort = primary.localPort,
+                    timeoutMillis = 150,
+                    transactionIds = { 0x5678 },
+                    fallbackResolverAddresses = listOf(secondaryAddress)
+                )
+                val result = resolver.resolve("fallback.example", DnsRecordType.A)
+                assertNotNull(result)
+                assertEquals(1, result!!.size)
+                assertArrayEquals(byteArrayOf(8, 8, 4, 4), result[0].addressBytes)
+                assertEquals(2, protectionCalls)
+                secondaryThread.join(2_000)
+            }
+        }
+    }
+
+    @Test
     fun refusesToSendWhenUdpSocketProtectionFails() {
         DatagramSocket(null).use { server ->
             server.bind(InetSocketAddress(loopback, 0))

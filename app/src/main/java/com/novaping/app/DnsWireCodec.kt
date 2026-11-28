@@ -22,6 +22,8 @@ internal object DnsWireCodec {
     private const val HEADER = 12
     private const val CLASS_IN = 1
     private const val MAX_RECORDS = 512
+    private const val CNAME = 5
+    private const val MAX_CNAME_HOPS = 16
 
     fun encodeQuery(hostname: String, type: DnsRecordType, transactionId: Int): ByteArray {
         require(transactionId in 0..65535)
@@ -73,7 +75,11 @@ internal object DnsWireCodec {
             u16(packet, offset) != expectedType.wireValue || u16(packet, offset + 2) != CLASS_IN) return null
         offset += 4
 
-        val answers = ArrayList<DnsAnswer>()
+        data class CnameTarget(val hostname: String, val ttlSeconds: Long)
+        data class AddressRecord(val owner: String, val answer: DnsAnswer)
+        val cnameTargets = LinkedHashMap<String, CnameTarget>()
+        val addressRecords = ArrayList<AddressRecord>()
+
         repeat(an) {
             val owner = decodeName(packet, offset) ?: return null
             offset = owner.nextOffset
@@ -84,10 +90,24 @@ internal object DnsWireCodec {
             val length = u16(packet, offset + 8)
             offset += 10
             if (offset + length > packet.size) return null
-            if (owner.name == expected && klass == CLASS_IN && type == expectedType.wireValue) {
+
+            if (klass == CLASS_IN && type == CNAME) {
+                val target = decodeName(packet, offset) ?: return null
+                // A compressed or uncompressed CNAME name must consume exactly RDLENGTH.
+                if (target.nextOffset != offset + length) return null
+                val previous = cnameTargets.put(owner.name, CnameTarget(target.name, ttl))
+                if (previous != null && previous.hostname != target.name) return null
+            } else if (owner.name.isNotEmpty() && klass == CLASS_IN &&
+                type == expectedType.wireValue
+            ) {
                 val required = if (expectedType == DnsRecordType.A) 4 else 16
                 if (length != required) return null
-                answers.add(DnsAnswer(expectedType, packet.copyOfRange(offset, offset + length), ttl))
+                addressRecords.add(
+                    AddressRecord(
+                        owner.name,
+                        DnsAnswer(expectedType, packet.copyOfRange(offset, offset + length), ttl)
+                    )
+                )
             }
             offset += length
         }
@@ -101,7 +121,27 @@ internal object DnsWireCodec {
             offset += length
         }
         if (offset != packet.size) return null
-        return answers
+
+        // Follow a bounded CNAME chain and apply its shortest TTL to final addresses.
+        var canonicalName = expected
+        var chainTtl = Long.MAX_VALUE
+        val visited = HashSet<String>()
+        var hops = 0
+        while (true) {
+            if (!visited.add(canonicalName)) return null
+            val cname = cnameTargets[canonicalName] ?: break
+            if (++hops > MAX_CNAME_HOPS) return null
+            chainTtl = minOf(chainTtl, cname.ttlSeconds)
+            canonicalName = cname.hostname
+        }
+        return addressRecords.asSequence()
+            .filter { it.owner == canonicalName }
+            .map {
+                val ttl = if (chainTtl == Long.MAX_VALUE) it.answer.ttlSeconds
+                    else minOf(chainTtl, it.answer.ttlSeconds)
+                it.answer.copy(ttlSeconds = ttl)
+            }
+            .toList()
     }
 
     fun normalizeHostname(hostname: String): String {
