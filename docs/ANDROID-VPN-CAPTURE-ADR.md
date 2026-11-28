@@ -386,3 +386,49 @@ Le hook d'entrée TUN représente le sens sortant depuis l'application ; le hook
 Le producteur unique reste le thread du scheduler HEV épinglé ; le futur consommateur JNI devra être sérialisé sur un seul thread. Aucun appel JNI synchrone ne doit être ajouté au transfert. La file n'est pas MPMC et ne doit pas être appelée depuis un producteur externe concurrent.
 
 **Limite actuelle :** la façade et les tests sont dans NOVA PING, mais les hooks ne sont pas encore ajoutés à HEV. Le moteur amont n'est ni vendored ni compilé dans cette étape ; aucun AAR n'est produit, aucun service VPN n'est démarré et aucun trafic n'est redirigé.
+
+## Mise à jour — raccordement HEV et barrière de disponibilité — 28 novembre 2026
+
+L'état du dépôt a évolué depuis les premières sections historiques de cet ADR. La branche
+`fix/hev-start-stop-handshake-v1` contient désormais le raccordement des hooks natifs
+dans le patch HEV épinglé, l'export JNI des enregistrements et leur lecture Kotlin.
+
+### État actuel vérifié dans le code
+
+- `nova_metadata_init()` initialise les taps natifs et lit les adresses TUN depuis la configuration HEV.
+- Les hooks d'entrée et de sortie TUN observent les en-têtes via l'adaptateur pbuf non propriétaire.
+- Le consommateur JNI est sérialisé par un exécuteur Kotlin à thread unique.
+- Le rapport de diagnostic réduit actuellement les métadonnées aux compteurs transport/direction/taille ; les IP et ports ne sont pas conservés.
+- Ces métadonnées ne prouvent pas à elles seules qu'une destination est un serveur de match ni ne fournissent le RTT du jeu.
+
+### Correction de cycle de vie
+
+Le polling Kotlin ne doit pas commencer avant l'initialisation native des taps. Le signal
+`hev_socks5_tunnel_is_running()` est publié par le thread du scheduler après l'initialisation
+HEV et `nova_metadata_init()`. Il sert désormais de barrière de disponibilité :
+
+1. Kotlin prépare et lance le thread HEV.
+2. Le moniteur attend la confirmation native de disponibilité.
+3. Après confirmation et vérification que le thread est toujours vivant et que l'arrêt n'est pas demandé, Kotlin démarre le consommateur de métadonnées.
+4. L'arrêt du tunnel interrompt le consommateur existant comme auparavant.
+
+Cette séquence évite que le consommateur JNI lise `np_metadata_tap_t.ready` pendant que le
+thread HEV est encore en train de l'initialiser. Elle ne modifie ni le transfert des paquets,
+ni le format des enregistrements, ni les règles de confidentialité.
+
+### Contrôles CI renforcés
+
+Le workflow valide maintenant les symboles JNI `nativePrepareStart` et `nativeCancelStart`
+pour chacune des quatre ABI, en plus des symboles déjà vérifiés. Les branches de base
+utilisées par les PR HEV empilées sont également couvertes par le déclencheur
+`pull_request`, afin que ces PR ne dépendent pas uniquement d'un push sur leur branche.
+
+### Limites restantes
+
+- La télémétrie reste agrégée et ne relie pas encore les observations à un identifiant de session de jeu.
+- Aucun classement automatique des endpoints observés comme serveurs de match n'est ajouté.
+- Aucun ping de serveur CODM ni taux de perte de paquets de la partie n'est calculé.
+- Aucun changement de route ni relais distant n'est activé par cette évolution.
+
+Les sections antérieures décrivent l'état des étapes à leur date respective ; cette mise à jour
+décrit l'état du raccordement au commit de cette branche.
