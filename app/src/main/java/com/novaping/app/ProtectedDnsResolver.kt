@@ -67,14 +67,17 @@ internal class ProtectedDnsResolver(
                 continue
             }
 
-            val response = if (DnsWireCodec.isTruncatedResponse(udpResponse, id)) {
+            val response: ByteArray
+            if (DnsWireCodec.isTruncatedResponse(udpResponse, id)) {
                 val tcpResult = queryTcp(query, resolver)
-                tcpResult.response ?: run {
+                val tcpResponse = tcpResult.response
+                if (tcpResponse == null) {
                     lastFailure = tcpResult.failureCategory ?: "dns_tcp_failed"
                     continue
                 }
+                response = tcpResponse
             } else {
-                udpResponse
+                response = udpResponse
             }
 
             val answers = DnsWireCodec.parseResponse(response, normalized, type, id)
