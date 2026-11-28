@@ -187,3 +187,9 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
 +{
 +    return atomic_load (&nova_tunnel_running);
 +}
+
++EXPORT_SYMBOL void
++hev_socks5_tunnel_reset_stop_request (void)
++{
++    atomic_fetch_and (&tsync, ~SYNC_STOP);
++}
