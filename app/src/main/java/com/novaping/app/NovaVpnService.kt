@@ -276,10 +276,10 @@ internal class NovaVpnService : VpnService() {
         }
         publishState("starting", null)
         val thread = Thread({
-            engineStarted = true
-            VpnDiagnostics.tracker.setEngineState("Initialisation native en cours")
-            VpnDiagnostics.tracker.setTunnelState("Initialisation HEV non confirmée")
             try {
+                engineStarted = true
+                VpnDiagnostics.tracker.setEngineState("Initialisation native en cours")
+                VpnDiagnostics.tracker.setTunnelState("Initialisation HEV non confirmée")
                 val result = HevTunnelNative.runBlocking(config, fd)
                 VpnDiagnostics.tracker.recordEngineExit(result)
                 HevEngineExitPolicy.unexpectedExitMessage(
@@ -296,6 +296,7 @@ internal class NovaVpnService : VpnService() {
                     publishState("error", terminalError)
                 }
             } finally {
+                HevTunnelNative.releaseEngineRun()
                 stopHevReadinessMonitor()
                 stopHevMetadataPolling()
                 engineStarted = false
@@ -306,7 +307,15 @@ internal class NovaVpnService : VpnService() {
         }, "NovaHevEngine").apply { isDaemon = true }
         engineThread = thread
         startHevMetadataPolling()
-        thread.start()
+        check(HevTunnelNative.reserveEngineRun()) {
+            "Une session HEV précédente termine encore son arrêt. Réessayez dans quelques secondes."
+        }
+        try {
+            thread.start()
+        } catch (error: Throwable) {
+            HevTunnelNative.releaseEngineRun()
+            throw error
+        }
         startHevReadinessMonitor(thread)
     }
 
