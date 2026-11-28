@@ -596,7 +596,7 @@ internal class NovaVpnService : VpnService() {
         return protected && bindToPreferredMobileNetwork(socket)
     }
 
-    private inline fun evaluateSocketProtection(
+    private fun evaluateSocketProtection(
         purpose: String,
         invalidPrecondition: Boolean,
         socketClosed: Boolean,
