@@ -7,7 +7,7 @@ import java.net.InetAddress
 /**
  * Metadata-only observation of a remote socket associated with a user-selected game app.
  *
- * The capture layer must be explicit, user-consented and app-scoped. Packet payloads,
+ * The capture layer requires a separate in-app opt-in and is app-scoped. Packet payloads,
  * credentials and message contents are deliberately not represented by this model.
  * An observed remote socket is only a candidate; it is not proof of a match-server role.
  */
