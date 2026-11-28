@@ -15,7 +15,9 @@ class GameEndpointObservationRegistryTest {
         transport: GameEndpointTransport = GameEndpointTransport.UDP,
         observedAt: Long = 1_800_000_000_000L,
         optIn: Boolean = true,
-        appPackage: String = packageName
+        appPackage: String = packageName,
+        direction: GamePacketDirection = GamePacketDirection.OUTBOUND,
+        packetLengthBytes: Int = 100
     ) = GameEndpointObservation(
         gameId = "codm",
         gameAppPackage = appPackage,
@@ -23,6 +25,8 @@ class GameEndpointObservationRegistryTest {
         remoteAddress = address,
         remotePort = port,
         transport = transport,
+        direction = direction,
+        packetLengthBytes = packetLengthBytes,
         observedAtEpochMs = observedAt,
         endpointObservationOptInGranted = optIn
     )
@@ -126,6 +130,27 @@ class GameEndpointObservationRegistryTest {
         assertEquals(3, candidates.single().observationCount)
         assertEquals(1, candidates.single().distinctSessionCount)
         assertFalse(candidates.single().repeatedAcrossSessions)
+    }
+
+
+    @Test fun aggregatesDirectionAndPacketVolumeMetrics() {
+        val candidates = GameEndpointObservationRegistry.candidatesForGame(
+            listOf(
+                observation(session = "one", observedAt = 100L, direction = GamePacketDirection.OUTBOUND, packetLengthBytes = 100),
+                observation(session = "one", observedAt = 200L, direction = GamePacketDirection.OUTBOUND, packetLengthBytes = 200),
+                observation(session = "one", observedAt = 300L, direction = GamePacketDirection.INBOUND, packetLengthBytes = 50)
+            ),
+            "codm",
+            packageName
+        )
+
+        val candidate = candidates.single()
+        assertEquals(2, candidate.outboundPacketCount)
+        assertEquals(1, candidate.inboundPacketCount)
+        assertEquals(350L, candidate.totalObservedBytes)
+        assertEquals(50, candidate.minPacketLengthBytes)
+        assertEquals(200, candidate.maxPacketLengthBytes)
+        assertEquals(350.0 / 3.0, candidate.averagePacketLengthBytes, 0.001)
     }
 
     @Test fun filtersOtherGamesAndApplications() {
