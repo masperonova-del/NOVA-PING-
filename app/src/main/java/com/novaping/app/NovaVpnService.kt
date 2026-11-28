@@ -400,6 +400,24 @@ internal class NovaVpnService : VpnService() {
      * sockets are bound to that Network and cannot be transparently migrated;
      * stopping the VPN avoids an unannounced fallback through Wi-Fi.
      */
+    private fun failClosedForPreferredMobileNetwork(
+        selectedNetwork: Network,
+        message: String
+    ) {
+        mainHandler.post {
+            if (preferredMobileNetwork != selectedNetwork ||
+                !mobileTransportPreferenceEnabled ||
+                !tunnelEstablished ||
+                stopping.get()
+            ) return@post
+
+            terminalError = message
+            publishMobileTransportStatus("mobile_lost")
+            publishState("error", message)
+            stopTunnel()
+        }
+    }
+
     private fun registerPreferredMobileNetworkMonitor(
         connectivity: ConnectivityManager,
         selectedNetwork: Network
@@ -410,21 +428,29 @@ internal class NovaVpnService : VpnService() {
             .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
             .build()
         val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onCapabilitiesChanged(
+                network: Network,
+                capabilities: NetworkCapabilities
+            ) {
+                if (network != selectedNetwork) return
+                val usable = MobileNetworkAvailability.isUsable(
+                    hasCellularTransport = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR),
+                    hasInternetCapability = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                )
+                if (!usable) {
+                    failClosedForPreferredMobileNetwork(
+                        selectedNetwork,
+                        "Le réseau mobile sélectionné a perdu sa capacité Internet. NOVA PING arrête le tunnel pour éviter un basculement silencieux vers le Wi-Fi."
+                    )
+                }
+            }
+
             override fun onLost(network: Network) {
                 if (network != selectedNetwork) return
-                mainHandler.post {
-                    if (preferredMobileNetwork != selectedNetwork ||
-                        !mobileTransportPreferenceEnabled ||
-                        !tunnelEstablished
-                    ) return@post
-
-                    val message =
-                        "Le réseau mobile utilisé par le tunnel a disparu. NOVA PING arrête le tunnel pour éviter un basculement silencieux vers le Wi-Fi."
-                    terminalError = message
-                    publishMobileTransportStatus("mobile_lost")
-                    publishState("error", message)
-                    stopTunnel()
-                }
+                failClosedForPreferredMobileNetwork(
+                    selectedNetwork,
+                    "Le réseau mobile utilisé par le tunnel a disparu. NOVA PING arrête le tunnel pour éviter un basculement silencieux vers le Wi-Fi."
+                )
             }
         }
         try {
@@ -439,8 +465,10 @@ internal class NovaVpnService : VpnService() {
         }
 
         val capabilities = connectivity.getNetworkCapabilities(selectedNetwork)
-        val stillAvailable = capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true &&
-            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        val stillAvailable = capabilities != null && MobileNetworkAvailability.isUsable(
+            hasCellularTransport = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR),
+            hasInternetCapability = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        )
         if (!stillAvailable) {
             publishMobileTransportStatus("mobile_lost")
             throw IllegalStateException(
