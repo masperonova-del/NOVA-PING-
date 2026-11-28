@@ -563,15 +563,10 @@ internal class NovaVpnService : VpnService() {
         val engineThreadAliveAtCall = engineThread?.isAlive == true
         val stoppingAtCall = stopping.get()
 
-        val outcome = try {
-            if (protectCall()) "protected" else "rejected"
-        } catch (_: SecurityException) {
-            "security_exception"
-        } catch (_: IllegalArgumentException) {
-            "invalid_socket"
-        } catch (_: Exception) {
-            "exception"
-        }
+        val outcome = SocketProtectionGuard.evaluate(
+            invalidPrecondition = invalidPrecondition,
+            protectCall = protectCall
+        )
         val authorizationPresentAfter = VpnService.prepare(this) == null
         VpnDiagnostics.tracker.recordSocketProtection(purpose, outcome, invalidPrecondition)
         VpnDiagnostics.tracker.recordSocketProtectionAuthorization(
