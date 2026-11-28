@@ -149,7 +149,7 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
 +    atomic_store (&nova_tunnel_running, 0);
 +
  retry:
-@@ -939,3 +1033,42 @@
+@@ -939,3 +1033,43 @@
      if (rx_bytes)
          *rx_bytes = stat_rx_bytes;
  }
@@ -192,4 +192,4 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
 +hev_socks5_tunnel_reset_stop_request (void)
 +{
 +    atomic_fetch_and (&tsync, ~SYNC_STOP);
-NaN
++}
