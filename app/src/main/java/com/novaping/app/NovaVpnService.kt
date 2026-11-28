@@ -125,6 +125,7 @@ internal class NovaVpnService : VpnService() {
             }
             ACTION_REQUEST_ENDPOINTS -> {
                 publishEndpointObservations()
+                if (!tunnelEstablished && engineThread?.isAlive != true) stopSelf(startId)
                 return START_NOT_STICKY
             }
             ACTION_START -> {
@@ -775,8 +776,6 @@ internal class NovaVpnService : VpnService() {
                 put("transport", candidate.transport.name)
                 put("observations", candidate.observationCount)
                 put("sessions", candidate.distinctSessionCount)
-                put("first_seen", candidate.firstObservedAtEpochMs)
-                put("last_seen", candidate.lastObservedAtEpochMs)
             })
         }
         sendBroadcast(Intent(ACTION_ENDPOINTS).setPackage(packageName).apply {
