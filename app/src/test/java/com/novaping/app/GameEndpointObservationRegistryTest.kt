@@ -14,7 +14,7 @@ class GameEndpointObservationRegistryTest {
         port: Int = 7500,
         transport: GameEndpointTransport = GameEndpointTransport.UDP,
         observedAt: Long = 1_800_000_000_000L,
-        consent: Boolean = true,
+        optIn: Boolean = true,
         appPackage: String = packageName
     ) = GameEndpointObservation(
         gameId = "codm",
@@ -24,12 +24,12 @@ class GameEndpointObservationRegistryTest {
         remotePort = port,
         transport = transport,
         observedAtEpochMs = observedAt,
-        userConsentGranted = consent
+        endpointObservationOptInGranted = consent
     )
 
-    @Test fun rejectsObservationWithoutExplicitConsent() {
+    @Test fun rejectsObservationWithoutEndpointObservationOptIn() {
         assertFalse(GameEndpointObservationRegistry.isAdmissible(
-            observation(consent = false), packageName
+            observation(optIn = false), packageName
         ))
     }
 
