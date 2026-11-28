@@ -174,6 +174,7 @@ diff --git a/src/hev-jni.c b/src/hev-jni.c
 +    (*env)->ReleaseStringUTFChars (env, config, config_bytes);
 +
 +    pthread_mutex_lock (&mutex);
++    hev_socks5_tunnel_reset_stop_request ();
 +    nova_start_active = 0;
 +    nova_start_reserved = 0;
 +    nova_stop_pending = 0;
