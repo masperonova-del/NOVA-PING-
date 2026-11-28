@@ -16,6 +16,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
+import android.os.SystemClock
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.Socket
@@ -43,6 +44,7 @@ internal class NovaVpnService : VpnService() {
         private const val KEY_LAST_TUNNEL_ERROR = "last_tunnel_error"
         private const val TUN_IPV4 = "198.18.0.1"
         private const val TUN_IPV6 = "fc00::1"
+        private const val HEV_READINESS_TIMEOUT_MS = 15_000L
 
         internal fun saveSelectedGamePackage(context: Context, packageName: String) {
             val validPackage = VpnGameSelection.validatePackageName(packageName)
@@ -280,9 +282,12 @@ internal class NovaVpnService : VpnService() {
             try {
                 val result = HevTunnelNative.runBlocking(config, fd)
                 VpnDiagnostics.tracker.recordEngineExit(result)
-                if (!stopping.get() && result != 0) {
-                    terminalError = "Le moteur HEV s'est arrêté avec le code $result"
-                    publishState("error", terminalError)
+                HevEngineExitPolicy.unexpectedExitMessage(
+                    exitCode = result,
+                    stopRequested = stopping.get()
+                )?.let { message ->
+                    terminalError = message
+                    publishState("error", message)
                 }
             } catch (error: Throwable) {
                 VpnDiagnostics.tracker.recordEngineFailure()
@@ -311,6 +316,7 @@ internal class NovaVpnService : VpnService() {
      */
     private fun startHevReadinessMonitor(engine: Thread) {
         val monitor = Thread({
+            val startedAt = SystemClock.elapsedRealtime()
             while (!stopping.get() && engine.isAlive) {
                 val ready = runCatching { HevTunnelNative.isEngineReady() }.getOrDefault(false)
                 if (ready) {
@@ -318,6 +324,25 @@ internal class NovaVpnService : VpnService() {
                         VpnDiagnostics.tracker.setEngineState("Initialisé — boucle native active")
                         VpnDiagnostics.tracker.setTunnelState("HEV actif")
                         publishState("ready", null)
+                    }
+                    return@Thread
+                }
+                if (HevReadinessPolicy.hasTimedOut(
+                        ready = false,
+                        engineAlive = engine.isAlive,
+                        stopRequested = stopping.get(),
+                        elapsedMs = SystemClock.elapsedRealtime() - startedAt,
+                        timeoutMs = HEV_READINESS_TIMEOUT_MS
+                    )
+                ) {
+                    mainHandler.post {
+                        if (!stopping.get() && engine.isAlive && tunnelEstablished) {
+                            val message =
+                                "HEV n'a pas confirmé le démarrage dans le délai prévu. Le tunnel est arrêté par sécurité."
+                            terminalError = message
+                            publishState("error", message)
+                            stopTunnel()
+                        }
                     }
                     return@Thread
                 }
