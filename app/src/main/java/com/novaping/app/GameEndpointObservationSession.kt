@@ -3,7 +3,7 @@ package com.novaping.app
 import java.util.UUID
 
 /**
- * Bounded, in-memory observations for one explicitly user-started, per-app VPN session.
+ * Bounded, in-memory observations for one per-app VPN session with a separate explicit opt-in.
  *
  * HEV receives only the selected application's TUN traffic because the VPN builder
  * allow-lists that package. The session never persists endpoint addresses and is
@@ -13,7 +13,7 @@ import java.util.UUID
 internal class GameEndpointObservationSession(
     private val gameId: String,
     private val gameAppPackage: String,
-    private val userConsentGranted: Boolean,
+    private val endpointObservationOptInGranted: Boolean,
     private val sessionId: String = UUID.randomUUID().toString(),
     private val maxObservations: Int = DEFAULT_MAX_OBSERVATIONS
 ) {
@@ -32,7 +32,7 @@ internal class GameEndpointObservationSession(
 
     @Synchronized
     fun record(metadata: HevPacketMetadata, observedAtEpochMs: Long): Boolean {
-        if (!userConsentGranted || observedAtEpochMs <= 0L) return false
+        if (!endpointObservationOptInGranted || observedAtEpochMs <= 0L) return false
         val transport = when (metadata.transport) {
             6 -> GameEndpointTransport.TCP
             17 -> GameEndpointTransport.UDP
@@ -46,7 +46,7 @@ internal class GameEndpointObservationSession(
             remotePort = metadata.remotePort,
             transport = transport,
             observedAtEpochMs = observedAtEpochMs,
-            userConsentGranted = userConsentGranted
+            endpointObservationOptInGranted = endpointObservationOptInGranted
         )
         if (!GameEndpointObservationRegistry.isAdmissible(observation, gameAppPackage)) {
             return false

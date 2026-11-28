@@ -38,7 +38,7 @@ The model stores only endpoint metadata. It has no packet-payload, credential, m
 
 ## Packet metadata parser now added
 
-The branch contains `GamePacketMetadataParser`, a pure Kotlin decoder for IP packets, and `HevMetadataNative`, the single-consumer JNI adapter for the bounded native HEV metadata queue. The HEV readiness monitor starts polling only after native initialization. The VPN allow-lists the exact selected game package, so the TUN metadata stream is scoped to that package. `NovaVpnService` now feeds decoded HEV endpoint headers into `GameEndpointObservationSession`, which applies `GameEndpointObservationRegistry` validation and aggregation. The session is in-memory, bounded to 512 observations, and cleared when the VPN service is destroyed. It stores no payloads and does not write endpoint addresses into diagnostics or persistent preferences. The Android system VPN-consent flow is the authorization gate; observations are accepted only when that authorization is present. It extracts only:
+The branch contains `GamePacketMetadataParser`, a pure Kotlin decoder for IP packets, and `HevMetadataNative`, the single-consumer JNI adapter for the bounded native HEV metadata queue. The HEV readiness monitor starts polling only after native initialization. The VPN allow-lists the exact selected game package, so the TUN metadata stream is scoped to that package. `NovaVpnService` now feeds decoded HEV endpoint headers into `GameEndpointObservationSession`, which applies `GameEndpointObservationRegistry` validation and aggregation. The session is in-memory, bounded to 512 observations, and cleared when the tunnel stops. It stores no payloads and does not write endpoint addresses into diagnostics or persistent preferences. Android VPN consent authorizes the tunnel only; endpoint observation is disabled by default and starts only after a separate, explicit in-app opt-in for that session. It extracts only:
 
 - IP version and remote numeric address;
 - remote TCP/UDP port and transport;
@@ -60,8 +60,8 @@ The forwarding-engine evaluation and activation gates are documented in [ADR-001
 The next stage is validation and productization of the connected observer:
 
 - expose the candidate list in the UI with a clear "observed endpoint — server role unconfirmed" label;
-- add a user-facing explanation and a dedicated opt-in for endpoint history before retaining observations beyond the active VPN session;
-- keep endpoint addresses in memory only until that explicit history choice is implemented;
+- keep the dedicated in-app session opt-in independent from Android VPN authorization; it is implemented and defaults to off;
+- keep endpoint addresses in memory only, clear them when the tunnel stops, and require a separate explicit history opt-in before any persistence;
 - test the HEV tap and selected-package isolation on a real Android device with CODM in lobby and in a live match;
 - map additional game packages explicitly instead of grouping them under "other";
 - do not calculate match RTT or packet loss from one-way packet observations; those metrics need a separate, validated measurement method;

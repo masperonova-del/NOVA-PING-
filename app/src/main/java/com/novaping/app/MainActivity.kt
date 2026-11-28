@@ -25,6 +25,7 @@ import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -120,6 +121,7 @@ class MainActivity : Activity() {
     private lateinit var vpnGameSpinner: Spinner
     private lateinit var vpnConsentStatus: TextView
     private lateinit var vpnConsentButton: Button
+    private lateinit var endpointObservationOptInCheckBox: CheckBox
     private var installedGameApps: List<InstalledLaunchableApp> = emptyList()
     private var selectedVpnGamePackage: String? = null
     private var vpnTunnelStartRequested = false
@@ -134,6 +136,9 @@ class MainActivity : Activity() {
     }
 
     private fun applyVpnUiState(state: String, error: String?) {
+        if (::endpointObservationOptInCheckBox.isInitialized) {
+            endpointObservationOptInCheckBox.isEnabled = state !in setOf("starting", "ready")
+        }
         when (state) {
             "starting" -> {
                 vpnTunnelStartRequested = true
@@ -689,6 +694,22 @@ class MainActivity : Activity() {
             }
         }
         vpnConsentCard.addView(vpnGameSpinner)
+        vpnConsentCard.addView(label(
+            "OBSERVATION DES ENDPOINTS — OPTIONNELLE",
+            11f, accentColor, true, Gravity.START
+        ).apply { setPadding(0, dp(12), 0, dp(4)) })
+        endpointObservationOptInCheckBox = CheckBox(this).apply {
+            text = "Autoriser NOVA PING à observer les adresses IP et ports distants du jeu pendant cette session"
+            textSize = 13f
+            setTextColor(Color.WHITE)
+            isChecked = false
+            isEnabled = installedGameApps.isNotEmpty()
+        }
+        vpnConsentCard.addView(endpointObservationOptInCheckBox)
+        vpnConsentCard.addView(label(
+            "Désactivée par défaut. Cette option est indépendante de l’autorisation VPN Android. Les observations restent en mémoire pendant le tunnel et sont effacées à son arrêt ; aucun contenu de paquet n’est lu ni conservé.",
+            11f, mutedColor, false, Gravity.START
+        ).apply { setPadding(0, dp(2), 0, dp(8)) })
         vpnConsentStatus = label(
             if (installedGameApps.isEmpty()) "Aucune application de jeu lançable détectée."
             else "Aucun tunnel actif. Choisis un jeu puis démarre le diagnostic.",
@@ -2932,7 +2953,12 @@ class MainActivity : Activity() {
     private fun startGameTunnel() {
         try {
             startForegroundService(
-                Intent(this, NovaVpnService::class.java).setAction(NovaVpnService.ACTION_START)
+                Intent(this, NovaVpnService::class.java)
+                    .setAction(NovaVpnService.ACTION_START)
+                    .putExtra(
+                        NovaVpnService.EXTRA_ENDPOINT_OBSERVATION_OPT_IN,
+                        endpointObservationOptInCheckBox.isChecked
+                    )
             )
             vpnTunnelStartRequested = true
             vpnConsentButton.text = "ARRÊTER LE TUNNEL"

@@ -7,7 +7,7 @@ import java.net.InetAddress
 /**
  * Metadata-only observation of a remote socket associated with a user-selected game app.
  *
- * The capture layer must be explicit, user-consented and app-scoped. Packet payloads,
+ * The capture layer requires a separate in-app opt-in and is app-scoped. Packet payloads,
  * credentials and message contents are deliberately not represented by this model.
  * An observed remote socket is only a candidate; it is not proof of a match-server role.
  */
@@ -21,7 +21,7 @@ data class GameEndpointObservation(
     val remotePort: Int,
     val transport: GameEndpointTransport,
     val observedAtEpochMs: Long,
-    val userConsentGranted: Boolean
+    val endpointObservationOptInGranted: Boolean
 )
 
 data class GameEndpointCandidate(
@@ -49,7 +49,7 @@ data class GameEndpointCandidate(
 
 object GameEndpointObservationRegistry {
     fun isAdmissible(observation: GameEndpointObservation, expectedPackage: String): Boolean {
-        if (!observation.userConsentGranted) return false
+        if (!observation.endpointObservationOptInGranted) return false
         if (observation.gameId.isBlank() || expectedPackage.isBlank()) return false
         if (observation.gameAppPackage != expectedPackage) return false
         if (observation.sessionId.isBlank() || observation.observedAtEpochMs <= 0L) return false

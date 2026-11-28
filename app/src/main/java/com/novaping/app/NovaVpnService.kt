@@ -35,6 +35,7 @@ internal class NovaVpnService : VpnService() {
         const val EXTRA_STATE = "state"
         const val EXTRA_ERROR = "error"
         const val EXTRA_TRANSPORT_STATUS = "mobile_transport_status"
+        const val EXTRA_ENDPOINT_OBSERVATION_OPT_IN = "endpoint_observation_opt_in"
         internal const val VPN_PREFERENCES = "nova_ping_vpn"
         internal const val KEY_MOBILE_TRANSPORT_STATUS = "mobile_transport_status"
         private const val CHANNEL_ID = "nova_ping_vpn"
@@ -93,6 +94,7 @@ internal class NovaVpnService : VpnService() {
     @Volatile private var mobileNetworkCallback: ConnectivityManager.NetworkCallback? = null
     @Volatile private var connectivityManager: ConnectivityManager? = null
     @Volatile private var endpointObservationSession: GameEndpointObservationSession? = null
+    @Volatile private var endpointObservationOptInForStart = false
 
     private fun publishMobileTransportStatus(status: String) {
         getSharedPreferences(VPN_PREFERENCES, Context.MODE_PRIVATE).edit()
@@ -117,6 +119,8 @@ internal class NovaVpnService : VpnService() {
             }
             ACTION_START -> {
                 if (tunnelEstablished || engineThread?.isAlive == true) return START_NOT_STICKY
+                endpointObservationOptInForStart =
+                    intent.getBooleanExtra(EXTRA_ENDPOINT_OBSERVATION_OPT_IN, false)
                 VpnDiagnostics.tracker.beginSession()
                 terminalState = null
                 terminalError = null
@@ -174,14 +178,18 @@ internal class NovaVpnService : VpnService() {
         }
         val gamePackage = readSelectedGamePackage(this)
             ?: throw IllegalStateException("Aucun jeu installé n'est sélectionné")
-        // Android's system VPN-consent dialog is the explicit user authorization
-        // for this per-app observation. The Builder below scopes TUN traffic to
-        // this exact package; observations remain in memory for this session only.
-        endpointObservationSession = GameEndpointObservationSession(
-            gameId = if (gamePackage == "com.activision.callofduty.shooter") "codm" else "other",
-            gameAppPackage = gamePackage,
-            userConsentGranted = vpnAuthorizationPresent
-        )
+        // Android VPN consent authorizes the tunnel only. Endpoint observation
+        // requires the separate in-app opt-in passed with ACTION_START.
+        endpointObservationSession?.clear()
+        endpointObservationSession = if (endpointObservationOptInForStart) {
+            GameEndpointObservationSession(
+                gameId = if (gamePackage == "com.activision.callofduty.shooter") "codm" else "other",
+                gameAppPackage = gamePackage,
+                endpointObservationOptInGranted = true
+            )
+        } else {
+            null
+        }
         // In per-app mode, only the selected game is routed into TUN. NOVA PING's
         // own process is outside the VPN unless its package is explicitly allowed.
         val allowedVpnPackages = setOf(gamePackage)
@@ -683,6 +691,9 @@ internal class NovaVpnService : VpnService() {
     private fun finishTunnel() {
         if (engineThread?.isAlive == true && engineStarted) return
         stopHevReadinessMonitor()
+        endpointObservationSession?.clear()
+        endpointObservationSession = null
+        endpointObservationOptInForStart = false
         bridge?.close()
         bridge = null
         tunDescriptor?.let { runCatching { ParcelFileDescriptor.adoptFd(it).close() } }

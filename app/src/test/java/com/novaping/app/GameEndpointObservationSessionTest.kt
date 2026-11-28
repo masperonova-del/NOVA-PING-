@@ -25,7 +25,7 @@ class GameEndpointObservationSessionTest {
         val session = GameEndpointObservationSession(
             gameId = "codm",
             gameAppPackage = "com.activision.callofduty.shooter",
-            userConsentGranted = true
+            endpointObservationOptInGranted = true
         )
 
         assertTrue(session.record(metadata(), 1_800_000_000_000L))
@@ -42,11 +42,11 @@ class GameEndpointObservationSessionTest {
     }
 
     @Test
-    fun refusesToRecordWithoutExplicitVpnConsent() {
+    fun refusesToRecordWithoutExplicitEndpointObservationOptIn() {
         val session = GameEndpointObservationSession(
             gameId = "codm",
             gameAppPackage = "com.activision.callofduty.shooter",
-            userConsentGranted = false
+            endpointObservationOptInGranted = false
         )
 
         assertFalse(session.record(metadata(), 1_800_000_000_000L))
@@ -59,7 +59,7 @@ class GameEndpointObservationSessionTest {
         val session = GameEndpointObservationSession(
             gameId = "codm",
             gameAppPackage = "com.activision.callofduty.shooter",
-            userConsentGranted = true,
+            endpointObservationOptInGranted = true,
             sessionId = "test-session",
             maxObservations = 2
         )
@@ -80,7 +80,7 @@ class GameEndpointObservationSessionTest {
         val session = GameEndpointObservationSession(
             gameId = "codm",
             gameAppPackage = "com.activision.callofduty.shooter",
-            userConsentGranted = true
+            endpointObservationOptInGranted = true
         )
         assertTrue(session.record(metadata(), 1_800_000_000_000L))
 
