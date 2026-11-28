@@ -15,15 +15,6 @@ diff --git a/src/hev-jni.c b/src/hev-jni.c
  #include "hev-main.h"
 +#include "hev-socks5-tunnel.h"
 
-@@ -54,4 +56,8 @@
- static JavaVM *java_vm;
- static pthread_t work_thread;
- static pthread_mutex_t mutex;
-+/* Direct NOVA PING lifecycle: IDLE -> RESERVED -> RUNNING. */
-+static int nova_start_reserved;
-+static int nova_stop_pending;
-+static int nova_start_active;
- static pthread_key_t current_jni_env;
  
  #include "hev-jni.h"
  
@@ -51,7 +42,7 @@ diff --git a/src/hev-jni.c b/src/hev-jni.c
  
      pthread_key_create (&current_jni_env, detach_current_thread);
      pthread_mutex_init (&mutex, NULL);
-@@ -210,4 +215,170 @@
+@@ -210,4 +215,166 @@
      return res;
  }
  
@@ -96,6 +87,11 @@ diff --git a/src/hev-jni.c b/src/hev-jni.c
 +{
 +    return (jlong)hev_socks5_tunnel_metadata_dropped ();
 +}
++
++/* Direct NOVA PING lifecycle: IDLE -> RESERVED -> RUNNING. */
++static int nova_start_reserved;
++static int nova_stop_pending;
++static int nova_start_active;
 +
 +JNIEXPORT jboolean JNICALL
 +Java_com_novaping_app_HevTunnelNative_nativePrepareStart (JNIEnv *env, jobject thiz)
