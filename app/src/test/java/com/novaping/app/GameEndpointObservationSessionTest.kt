@@ -9,14 +9,16 @@ class GameEndpointObservationSessionTest {
     private fun metadata(
         address: String = "1.1.1.1",
         port: Int = 7500,
-        transport: Int = 17
+        transport: Int = 17,
+        direction: Int = 1,
+        packetLengthBytes: Int = 96
     ) = HevPacketMetadata(
         ipVersion = 4,
         remoteAddress = address,
         transport = transport,
-        direction = 1,
+        direction = direction,
         remotePort = port,
-        packetLengthBytes = 96,
+        packetLengthBytes = packetLengthBytes,
         fragmented = false
     )
 
@@ -39,6 +41,38 @@ class GameEndpointObservationSessionTest {
         assertEquals(7500, candidate.remotePort)
         assertEquals(GameEndpointTransport.UDP, candidate.transport)
         assertTrue(candidate.evidenceLabel.contains("RÔLE SERVEUR NON CONFIRMÉ"))
+    }
+
+
+    @Test
+    fun retainsDirectionAndPacketSizeForEndpointAggregation() {
+        val session = GameEndpointObservationSession(
+            gameId = "codm",
+            gameAppPackage = "com.activision.callofduty.shooter",
+            endpointObservationOptInGranted = true
+        )
+
+        assertTrue(session.record(metadata(direction = 1, packetLengthBytes = 120), 100L))
+        assertTrue(session.record(metadata(direction = 2, packetLengthBytes = 80), 200L))
+
+        val candidate = session.candidates().single()
+        assertEquals(1, candidate.outboundPacketCount)
+        assertEquals(1, candidate.inboundPacketCount)
+        assertEquals(200L, candidate.totalObservedBytes)
+        assertEquals(80, candidate.minPacketLengthBytes)
+        assertEquals(120, candidate.maxPacketLengthBytes)
+    }
+
+    @Test
+    fun rejectsUnknownPacketDirection() {
+        val session = GameEndpointObservationSession(
+            gameId = "codm",
+            gameAppPackage = "com.activision.callofduty.shooter",
+            endpointObservationOptInGranted = true
+        )
+
+        assertFalse(session.record(metadata(direction = 3), 100L))
+        assertEquals(0, session.observationCount())
     }
 
     @Test
