@@ -166,6 +166,9 @@ internal class NovaVpnService : VpnService() {
                     tunnelEstablished = false
                     engineStarted = false
                     engineThread = null
+                    endpointObservationSession?.clear()
+                    endpointObservationSession = null
+                    endpointObservationOptInForStart = false
                     stopping.set(false)
                     publishState("error", terminalError)
                     VpnDiagnostics.finish(this)
