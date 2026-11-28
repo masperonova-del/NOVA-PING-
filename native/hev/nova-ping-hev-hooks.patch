@@ -72,7 +72,7 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
 +    (void)np_metadata_tap_observe (tap, &reader, nova_metadata_local_addresses,
 +                                   nova_metadata_local_address_count);
 +}
-@@ -91,6 +140,8 @@
+@@ -91,6 +149,8 @@
  static err_t
  netif_output_handler (struct netif *netif, struct pbuf *p)
  {
@@ -81,7 +81,7 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
 +    nova_metadata_observe (p, &nova_metadata_tap_output);
 +
      s = hev_tunnel_write (tun_fd, p);
-@@ -372,6 +455,8 @@
+@@ -372,6 +432,8 @@
  event_task_entry (void *data)
  {
      HevListNode *node;
@@ -90,7 +90,7 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
 +    atomic_store (&nova_tunnel_running, 1);
 +
      LOG_D ("socks5 tunnel event task run");
-@@ -440,6 +525,8 @@
+@@ -440,6 +502,8 @@
          stat_tx_packets++;
          stat_tx_bytes += buf->tot_len;
  
@@ -99,7 +99,7 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
          buf = tunnel_compact_pbuf (buf);
  
          data = buf->payload;
-@@ -804,5 +891,7 @@
+@@ -804,5 +868,7 @@
  hev_socks5_tunnel_init (int tun_fd)
  {
      int res;
@@ -107,7 +107,7 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
 +    atomic_store (&nova_tunnel_running, 0);
 +
      LOG_D ("socks5 tunnel init");
-@@ -811,6 +900,9 @@
+@@ -811,6 +877,9 @@
      if (res < 0)
          goto exit;
  
@@ -117,7 +117,7 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
      res = gateway_init ();
      if (res < 0)
          goto exit;
-@@ -850,5 +942,7 @@
+@@ -850,5 +919,7 @@
  hev_socks5_tunnel_fini (void)
  {
      LOG_D ("socks5 tunnel fini");
@@ -125,7 +125,7 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
 +    atomic_store (&nova_tunnel_running, 0);
 +
  retry:
-@@ -939,3 +1033,43 @@
+@@ -939,3 +1010,43 @@
      if (rx_bytes)
          *rx_bytes = stat_rx_bytes;
  }
