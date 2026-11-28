@@ -44,11 +44,7 @@ internal object HevTunnelNative {
         check(engineRunGate.isReserved()) {
             "HEV engine run was not reserved by the VPN service"
         }
-        return try {
-            nativeStart(config, tunFileDescriptor)
-        } finally {
-            engineRunGate.release()
-        }
+        return nativeStart(config, tunFileDescriptor)
     }
 
     /** Reserves the process-wide native engine before its worker thread starts. */
