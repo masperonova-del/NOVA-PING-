@@ -3,7 +3,7 @@ package com.novaping.app
 import java.util.UUID
 
 /**
- * Bounded, in-memory observations for one explicitly user-started, per-app VPN session.
+ * Bounded, in-memory observations for one per-app VPN session with a separate explicit opt-in.
  *
  * HEV receives only the selected application's TUN traffic because the VPN builder
  * allow-lists that package. The session never persists endpoint addresses and is
