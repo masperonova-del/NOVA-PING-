@@ -3033,9 +3033,8 @@ class MainActivity : Activity() {
                 val port = item.optInt("port")
                 val transport = item.optString("transport")
                 val observations = item.optInt("observations")
-                val sessions = item.optInt("sessions")
                 val endpoint = if (address.contains(':')) "[$address]:$port" else "$address:$port"
-                add("$endpoint • $transport • $observations observation(s) • $sessions session(s)")
+                add("$endpoint • $transport • $observations observation(s)")
             }
             if (candidates.length() > displayLimit) {
                 add("")
