@@ -13,10 +13,17 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
  #include "hev-socks5-tunnel.h"
  
  enum
-@@ -80,1 +85,54 @@
+@@ -79,6 +84,82 @@
+ static HevTask *task_lwip_timer;
  static HevList session_set;
 +static atomic_int nova_tunnel_running;
+ 
 +
++/*
++ * NOVA PING observes headers synchronously while the pbuf is valid.
++ * The metadata queues are diagnostic-only: a rejected sample or full queue
++ * must never change the original pbuf or the tunnel return value.
++ */
 +static np_metadata_tap_t nova_metadata_tap_input;
 +static np_metadata_tap_t nova_metadata_tap_output;
 +static unsigned int nova_metadata_poll_cursor;
@@ -28,29 +35,40 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
 +                        uint16_t length, uint16_t offset)
 +{
 +    const struct pbuf *p = opaque;
++
 +    if (!p)
 +        return 0;
++
 +    return pbuf_copy_partial (p, destination, length, offset);
 +}
 +
 +static void
 +nova_metadata_init (void)
 +{
-+    const char *ipv4 = hev_config_get_tunnel_ipv4_address ();
-+    const char *ipv6 = hev_config_get_tunnel_ipv6_address ();
++    const char *ipv4;
++    const char *ipv6;
 +    struct in_addr addr4;
 +    struct in6_addr addr6;
++
 +    nova_metadata_local_address_count = 0;
-+    memset (nova_metadata_local_addresses, 0, sizeof (nova_metadata_local_addresses));
++    memset (nova_metadata_local_addresses, 0,
++            sizeof (nova_metadata_local_addresses));
++
 +    (void)np_metadata_tap_init (&nova_metadata_tap_input);
 +    (void)np_metadata_tap_init (&nova_metadata_tap_output);
++
++    ipv4 = hev_config_get_tunnel_ipv4_address ();
 +    if (ipv4 && inet_pton (AF_INET, ipv4, &addr4) == 1) {
-+        np_local_address_t *local = &nova_metadata_local_addresses[nova_metadata_local_address_count++];
++        np_local_address_t *local =
++            &nova_metadata_local_addresses[nova_metadata_local_address_count++];
 +        local->family = NP_ADDRESS_IPV4;
 +        memcpy (local->bytes, &addr4, sizeof (addr4));
 +    }
++
++    ipv6 = hev_config_get_tunnel_ipv6_address ();
 +    if (ipv6 && inet_pton (AF_INET6, ipv6, &addr6) == 1) {
-+        np_local_address_t *local = &nova_metadata_local_addresses[nova_metadata_local_address_count++];
++        np_local_address_t *local =
++            &nova_metadata_local_addresses[nova_metadata_local_address_count++];
 +        local->family = NP_ADDRESS_IPV6;
 +        memcpy (local->bytes, &addr6, sizeof (addr6));
 +    }
@@ -61,23 +79,33 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
 +{
 +    np_packet_reader_t reader;
 +    np_pbuf_reader_context_t context;
-+    if (!tap || !tap->ready || !p || !nova_metadata_local_address_count)
++
++    if (!tap || !tap->ready || !p ||
++        !nova_metadata_local_address_count)
 +        return;
-+    if (!np_pbuf_reader_init (&reader, &context, p, p->tot_len, nova_pbuf_copy_partial))
++
++    if (!np_pbuf_reader_init (&reader, &context, p, p->tot_len,
++                              nova_pbuf_copy_partial))
 +        return;
-+    (void)np_metadata_tap_observe (tap, &reader, nova_metadata_local_addresses,
++
++    (void)np_metadata_tap_observe (tap, &reader,
++                                   nova_metadata_local_addresses,
 +                                   nova_metadata_local_address_count);
 +}
-@@ -91,6 +149,8 @@
- static err_t
- netif_output_handler (struct netif *netif, struct pbuf *p)
++
+ static int
+ task_io_yielder (HevTaskYieldType type, void *data)
+ {
+@@ -92,6 +173,8 @@
  {
      ssize_t s;
  
 +    nova_metadata_observe (p, &nova_metadata_tap_output);
 +
      s = hev_tunnel_write (tun_fd, p);
-@@ -372,6 +432,8 @@
+     if (s <= 0) {
+         if (errno == EAGAIN)
+@@ -372,6 +455,8 @@
  event_task_entry (void *data)
  {
      HevListNode *node;
@@ -86,7 +114,7 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
 +    atomic_store (&nova_tunnel_running, 1);
 +
      LOG_D ("socks5 tunnel event task run");
-@@ -440,6 +502,8 @@
+@@ -440,6 +525,8 @@
          stat_tx_packets++;
          stat_tx_bytes += buf->tot_len;
  
@@ -95,7 +123,7 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
          buf = tunnel_compact_pbuf (buf);
  
          data = buf->payload;
-@@ -804,5 +868,7 @@
+@@ -804,5 +891,7 @@
  hev_socks5_tunnel_init (int tun_fd)
  {
      int res;
@@ -103,7 +131,7 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
 +    atomic_store (&nova_tunnel_running, 0);
 +
      LOG_D ("socks5 tunnel init");
-@@ -811,6 +877,9 @@
+@@ -811,6 +900,9 @@
      if (res < 0)
          goto exit;
  
@@ -113,7 +141,7 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
      res = gateway_init ();
      if (res < 0)
          goto exit;
-@@ -850,5 +919,7 @@
+@@ -850,5 +942,7 @@
  hev_socks5_tunnel_fini (void)
  {
      LOG_D ("socks5 tunnel fini");
@@ -121,7 +149,7 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
 +    atomic_store (&nova_tunnel_running, 0);
 +
  retry:
-@@ -939,3 +1010,43 @@
+@@ -939,3 +1033,42 @@
      if (rx_bytes)
          *rx_bytes = stat_rx_bytes;
  }
@@ -164,4 +192,4 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
 +hev_socks5_tunnel_reset_stop_request (void)
 +{
 +    atomic_fetch_and (&tsync, ~SYNC_STOP);
-+}
+NaN
