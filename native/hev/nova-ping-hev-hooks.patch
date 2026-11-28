@@ -72,7 +72,6 @@ diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
 +    (void)np_metadata_tap_observe (tap, &reader, nova_metadata_local_addresses,
 +                                   nova_metadata_local_address_count);
 +}
-
 @@ -91,6 +140,8 @@
  static err_t
  netif_output_handler (struct netif *netif, struct pbuf *p)
