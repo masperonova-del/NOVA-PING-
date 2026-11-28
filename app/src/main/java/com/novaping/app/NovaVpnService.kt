@@ -22,6 +22,8 @@ import java.net.InetAddress
 import java.net.Socket
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * User-started per-app VPN lifecycle. Only the selected game package is routed.
@@ -32,10 +34,14 @@ internal class NovaVpnService : VpnService() {
         const val ACTION_START = "com.novaping.app.action.START_GAME_TUNNEL"
         const val ACTION_STOP = "com.novaping.app.action.STOP_GAME_TUNNEL"
         const val ACTION_STATE = "com.novaping.app.action.GAME_TUNNEL_STATE"
+        const val ACTION_REQUEST_ENDPOINTS = "com.novaping.app.action.REQUEST_ENDPOINT_OBSERVATIONS"
+        const val ACTION_ENDPOINTS = "com.novaping.app.action.ENDPOINT_OBSERVATIONS"
         const val EXTRA_STATE = "state"
         const val EXTRA_ERROR = "error"
         const val EXTRA_TRANSPORT_STATUS = "mobile_transport_status"
         const val EXTRA_ENDPOINT_OBSERVATION_OPT_IN = "endpoint_observation_opt_in"
+        const val EXTRA_ENDPOINTS_JSON = "endpoint_observations_json"
+        const val EXTRA_ENDPOINTS_ENABLED = "endpoint_observations_enabled"
         internal const val VPN_PREFERENCES = "nova_ping_vpn"
         internal const val KEY_MOBILE_TRANSPORT_STATUS = "mobile_transport_status"
         private const val CHANNEL_ID = "nova_ping_vpn"
@@ -115,6 +121,10 @@ internal class NovaVpnService : VpnService() {
         when (intent?.action) {
             ACTION_STOP -> {
                 stopTunnel()
+                return START_NOT_STICKY
+            }
+            ACTION_REQUEST_ENDPOINTS -> {
+                publishEndpointObservations()
                 return START_NOT_STICKY
             }
             ACTION_START -> {
@@ -753,6 +763,27 @@ internal class NovaVpnService : VpnService() {
     }
 
     override fun onBind(intent: Intent?) = super.onBind(intent)
+
+    /** Returns a one-time, in-memory snapshot only after the session opt-in was granted. */
+    private fun publishEndpointObservations() {
+        val session = endpointObservationSession
+        val payload = JSONArray()
+        session?.candidates()?.forEach { candidate ->
+            payload.put(JSONObject().apply {
+                put("address", candidate.remoteAddress)
+                put("port", candidate.remotePort)
+                put("transport", candidate.transport.name)
+                put("observations", candidate.observationCount)
+                put("sessions", candidate.distinctSessionCount)
+                put("first_seen", candidate.firstObservedAtEpochMs)
+                put("last_seen", candidate.lastObservedAtEpochMs)
+            })
+        }
+        sendBroadcast(Intent(ACTION_ENDPOINTS).setPackage(packageName).apply {
+            putExtra(EXTRA_ENDPOINTS_ENABLED, session != null)
+            putExtra(EXTRA_ENDPOINTS_JSON, payload.toString())
+        })
+    }
 
     private fun publishState(state: String, error: String?) {
         getSharedPreferences(VPN_PREFERENCES, Context.MODE_PRIVATE).edit()
