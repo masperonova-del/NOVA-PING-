@@ -305,7 +305,6 @@ internal class NovaVpnService : VpnService() {
             }
         }, "NovaHevEngine").apply { isDaemon = true }
         engineThread = thread
-        startHevMetadataPolling()
         check(HevTunnelNative.prepareStart()) {
             "Impossible de réserver le démarrage natif HEV"
         }
@@ -329,6 +328,11 @@ internal class NovaVpnService : VpnService() {
                 val ready = runCatching { HevTunnelNative.isEngineReady() }.getOrDefault(false)
                 if (ready) {
                     if (!stopping.get() && engine.isAlive) {
+                        // HEV sets its native running flag only after nova_metadata_init()
+                        // has completed. Start the sole JNI consumer after this readiness
+                        // barrier so it cannot read np_metadata_tap_t.ready concurrently
+                        // with native initialization.
+                        startHevMetadataPolling()
                         VpnDiagnostics.tracker.setEngineState("Initialisé — boucle native active")
                         VpnDiagnostics.tracker.setTunnelState("HEV actif")
                         publishState("ready", null)
