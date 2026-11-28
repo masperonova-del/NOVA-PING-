@@ -1159,7 +1159,9 @@ class MainActivity : Activity() {
         }
         refreshStabilityMonitorUi()
         if (!vpnStateReceiverRegistered) {
-            val vpnFilter = IntentFilter(NovaVpnService.ACTION_STATE)
+            val vpnFilter = IntentFilter(NovaVpnService.ACTION_STATE).apply {
+                addAction(NovaVpnService.ACTION_ENDPOINTS)
+            }
             if (Build.VERSION.SDK_INT >= 33) {
                 registerReceiver(vpnStateReceiver, vpnFilter, Context.RECEIVER_NOT_EXPORTED)
             } else {
