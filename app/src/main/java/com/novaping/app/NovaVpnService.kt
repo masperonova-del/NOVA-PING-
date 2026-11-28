@@ -277,7 +277,6 @@ internal class NovaVpnService : VpnService() {
         publishState("starting", null)
         val thread = Thread({
             try {
-                engineStarted = true
                 VpnDiagnostics.tracker.setEngineState("Initialisation native en cours")
                 VpnDiagnostics.tracker.setTunnelState("Initialisation HEV non confirmée")
                 val result = HevTunnelNative.runBlocking(config, fd)
@@ -296,10 +295,10 @@ internal class NovaVpnService : VpnService() {
                     publishState("error", terminalError)
                 }
             } finally {
-                HevTunnelNative.releaseEngineRun()
                 stopHevReadinessMonitor()
                 stopHevMetadataPolling()
                 engineStarted = false
+                HevTunnelNative.releaseEngineRun()
                 tunDescriptor = null
                 runCatching { ParcelFileDescriptor.adoptFd(fd).close() }
                 mainHandler.post { finishTunnel() }
@@ -310,9 +309,11 @@ internal class NovaVpnService : VpnService() {
         check(HevTunnelNative.reserveEngineRun()) {
             "Une session HEV précédente termine encore son arrêt. Réessayez dans quelques secondes."
         }
+        engineStarted = true
         try {
             thread.start()
         } catch (error: Throwable) {
+            engineStarted = false
             HevTunnelNative.releaseEngineRun()
             throw error
         }
@@ -655,8 +656,12 @@ internal class NovaVpnService : VpnService() {
         if (!stopping.compareAndSet(false, true)) return
         bridge?.close()
         bridge = null
-        if (engineStarted || engineThread?.isAlive == true) {
+        if (engineStarted) {
             HevTunnelNative.requestStop()
+        } else if (engineThread?.isAlive == true) {
+            // Native HEV has already returned; let its worker finish cleanup.
+            // Sending a late global nativeStop could affect a newly reserved session.
+            return
         } else {
             tunDescriptor?.let { runCatching { ParcelFileDescriptor.adoptFd(it).close() } }
             tunDescriptor = null
